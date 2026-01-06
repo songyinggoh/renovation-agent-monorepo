@@ -1,0 +1,285 @@
+/**
+ * Database adapter for FAQ operations using Supabase JS Client
+ * This provides a clean interface that matches our Drizzle schema types
+ */
+
+import { getSupabaseClient } from './supabase-client.js';
+import { Logger } from '../utils/logger.js';
+
+const logger = new Logger({ serviceName: 'SupabaseAdapter' });
+
+/**
+ * Type definitions for FAQ documents and chunks
+ */
+export interface FaqDocument {
+	id: number;
+	url: string;
+	category: string;
+	question: string;
+	termId?: string;
+	sourceUrl?: string;
+	createdAt: Date;
+	updatedAt: Date;
+}
+
+export interface FaqChunk {
+	id: number;
+	documentId: number;
+	chunkIndex: number;
+	content: string;
+	embedding?: number[];
+	contextEmbedding?: number[];
+	parentContext?: string;
+	metadata?: Record<string, unknown>;
+	createdAt: Date;
+}
+
+/**
+ * Insert types that match Drizzle's insert types
+ */
+export type FaqDocumentInsert = Omit<FaqDocument, 'id' | 'createdAt' | 'updatedAt'> & {
+	createdAt?: Date;
+	updatedAt?: Date;
+};
+
+export type FaqChunkInsert = Omit<FaqChunk, 'id' | 'createdAt'> & {
+	createdAt?: Date;
+};
+
+/**
+ * Upsert an FAQ document (insert or update based on url + category)
+ */
+export async function upsertFaqDocument(
+	document: FaqDocumentInsert
+): Promise<FaqDocument | null> {
+	const client = getSupabaseClient();
+
+	logger.debug('upsert_faq_document', {
+		url: document.url,
+		category: document.category,
+	});
+
+	// Convert Date objects to ISO strings for Supabase
+	const data = {
+		...document,
+		created_at: document.createdAt?.toISOString() || new Date().toISOString(),
+		updated_at: document.updatedAt?.toISOString() || new Date().toISOString(),
+	};
+
+	// Remove camelCase properties that we've converted to snake_case
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { createdAt, updatedAt, termId, sourceUrl, ...restData } = data as FaqDocumentInsert & {
+		created_at: string;
+		updated_at: string;
+		createdAt?: Date;
+		updatedAt?: Date;
+		termId?: string;
+		sourceUrl?: string;
+	};
+
+	const payload = {
+		...restData,
+		term_id: document.termId,
+		source_url: document.sourceUrl,
+	};
+
+	const { data: result, error } = await client
+		.from('faq_documents')
+		.upsert(payload, {
+			onConflict: 'url,category',
+			ignoreDuplicates: false,
+		})
+		.select()
+		.single();
+
+	if (error) {
+		logger.error('upsert_faq_document_failed', error, {
+			url: document.url,
+			category: document.category,
+			error: error.message,
+		});
+		throw new Error(`Failed to upsert FAQ document: ${error.message}`);
+	}
+
+	logger.info('upsert_faq_document_success', {
+		id: result.id,
+		url: result.url,
+		category: result.category,
+	});
+
+	// Convert snake_case back to camelCase for our types
+	return {
+		...result,
+		termId: result.term_id,
+		sourceUrl: result.source_url,
+		createdAt: new Date(result.created_at),
+		updatedAt: new Date(result.updated_at),
+	} as FaqDocument;
+}
+
+/**
+ * Insert FAQ chunks in batch
+ */
+export async function insertFaqChunks(
+	chunks: FaqChunkInsert[]
+): Promise<FaqChunk[]> {
+	const client = getSupabaseClient();
+
+	logger.debug('insert_faq_chunks', { count: chunks.length });
+
+	// Convert to snake_case for Supabase
+	const data = chunks.map(chunk => {
+		const snakeCase = {
+			document_id: chunk.documentId,
+			chunk_index: chunk.chunkIndex,
+			content: chunk.content,
+			embedding: chunk.embedding,
+			context_embedding: chunk.contextEmbedding,
+			parent_context: chunk.parentContext,
+			metadata: chunk.metadata,
+			created_at: chunk.createdAt?.toISOString() || new Date().toISOString(),
+		};
+		return snakeCase;
+	});
+
+	const { data: result, error } = await client
+		.from('faq_chunks')
+		.insert(data)
+		.select();
+
+	if (error) {
+		logger.error('insert_faq_chunks_failed', error, {
+			count: chunks.length,
+			error: error.message,
+		});
+		throw new Error(`Failed to insert FAQ chunks: ${error.message}`);
+	}
+
+	logger.info('insert_faq_chunks_success', { count: result.length });
+
+	// Convert back to camelCase
+	return result.map(row => ({
+		...row,
+		documentId: row.document_id,
+		chunkIndex: row.chunk_index,
+		contextEmbedding: row.context_embedding,
+		parentContext: row.parent_context,
+		createdAt: new Date(row.created_at),
+	})) as FaqChunk[];
+}
+
+/**
+ * Delete all chunks for a document
+ */
+export async function deleteFaqChunksByDocumentId(
+	documentId: number
+): Promise<void> {
+	const client = getSupabaseClient();
+
+	logger.debug('delete_faq_chunks', { documentId });
+
+	const { error } = await client
+		.from('faq_chunks')
+		.delete()
+		.eq('document_id', documentId);
+
+	if (error) {
+		logger.error('delete_faq_chunks_failed', error, {
+			documentId,
+			error: error.message,
+		});
+		throw new Error(`Failed to delete FAQ chunks: ${error.message}`);
+	}
+
+	logger.info('delete_faq_chunks_success', { documentId });
+}
+
+/**
+ * Hybrid search using Supabase RPC (vector similarity + full-text search)
+ * This calls a PostgreSQL function that we need to create
+ */
+export async function hybridSearchFaqChunks(
+	embedding: number[],
+	query: string,
+	limit: number = 5,
+	vectorWeight: number = 0.7
+): Promise<FaqChunk[]> {
+	const client = getSupabaseClient();
+
+	logger.debug('hybrid_search_faq_chunks', {
+		embeddingLength: embedding.length,
+		query: query.substring(0, 50),
+		limit,
+		vectorWeight,
+	});
+
+	// Call the hybrid_search_faq_chunks RPC function
+	// This function needs to be created in Supabase
+	const { data, error } = await client.rpc('hybrid_search_faq_chunks', {
+		query_embedding: embedding,
+		search_query: query,
+		match_count: limit,
+		vector_weight: vectorWeight,
+	});
+
+	if (error) {
+		logger.error('hybrid_search_failed', error, {
+			error: error.message,
+		});
+		throw new Error(`Hybrid search failed: ${error.message}`);
+	}
+
+	logger.info('hybrid_search_success', { resultsCount: data?.length || 0 });
+
+	// Convert snake_case to camelCase
+	return (data || []).map((row: Record<string, unknown>) => ({
+		id: row.id,
+		documentId: row.document_id,
+		chunkIndex: row.chunk_index,
+		content: row.content,
+		embedding: row.embedding,
+		contextEmbedding: row.context_embedding,
+		parentContext: row.parent_context,
+		metadata: row.metadata,
+		createdAt: new Date(row.created_at as string),
+	})) as FaqChunk[];
+}
+
+/**
+ * Get FAQ document by ID
+ */
+export async function getFaqDocumentById(
+	id: number
+): Promise<FaqDocument | null> {
+	const client = getSupabaseClient();
+
+	const { data, error } = await client
+		.from('faq_documents')
+		.select('*')
+		.eq('id', id)
+		.single();
+
+	if (error) {
+		if (error.code === 'PGRST116') {
+			// Not found
+			return null;
+		}
+		logger.error('get_faq_document_failed', error, {
+			id,
+			error: error.message,
+		});
+		throw new Error(`Failed to get FAQ document: ${error.message}`);
+	}
+
+	return {
+		...data,
+		termId: data.term_id,
+		sourceUrl: data.source_url,
+		createdAt: new Date(data.created_at),
+		updatedAt: new Date(data.updated_at),
+	} as FaqDocument;
+}
+
+
+
+

@@ -1,0 +1,134 @@
+---
+description: Enforces graceful degradation, timeouts, and retries in services.
+globs: src/services/**/*.ts
+alwaysApply: true
+---
+
+# Graceful Degradation, Timeouts, and Retries
+
+To build a resilient and reliable chatbot, all services must implement mechanisms for graceful degradation, appropriate timeouts for external calls (like LLMs), and intelligent retries for transient failures (like database connection glitches).
+
+## I. Core Principles
+
+1.  **No Single Point of Failure**: The chatbot should still be able to respond to the user even if a dependency (like the LangChain service or the database) fails.
+2.  **User Experience**: Failures should be handled in a way that minimizes negative impact. This means providing a helpful fallback message instead of silence or a generic error.
+3.  **Resource Protection**: Prevent cascading failures by ensuring that a slow or failing dependency doesn't exhaust resources in the calling service.
+
+## II. Implementation Guidelines
+
+### 1. Timeouts
+Any network request to an external service (like an LLM) or a database query should have a timeout to prevent it from hanging indefinitely.
+
+-   **Use `withTimeout` Utility**: Leverage the `src/utils/async.ts#withTimeout` utility for wrapping promises.
+-   **Contextual Timeouts**:
+    -   Database queries: 5-10 seconds.
+    -   External LLM calls: 15-30 seconds.
+
+**Example (`withTimeout` in `ChatService`):**
+```typescript
+import { withTimeout } from "../utils/async.js";
+import { AppError } from "../utils/errors.js";
+
+// In ChatService, when calling the LangChainService
+try {
+    const llmPromise = this.langChainService.generateResponseStream(message, products, context);
+    
+    // This example is conceptual for a single response, not a stream.
+    // You might apply timeouts differently for streams (e.g., timeout for first token).
+    const response = await withTimeout(
+        this.langChainService.someSingleResponseMethod(message),
+        15000, // 15-second timeout
+        "AI service timed out"
+    );
+    
+    socket.emit('response', { payload: response });
+
+} catch (error) {
+    if (error instanceof Error && error.message.includes("timed out")) {
+        throw new AppError(error.message, 504); // Gateway Timeout
+    }
+    throw error;
+}
+```
+
+### 2. Retries
+Operations that can fail due to temporary issues (network glitches, rate limits, database deadlocks) should be retried with exponential backoff.
+
+-   **Use `withRetry` Utility**: Employ `src/utils/async.ts#withRetry` for retry logic.
+-   **Configuration**: Use a maximum of 3-5 retries with a sensible backoff delay.
+
+**Example (`withRetry` in `CartService`):**
+```typescript
+import { withRetry } from "../utils/async.js";
+import { AppError } from "../utils/errors.js";
+
+// In CartService, for a critical database operation
+public async addToCart(dto: AddToCartDto): Promise<CartItemDto> {
+    try {
+        return await withRetry(
+            async () => {
+                // The actual operation to be retried
+                const [newSelection] = await db.insert(userSelection).values(dto).returning();
+                const [cartItem] = await this.getCartItemDetails(newSelection.id);
+                return cartItem;
+            },
+            3, // maxRetries
+            500, // initialDelay (ms)
+            5000, // maxDelay (ms)
+            `addToCart-${dto.sessionId}`
+        );
+    } catch (error) {
+        logger.error(`Failed to add item to cart for session ${dto.sessionId} after all retries`, error as Error, { dto });
+        throw new AppError("Could not add item to cart at this time. Please try again later.", 500, { cause: error });
+    }
+}
+```
+
+### 3. Graceful Degradation & Fallbacks
+Identify critical vs. non-critical operations. If a non-critical operation fails, provide a fallback rather than letting the entire request fail. The chatbot's response generation is a perfect example.
+
+**Example (Fallback Logic in `ChatService`):**
+```typescript
+// In ChatService.processChatStream
+try {
+    // ... logic to search products and prepare context ...
+
+    const responseStream = this.langChainService.generateResponseStream(
+        chatRequest.message,
+        products,
+        context
+    );
+
+    let fullResponse = '';
+    for await (const token of responseStream) {
+        fullResponse += token;
+        socket.emit('token', { payload: token });
+    }
+    
+    // ... save conversation ...
+
+} catch (error) {
+    logger.error('Error processing chat stream with LLM', error as Error, { sessionId: chatRequest.session_id });
+    
+    // GRACEFUL DEGRADATION: Instead of failing, send a fallback message.
+    const fallbackMessage = "I'm having a little trouble thinking right now. Please try asking your question again in a moment.";
+    
+    // Emit the fallback message token by token to mimic the streaming UI
+    for (const token of fallbackMessage.split(' ')) {
+        socket.emit('token', { payload: token + ' ' });
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    // We don't re-throw the error, because we've handled it gracefully.
+    // The user gets a helpful message, and the system remains stable.
+} finally {
+    socket.emit('end');
+}
+```
+
+## III. Anti-Patterns
+
+-   **Swallowing Errors**: Catching errors and not logging them or providing a fallback.
+-   **Infinite Retries / No Backoff**: Retrying without increasing delays can overwhelm dependencies.
+-   **No Timeouts for External Calls**: Can lead to stuck requests and resource exhaustion.
+-   **Failing Silently**: Not informing the user that an operation failed and that they should try again.

@@ -1,0 +1,158 @@
+---
+description: Enforces strict TypeScript typing and naming conventions to prevent duplicate code.
+globs: src/**/*.ts
+alwaysApply: true
+---
+
+# Strict TypeScript Typing and Naming Conventions
+
+This rule ensures that all TypeScript code adheres to strict typing practices and prevents duplicate function implementations. The goal is to eliminate the use of `any`, ensure all types are accurately defined, and maintain clean, non-duplicated code.
+
+## 1. Duplicate Function Detection
+
+**ALWAYS** check the target file for existing functions with similar names or functionality before implementing new code. If a similar function exists, consider whether it can be modified or extended instead of creating a new one.
+
+#### Example:
+
+```typescript
+// ❌ BAD: Implementing without checking
+export class CartService {
+	// Existing method
+	public async addToCart(dto: AddToCartDto): Promise<CartItemDto> {
+		/* ... */
+	}
+
+	// Duplicate logic added without checking
+	public async addItemToCart(dto: AddToCartDto): Promise<CartItemDto> {
+		/* ... */
+	} // DUPLICATE!
+}
+
+// ✅ GOOD: Check first, then refactor or use a more descriptive name
+export class CartService {
+	// Existing method
+	public async addToCart(dto: AddToCartDto): Promise<CartItemDto> {
+		/* ... */
+	}
+
+	// New method with a clear, distinct purpose
+	public async addMultipleItemsToCart(
+		dtos: AddToCartDto[]
+	): Promise<CartItemDto[]> {
+		/* ... */
+	}
+}
+```
+
+## 2. Type Safety Requirements
+
+### Eliminate `any` Type Usage
+
+**REQUIRED**: Replace all instances of `any` with specific types. This project's ESLint configuration will fail if you use `any`.
+
+#### Guidelines:
+
+1.  **Run Linter**: Before committing, run `npm run prep` to check for type errors.
+2.  **Eliminate `any`**: Replace all instances with specific types, interfaces, `unknown` (with type guards), or generics.
+3.  **Use DTOs**: Use the Data Transfer Objects (DTOs) defined in `src/dtos/` for API request and response shapes.
+4.  **Type Guards**: Use type guards for `unknown` types, especially in `catch` blocks or when handling WebSocket message data.
+
+### ESLint Configuration
+
+This project uses a strict ESLint configuration that disallows the `any` type via the `@typescript-eslint/no-explicit-any` rule. The `prep` script will enforce this.
+
+## 3. Implementation Examples
+
+### ✅ GOOD: Proper Implementation Process
+
+```typescript
+// Step 1: Check ChatService for existing message handlers.
+// Step 2: Implement with proper types using DTOs.
+
+import { Socket } from "socket.io";
+import { ChatRequestDto } from "../dtos/chat.dto.js";
+import { Logger } from "../utils/logger.js";
+
+const logger = new Logger({ serviceName: "ChatService" });
+
+export class ChatService {
+	public async processChatStream(
+		chatRequest: ChatRequestDto,
+		socket: Socket
+	): Promise<void> {
+		logger.info("Processing chat message", {
+			sessionId: chatRequest.session_id,
+		});
+		// ... implementation with specific types
+	}
+}
+```
+
+### ❌ BAD: What NOT to do
+
+```typescript
+// DON'T: Use 'any' or implement duplicate logic.
+export class ChatService {
+	// Wrong: using 'any'
+	public async processChatStream(chatRequest: any, socket: any): Promise<any> {
+		// ...
+	}
+
+	// DUPLICATE! This should be part of the main stream processing.
+	public async handleMessage(message: any): Promise<void> {
+		// ...
+	}
+}
+```
+
+## 4. Type Definition Patterns
+
+### Use DTOs and Interfaces
+
+```typescript
+// ✅ GOOD: Use the DTOs defined for the application
+import { IsString, IsNotEmpty, IsInt, IsPositive } from "class-validator";
+import { Expose } from "class-transformer";
+
+export class AddToCartDto {
+	@IsString()
+	@IsNotEmpty()
+	@Expose()
+	sessionId!: string;
+
+	@IsInt()
+	@IsPositive()
+	@Expose()
+	productId!: number;
+}
+```
+
+### Use Type Guards for `unknown` Data
+
+```typescript
+// ✅ GOOD: Using unknown with a type guard for WebSocket data
+socket.on("chat_message", async (messageData: unknown) => {
+	if (typeof messageData === "object" && messageData !== null) {
+		const chatRequest = plainToInstance(ChatRequestDto, messageData);
+		// ... proceed with validated DTO
+	} else {
+		socket.emit("error", { message: "Invalid message format." });
+	}
+});
+```
+
+## 5. Pre-Commit Checklist
+
+### Duplicate Detection
+
+- [ ] Search the target file for existing methods with similar names or functionality.
+- [ ] If a similar method exists, consider refactoring instead of duplicating.
+- [ ] If creating a new method, ensure its name is descriptive and unique.
+
+### Type Safety
+
+- [ ] Run `npm run prep` to check for type errors.
+- [ ] Eliminate all `any` types.
+- [ ] Use DTOs and interfaces for complex objects.
+- [ ] Add explicit return types for all public methods.
+- [ ] Use type guards for external/unknown data.

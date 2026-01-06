@@ -1,0 +1,95 @@
+title: Test-Driven Development (TDD) Rules – 2025
+summary: Pragmatic, fast-feedback TDD for Node/TypeScript (Vitest), Drizzle/Postgres, LangChain, and Socket.IO in this monorepo.
+
+rules:
+  - name: Start-with-a-test
+    description: For every new capability, write a failing, meaningful test before implementation.
+
+  - name: Small-increments
+    description: Keep tests and code changes small; aim for minutes between red→green cycles.
+
+  - name: Business-focused-tests
+    description: Express behavior and domain rules, not implementation details. Prefer black-box tests at boundaries.
+
+  - name: Fast-feedback
+    description: Use Vitest watch mode, focused test selection, and mocks to keep local runs under 3s.
+
+  - name: Pyramid-not-cone
+    description: Emphasize unit tests; add integration for critical boundaries (DB, HTTP, WebSocket); few end-to-end tests.
+
+  - name: Deterministic-tests
+    description: No timeouts or network flakiness. Fake clocks, seed RNG, and stub I/O.
+
+  - name: Contract-first-APIs
+    description: Define DTOs/schemas upfront. Tests validate input validation, happy path, and error paths.
+
+  - name: Data-layer-isolated
+    description: For unit tests, mock Drizzle repos. For integration, use a transient Postgres (Testcontainers) with migrations applied.
+
+  - name: Testcontainers-default
+    description: Use Testcontainers for Postgres and Redis (if introduced). Auto-wipe between tests; apply Drizzle migrations.
+
+  - name: Vector-and-RAG-testing
+    description: For embeddings/RAG, snapshot small corpuses, seed deterministic embeddings (stub model), and assert retrieval order/score windows.
+
+  - name: LangChain-stability
+    description: Wrap LLM calls; in unit tests mock deterministic responses. In integration, gate external calls with recorded fixtures.
+
+  - name: WebSocket-contracts
+    description: Validate event names, payload shapes, and streaming semantics (token/end/error). Use Socket.IO test client.
+
+  - name: Observability-assertions
+    description: Tests assert logging and error boundaries for critical flows without coupling to literals.
+
+  - name: Performance-budgets
+    description: Add upper bounds for hot paths (e.g., retrieval < 150ms on local fixtures) and fail if exceeded.
+
+  - name: Accessibility-and-security
+    description: Include tests for input sanitization, domain allowlists for ingestion, and privacy (no secrets in logs).
+
+  - name: CI-stability
+    description: Run with `--runInBand` if needed, cache dependencies, and parallelize by project. No test depends on wall clock.
+
+  - name: Coverage-thresholds
+    description: Enforce pragmatic thresholds (e.g., 80% lines/branches) with exemptions for generated code.
+
+  - name: Fixture-discipline
+    description: Prefer builders/factories over giant fixtures. Keep fixtures local to tests; share via helpers sparingly.
+
+  - name: Refactor-friendly
+    description: Tests target public contracts; avoid snapshotting large JSON unless contractually meaningful.
+
+  - name: Naming
+    description: Use Given/When/Then structure in test names; prefer descriptive variable names over comments.
+
+practices:
+  vitest:
+    - Use `vi.useFakeTimers()` for time-based code.
+    - Use `vi.spyOn` and module mocks for external effects (HTTP, LangChain, pg Pool).
+    - Mark long-running or flaky tests as `test.skip` until stabilized.
+  drizzle:
+    - Apply migrations in `beforeAll`; truncate tables in `beforeEach`.
+    - Keep SQL fixtures small; use seed helpers.
+  rag:
+    - Create a tiny deterministic corpus (3–5 chunks) and a stub embedder returning fixed vectors.
+    - Assert hybrid scores composition and ordering tolerance (±epsilon).
+  langchain:
+    - Wrap LLM calls behind an interface; swap with deterministic mock in tests.
+  sockets:
+    - Use Socket.IO in-memory server/client; assert event sequencing and payloads.
+
+tooling:
+  - `npm run test:unit` → unit tests only
+  - `npm run test:integration` → spins Testcontainers and runs integration tests
+  - `npm run test:watch` → local red/green loop
+  - Use Vitest coverage reporter in CI with thresholds
+
+review-checklist:
+  - Does a failing test exist before the implementation?
+  - Are tests deterministic and fast locally?
+  - Are DB and network isolated or containerized appropriately?
+  - Do tests exercise validation, success, and failure paths?
+  - Is there a small, deterministic RAG corpus with a stub embedder?
+  - Are WebSocket streaming contracts covered?
+  - Do logs and errors meet observability expectations without leaking secrets?
+

@@ -1,0 +1,106 @@
+// Load environment variables first
+import * as dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+// Get project root and load .env
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, "../../.env") });
+
+// Polyfill for Node < 18
+import "../utils/node17-polyfills.js";
+
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { Logger } from "../utils/logger.js";
+
+const logger = new Logger({ serviceName: "SupabaseClient" });
+
+/**
+ * Supabase client singleton for REST API access
+ * This is a workaround for direct PostgreSQL connection issues
+ */
+let supabaseClient: SupabaseClient | null = null;
+
+export function getSupabaseClient(): SupabaseClient {
+	if (supabaseClient) {
+		return supabaseClient;
+	}
+
+	const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+	const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+	if (!supabaseUrl || !supabaseKey) {
+		const missingVars = [];
+		if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL");
+		if (!supabaseKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY");
+
+		logger.error(
+			"supabase_client_missing_env",
+			new Error("Missing environment variables"),
+			{
+				missingVars,
+			}
+		);
+		throw new Error(
+			`Missing required environment variables: ${missingVars.join(", ")}`
+		);
+	}
+
+	logger.info("supabase_client_initializing", {
+		url: supabaseUrl,
+		keyType: process.env.SUPABASE_SERVICE_ROLE_KEY ? "service_role" : "anon",
+	});
+
+	supabaseClient = createClient(supabaseUrl, supabaseKey, {
+		auth: {
+			persistSession: false,
+			autoRefreshToken: false,
+		},
+	});
+
+	logger.info("supabase_client_initialized", { url: supabaseUrl });
+
+	return supabaseClient;
+}
+
+/**
+ * Test the Supabase connection by querying a simple table
+ */
+export async function testSupabaseConnection(): Promise<{
+	success: boolean;
+	message: string;
+}> {
+	try {
+		const client = getSupabaseClient();
+
+		// Try to query the faq_documents table (count only)
+		const { error, count } = await client
+			.from("faq_documents")
+			.select("*", { count: "exact", head: true });
+
+		if (error) {
+			logger.error("supabase_connection_test_failed", error, {
+				error: error.message,
+			});
+			return {
+				success: false,
+				message: `Supabase connection failed: ${error.message}`,
+			};
+		}
+
+		logger.info("supabase_connection_test_success", { documentCount: count });
+		return {
+			success: true,
+			message: `Supabase connection successful. Found ${
+				count || 0
+			} FAQ documents.`,
+		};
+	} catch (error) {
+		logger.error("supabase_connection_test_error", error as Error);
+		return {
+			success: false,
+			message: `Supabase connection failed: ${(error as Error).message}`,
+		};
+	}
+}

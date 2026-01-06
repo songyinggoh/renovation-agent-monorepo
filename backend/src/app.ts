@@ -1,33 +1,86 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import { env } from './config/env.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { Logger } from './utils/logger.js';
+import healthRoutes from './routes/health.routes.js';
 
-import userRoutes from './routes/user.routes';
-import { errorHandler } from './middleware/errorHandler';
+const logger = new Logger({ serviceName: 'App' });
 
-// Load environment variables
-dotenv.config();
+/**
+ * Create and configure Express application
+ *
+ * This function sets up the Express app with middleware and routes
+ * but does NOT start the server (that happens in server.ts)
+ */
+export function createApp(): Application {
+  const app = express();
 
-const app: Application = express();
-const port = process.env.PORT || 3000;
+  logger.info('Initializing Express application', {
+    nodeEnv: env.NODE_ENV,
+    frontendUrl: env.FRONTEND_URL,
+  });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  // ============================================
+  // CORS Configuration
+  // ============================================
+  app.use(
+    cors({
+      origin: env.FRONTEND_URL,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    })
+  );
 
-// Routes
-app.get('/', (req: Request, res: Response) => {
-  res.json({ message: 'Express + TypeScript Server' });
-});
+  // ============================================
+  // Body Parsing Middleware
+  // ============================================
+  app.use(express.json({ limit: '10mb' })); // Support larger JSON payloads for image data
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// API Routes
-app.use('/api/users', userRoutes);
+  // ============================================
+  // Request Logging Middleware
+  // ============================================
+  app.use((req: Request, _res: Response, next) => {
+    logger.info('Incoming request', {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    next();
+  });
 
-// Error handling middleware
-app.use(errorHandler);
+  // ============================================
+  // Health Check Routes (no auth required)
+  // ============================================
+  app.use('/', healthRoutes);
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
-}); 
+  // ============================================
+  // API Routes (will be added in Phase 5)
+  // ============================================
+  // TODO: Add routes in Phase 5
+  // app.use('/api/sessions', sessionRoutes);
+  // app.use('/api/chat', chatRoutes);
+  // app.use('/api/rooms', roomRoutes);
+
+  // ============================================
+  // 404 Handler
+  // ============================================
+  app.use((_req: Request, res: Response) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: 'The requested resource was not found',
+    });
+  });
+
+  // ============================================
+  // Global Error Handler (must be last)
+  // ============================================
+  app.use(errorHandler);
+
+  logger.info('Express application initialized successfully');
+
+  return app;
+}

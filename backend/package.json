@@ -1,39 +1,65 @@
 {
-  "name": "express-ts-boilerplate",
+  "name": "renovation-agent-backend",
   "version": "1.0.0",
-  "description": "Express.js TypeScript Boilerplate",
-  "main": "dist/app.js",
+  "description": "AI-powered renovation planning assistant backend",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "start": "tsx dist/app.js",
-    "dev": "tsx src/app.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "start": "node dist/server.js",
     "lint": "eslint .",
-    "test": "jest"
+    "prep": "npm run lint && npm run build",
+    "test:unit": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "keywords": [
     "express",
     "typescript",
-    "nodejs"
+    "nodejs",
+    "langchain",
+    "socket.io",
+    "drizzle",
+    "ai-agent"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@langchain/core": "latest",
+    "@langchain/google-genai": "latest",
+    "@langchain/langgraph": "latest",
+    "@langchain/langgraph-checkpoint-postgres": "latest",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
-    "express": "^4.18.2"
+    "drizzle-orm": "^0.38.3",
+    "express": "^4.18.2",
+    "langchain": "latest",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.16",
+    "@types/pg": "^8.11.10",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "@vitest/coverage-v8": "^3.0.5",
+    "drizzle-kit": "^0.30.0",
     "eslint": "^8.57.1",
     "globals": "^15.15.0",
-    "jest": "^29.7.0",
+    "testcontainers": "^10.17.3",
     "tsx": "^4.19.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.52.0",
+    "vitest": "^3.0.5"
   }
 }

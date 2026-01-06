@@ -1,0 +1,1 @@
+Generate a research document with best practices, codesnippets and filenames, codesnippets in /chat-agent/docs/research , and then based on the research generate an implementation plan with phases, to do list, code snippets and filenames in /chat-agent/docs/implementation-plan

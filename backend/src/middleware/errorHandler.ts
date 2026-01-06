@@ -1,30 +1,39 @@
 import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors.js';
+import { Logger } from '../utils/logger.js';
 
-export class AppError extends Error {
-  constructor(public statusCode: number, message: string) {
-    super(message);
-    this.name = 'AppError';
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
+const logger = new Logger({ serviceName: 'ErrorHandler' });
 
 export const errorHandler = (
-  err: Error | AppError,
+  err: Error,
   req: Request,
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  next: NextFunction
+  _next: NextFunction
 ) => {
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+    const appError = err as AppError;
+    logger.warn('Application error', appError, {
+      statusCode: appError.statusCode,
+      path: req.path,
+      method: req.method,
+    });
+
+    return res.status(appError.statusCode).json({
       success: false,
-      error: err.message
+      error: appError.message,
     });
   }
 
-  console.error(err);
+  // Log unexpected errors
+  logger.error('Unhandled error', err, {
+    path: req.path,
+    method: req.method,
+    body: req.body,
+  });
+
   return res.status(500).json({
     success: false,
-    error: 'Internal server error'
+    error: 'Internal Server Error',
   });
-}; 
+};

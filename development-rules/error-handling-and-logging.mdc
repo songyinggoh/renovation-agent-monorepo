@@ -1,0 +1,210 @@
+---
+description: Enforces consistent error handling and logging patterns for the e-commerce chatbot backend.
+globs: src/**/*.ts
+alwaysApply: true
+---
+
+# Error Handling and Logging Standards
+
+This rule ensures consistent, type-safe error handling and logging across the codebase. It enforces the use of proper error types and structured logging patterns to maintain code quality and improve debugging.
+
+## I. Error Handling
+
+### Custom Error Classes (from `src/utils/errors.ts`)
+Use these for service-layer errors that should propagate as HTTP responses.
+
+```typescript
+import { AppError, NotFoundError } from "../utils/errors.js";
+
+// Usage
+throw new NotFoundError("Product with ID 123 not found");
+throw new AppError("Failed to process chat message", 500);
+```
+
+## II. Error Handling Patterns
+
+### 1. Service Layer Error Handling
+**REQUIRED**: Wrap database operations and business logic in `try...catch` blocks. Catch specific errors and re-throw them as `AppError` or a subclass.
+
+```typescript
+import { db } from '../db/index.js';
+import { product } from '../models/schema.model.js';
+import { eq } from 'drizzle-orm';
+import { AppError, NotFoundError } from '../utils/errors.js';
+import { Logger } from '../utils/logger.js';
+
+const logger = new Logger({ serviceName: "CartService" });
+
+// CORRECT - Cart service example
+public async getProductById(productId: number): Promise<any> {
+  try {
+    logger.info("Fetching product from database", { productId });
+    const [foundProduct] = await db.select().from(product).where(eq(product.id, productId));
+
+    if (!foundProduct) {
+      throw new NotFoundError(`Product with ID ${productId} not found.`);
+    }
+    
+    return foundProduct;
+  } catch (error: unknown) {
+    if (error instanceof AppError) {
+      throw error; // Re-throw known application errors
+    }
+    
+    const err = error as Error;
+    logger.error("Database error while fetching product", err, { productId });
+    throw new AppError("Failed to retrieve product.", 500, { cause: err });
+  }
+}
+
+// INCORRECT - No specific error handling
+async getProductById(productId: number): Promise<any> {
+  // This might throw a cryptic database error that isn't handled.
+  const [foundProduct] = await db.select().from(product).where(eq(product.id, productId));
+  if (!foundProduct) {
+    throw new Error("Product not found"); // Uses generic Error class
+  }
+  return foundProduct;
+}
+```
+
+### 2. Controller Error Handling
+**REQUIRED**: Use the `asyncHandler` wrapper on all controller methods to ensure errors are passed to the global error handler.
+
+```typescript
+import { Router } from 'express';
+import { CartController } from '../controllers/cart.controller.js';
+import { asyncHandler } from '../utils/async.js';
+
+const router = Router();
+const cartController = new CartController();
+
+// CORRECT
+router.get(
+  '/:sessionId',
+  asyncHandler(cartController.getCartContents)
+);
+
+// INCORRECT - No asyncHandler wrapper
+router.get('/:sessionId', async (req, res) => {
+  try {
+    // Logic here...
+  } catch (error) {
+    res.status(500).json({ error: "Something went wrong" }); // Manual error handling
+  }
+});
+```
+
+## III. Logging Standards
+
+### 1. Logger Initialization
+**REQUIRED**: Create service-specific logger instances using the project's custom `Logger`.
+
+```typescript
+import { Logger } from "../utils/logger.js";
+
+// CORRECT - Service-specific logger
+const logger = new Logger({ serviceName: "CartService" });
+const logger = new Logger({ serviceName: "ChatService" });
+const logger = new Logger({ serviceName: "CartController" });
+
+// INCORRECT - Generic or missing logger
+const logger = console; // Don't use console directly
+```
+
+### 2. Logging Levels and Metadata
+Always use structured metadata to provide context.
+
+#### Info Logging
+```typescript
+// CORRECT - Important business events
+logger.info("Adding item to cart", {
+  sessionId: "session-123",
+  productId: 456,
+  quantity: 1
+});
+```
+
+#### Warning Logging
+```typescript
+// CORRECT - Potential issues that don't stop execution
+logger.warn("Product stock is low", {
+  productId: 456,
+  stockLevel: 5
+});
+```
+
+#### Error Logging
+```typescript
+// CORRECT - Use logger.error with an Error object and context
+logger.error("Failed to add item to cart", error as Error, {
+  sessionId: "session-123",
+  productId: 456
+});
+
+// INCORRECT - Wrong parameter order or missing context
+logger.error("Cart operation failed", { productId: 456 }, error); // Wrong parameter order
+logger.error("Error occurred", error as Error); // Missing business context
+```
+
+## IV. Type Safety Requirements
+
+### 1. Error Handling in Catch Blocks
+**REQUIRED**: Properly type and handle `unknown` errors from `catch` blocks.
+
+```typescript
+// CORRECT - Proper error typing
+try {
+  // Business logic...
+} catch (error: unknown) {
+  if (error instanceof AppError) {
+    throw error; // Re-throw known errors
+  }
+  
+  const err = error as Error;
+  logger.error("An unexpected error occurred", err, { operation: "processChatStream" });
+  
+  throw new AppError("An unexpected error occurred during chat processing.", 500, { cause: err });
+}
+
+// INCORRECT - Untyped error handling
+try {
+  // ...
+} catch (error) { // Missing type annotation
+  console.log(error); // Direct console usage
+  throw error; // Re-throwing unknown error type
+}
+```
+
+### 2. Logger Metadata Types
+**REQUIRED**: Use simple, serializable types for metadata.
+
+```typescript
+// CORRECT - Proper metadata typing
+const cartMetadata: Record<string, unknown> = {
+  sessionId: dto.sessionId,
+  productId: dto.productId,
+  timestamp: Date.now()
+};
+logger.info("Adding item to cart", cartMetadata);
+
+// INCORRECT - Untyped metadata that may cause circular references
+logger.info("Processing request", { req, res }); // Express req/res objects are complex and can't be serialized
+```
+
+## V. Forbidden Patterns
+
+### ❌ DO NOT USE:
+1.  **Direct console usage**: `console.log()`, `console.error()`. Use the `Logger`.
+2.  **Generic `Error` class**: `throw new Error("message")`. Use `AppError` or `NotFoundError`.
+3.  **Unstructured logging**: String concatenation like `` `Item ${id} added` ``.
+4.  **Untyped catch blocks**: `catch (error)`. Always use `catch (error: unknown)`.
+5.  **Manual HTTP error responses**: Direct `res.status().json()` in controllers. Let `asyncHandler` and the global error handler do the work.
+6.  **Swallowing errors**: Empty catch blocks or generic error responses.
+
+### ✅ ALWAYS USE:
+1.  **Service-specific loggers**: `new Logger({ serviceName: "..." })`.
+2.  **Structured metadata**: Pass a metadata object to the logger.
+3.  **`AppError` or subclasses**: For all handled service-layer errors.
+4.  **`asyncHandler` wrapper**: For all controller methods.
+5.  **Type-safe `catch` blocks**: `catch (error: unknown)`.
