@@ -1,17 +1,24 @@
-# Backend Dockerfile (for development)
-FROM node:18-alpine
+# Use the official Node.js image.
+# https://hub.docker.com/_/node
+FROM node:latest
 
-WORKDIR /app
+# Create and change to the app directory.
+WORKDIR /usr/src/app
 
-# Install dependencies
+# Copy application dependency manifests to the container image.
 COPY package*.json ./
-RUN npm ci
 
-# Copy source code
+# Install dependencies.
+RUN npm install
+
+# Copy local code to the container image.
 COPY . .
 
-# Expose port
-EXPOSE 3000
+# Copy the .env file to the container image.
+# COPY .env .env
 
-# Start development server  
-CMD ["npm", "run", "dev"]
+# Build the TypeScript code.
+RUN npm run build
+
+# Run the web service on container startup.
+CMD [ "npm", "start" ]
