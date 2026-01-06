@@ -1,28 +1,28 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "skipLibCheck": true,
-    "moduleResolution": "node",
-    "typeRoots": ["./node_modules/@types", "./src/types"],
-    "types": ["express", "node"],
-
-    // Recommended settings for using TSX
-    // Treat files as modules even if it doesn't use import/export
-    "moduleDetection": "force",
-    // Ignore module structure
-    "module": "Preserve",
-    // Allow JSON modules to be imported
-    "resolveJsonModule": true,
-    // Allow JS files to be imported from TS and vice versa
+    "lib": ["dom", "dom.iterable", "es6"],
     "allowJs": true,
-    // Use correct ESM import behavior
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
     "esModuleInterop": true,
-    // Disallow features that require cross-file awareness
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "target": "ES2017"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
-} 
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
