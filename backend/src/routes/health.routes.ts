@@ -12,9 +12,9 @@ const logger = new Logger({ serviceName: 'HealthCheck' });
  * Used by load balancers for simple up/down checks
  * Always returns 200 if server is running
  *
- * GET /health
+ * GET /health, /healthz
  */
-router.get('/health', (_req: Request, res: Response) => {
+router.get(['/health', '/healthz'], (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

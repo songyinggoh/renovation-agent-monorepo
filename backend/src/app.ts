@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
+import sessionRoutes from './routes/session.routes.js';
 
 const logger = new Logger({ serviceName: 'App' });
 
@@ -58,10 +59,10 @@ export function createApp(): Application {
   app.use('/', healthRoutes);
 
   // ============================================
-  // API Routes (will be added in Phase 5)
+  // API Routes
   // ============================================
-  // TODO: Add routes in Phase 5
-  // app.use('/api/sessions', sessionRoutes);
+  app.use('/api/sessions', sessionRoutes);
+  // TODO Phase 5: Add remaining routes
   // app.use('/api/chat', chatRoutes);
   // app.use('/api/rooms', roomRoutes);
 

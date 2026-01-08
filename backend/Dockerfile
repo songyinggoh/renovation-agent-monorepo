@@ -1,24 +1,40 @@
-# Use the official Node.js image.
-# https://hub.docker.com/_/node
-FROM node:latest
+# Use Node.js 20 LTS as base
+FROM node:20-slim AS builder
 
-# Create and change to the app directory.
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy application dependency manifests to the container image.
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies.
+# Install dependencies
 RUN npm install
 
-# Copy local code to the container image.
+# Copy source code
 COPY . .
 
-# Copy the .env file to the container image.
-# COPY .env .env
-
-# Build the TypeScript code.
+# Build TypeScript
 RUN npm run build
 
-# Run the web service on container startup.
-CMD [ "npm", "start" ]
+# Production image
+FROM node:20-slim AS production
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm install --omit=dev
+
+# Copy built assets from builder
+COPY --from=builder /app/dist ./dist
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Start the server
+CMD ["node", "dist/server.js"]
