@@ -48,7 +48,11 @@ async function startServer(): Promise<void> {
     } catch (dbError) {
       const error = dbError instanceof Error ? dbError : new Error(String(dbError));
       logger.error('❌ Database connection failed', error);
-      throw new Error(`Database connection failed: ${error.message}`);
+      if (env.NODE_ENV === 'production') {
+        throw new Error(`Database connection failed: ${error.message}`);
+      } else {
+        logger.warn('Skipping fatal database error in development mode');
+      }
     }
 
     // ============================================

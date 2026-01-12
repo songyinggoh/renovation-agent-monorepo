@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { User } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { Logger } from '../utils/logger.js';
 
@@ -6,9 +7,10 @@ const logger = new Logger({ serviceName: 'AuthMiddleware' });
 
 // Extend Express Request type to include user
 declare global {
+    // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace Express {
         interface Request {
-            user?: any; // Replace with proper user type in production
+            user?: User;
         }
     }
 }
@@ -26,6 +28,13 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     const token = authHeader.split(' ')[1];
 
     try {
+        if (!supabaseAdmin) {
+            logger.error('Authentication attempted but Supabase is not configured', new Error('Supabase not configured'));
+            return res.status(503).json({
+                error: 'Service Unavailable',
+                message: 'Authentication service is not configured',
+            });
+        }
         const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
 
         if (error || !user) {
