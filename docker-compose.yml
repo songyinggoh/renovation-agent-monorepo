@@ -28,6 +28,8 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:3000
       - NODE_ENV=development
+      - NEXT_PUBLIC_SUPABASE_URL=https://bmghppvwiekqcpemaywd.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJtZ2hwcHZ3aWVrcWNwZW1heXdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMDA0MTEsImV4cCI6MjA4MDY3NjQxMX0.anDImmeYPeKZfZ_WfMh8scid243eOsBajyeOGkZGzwo
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -64,6 +66,7 @@ services:
 
 volumes:
   postgres_data:
+
 
 networks:
   app-network:

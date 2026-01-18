@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, numeric, timestamp, jsonb } from 'drizzle-orm/pg-core';
-import { renovationSessions } from './sessions.schema';
+import { renovationSessions } from './sessions.schema.js';
 
 /**
  * Contractor recommendations table

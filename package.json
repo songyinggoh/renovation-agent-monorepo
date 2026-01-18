@@ -15,5 +15,9 @@
     },
     "devDependencies": {
         "concurrently": "^8.2.2"
+    },
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@langchain/google-genai": "^2.1.7"
     }
 }

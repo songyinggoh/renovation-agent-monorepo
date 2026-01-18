@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
-import { renovationSessions } from './sessions.schema';
-import { profiles } from './users.schema';
+import { renovationSessions } from './sessions.schema.js';
+import { profiles } from './users.schema.js';
 
 /**
  * Chat messages table

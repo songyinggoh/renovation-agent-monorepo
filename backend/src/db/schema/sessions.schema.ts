@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
-import { profiles } from './users.schema';
+import { profiles } from './users.schema.js';
 
 /**
  * Renovation sessions table

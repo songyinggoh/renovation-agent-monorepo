@@ -12,19 +12,19 @@
  */
 
 // User profiles
-export * from './users.schema';
+export * from './users.schema.js';
 
 // Renovation sessions
-export * from './sessions.schema';
+export * from './sessions.schema.js';
 
 // Renovation rooms
-export * from './rooms.schema';
+export * from './rooms.schema.js';
 
 // Product recommendations
-export * from './products.schema';
+export * from './products.schema.js';
 
 // Contractor recommendations
-export * from './contractors.schema';
+export * from './contractors.schema.js';
 
 // Chat messages
-export * from './messages.schema';
+export * from './messages.schema.js';

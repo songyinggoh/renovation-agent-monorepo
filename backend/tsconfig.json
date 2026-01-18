@@ -5,24 +5,26 @@
     "rootDir": "./src",
     "strict": true,
     "skipLibCheck": true,
-    "moduleResolution": "node",
-    "typeRoots": ["./node_modules/@types", "./src/types"],
-    "types": ["express", "node"],
-
-    // Recommended settings for using TSX
-    // Treat files as modules even if it doesn't use import/export
-    "moduleDetection": "force",
-    // Ignore module structure
-    "module": "Preserve",
-    // Allow JSON modules to be imported
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ],
+    "types": [
+      "node",
+      "express"
+    ],
     "resolveJsonModule": true,
-    // Allow JS files to be imported from TS and vice versa
     "allowJs": true,
-    // Use correct ESM import behavior
     "esModuleInterop": true,
-    // Disallow features that require cross-file awareness
     "isolatedModules": true,
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
-} 
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
