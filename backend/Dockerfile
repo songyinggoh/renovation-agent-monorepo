@@ -1,18 +1,18 @@
 # Use Node.js 20 LTS as base
-FROM node:20-slim AS builder
-
+FROM node:20-slim AS base
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy source code
+# Development image
+FROM base AS development
 COPY . .
+ENV NODE_ENV=development
+CMD ["npm", "run", "dev"]
 
-# Build TypeScript
+# Builder image
+FROM base AS builder
+COPY . .
 RUN npm run build
 
 # Production image
