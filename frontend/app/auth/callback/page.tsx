@@ -12,7 +12,7 @@ export default function AuthCallback() {
         const handleAuth = async () => {
             const { error } = await supabase.auth.exchangeCodeForSession(window.location.search);
             if (!error) {
-                router.push('/app');
+                router.push('/');
             } else {
                 router.push('/');
             }

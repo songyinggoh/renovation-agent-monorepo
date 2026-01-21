@@ -6,6 +6,8 @@ import { testConnection, closeConnection } from './db/index.js';
 import { createChatModel } from './config/gemini.js';
 import { Logger } from './utils/logger.js';
 import { ShutdownManager } from './utils/shutdown-manager.js';
+import { verifyToken } from './middleware/auth.middleware.js';
+
 
 const logger = new Logger({ serviceName: 'Server' });
 
@@ -104,10 +106,30 @@ async function startServer(): Promise<void> {
       maxHttpBufferSize: 10e6, // 10 MB
     });
 
+    // Socket.io Middleware for Authentication
+    io.use(async (socket, next) => {
+      try {
+        const token = socket.handshake.auth.token;
+        if (!token) {
+          return next(new Error('Authentication error: Token required'));
+        }
+
+        const user = await verifyToken(token);
+        // Attach user to socket for later use
+        (socket as any).user = user;
+        next();
+      } catch (err) {
+        logger.error('Socket authentication failed', err as Error);
+        next(new Error('Authentication error: Invalid token'));
+      }
+    });
+
     // Socket.io connection handler
     io.on('connection', (socket) => {
+      const user = (socket as any).user;
       logger.info('Client connected', {
         socketId: socket.id,
+        userId: user?.id,
         transport: socket.conn.transport.name,
       });
 
@@ -127,9 +149,50 @@ async function startServer(): Promise<void> {
         });
       });
 
-      // TODO: Add chat message handlers in Phase 6
-      // socket.on('chat:user_message', handleUserMessage);
-      // socket.on('chat:image_upload', handleImageUpload);
+      // Join Session Room
+      socket.on('chat:join_session', (sessionId: string) => {
+        if (!sessionId) {
+          logger.warn('Client attempted to join session without ID', undefined, { socketId: socket.id });
+          return;
+        }
+
+        const roomName = `session:${sessionId}`;
+        socket.join(roomName);
+        logger.info(`Socket ${socket.id} joined room ${roomName}`);
+
+        // Notify client they have joined
+        socket.emit('chat:session_joined', { sessionId });
+      });
+
+      // Handle User Message
+      socket.on('chat:user_message', async (data: { sessionId: string; content: string }) => {
+        const { sessionId, content } = data;
+        if (!sessionId || !content) {
+          logger.warn('Invalid message format', undefined, { socketId: socket.id });
+          return;
+        }
+
+        logger.info('Received user message', {
+          socketId: socket.id,
+          sessionId,
+          contentLength: content.length
+        });
+
+        // Verify user is in the room
+        const roomName = `session:${sessionId}`;
+        if (!socket.rooms.has(roomName)) {
+          logger.warn('User attempted to send message to room they are not in', undefined, { socketId: socket.id, roomName });
+          return;
+        }
+
+        // TODO: Process message with AI, save to DB, etc.
+        // For now, just acknowledge receipt
+        socket.emit('chat:message_ack', {
+          sessionId,
+          status: 'received',
+          timestamp: new Date().toISOString()
+        });
+      });
     });
 
     // Store io instance globally for access in other modules
