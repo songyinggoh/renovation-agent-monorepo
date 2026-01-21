@@ -17,6 +17,11 @@ const logger = new Logger({ serviceName: 'App' });
 export function createApp(): Application {
   const app = express();
 
+  // ============================================
+  // Security: Disable X-Powered-By Header
+  // ============================================
+  app.disable('x-powered-by'); // Prevent Express version disclosure
+
   logger.info('Initializing Express application', {
     nodeEnv: env.NODE_ENV,
     frontendUrl: env.FRONTEND_URL,
