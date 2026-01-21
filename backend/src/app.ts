@@ -18,8 +18,9 @@ export function createApp(): Application {
   const app = express();
 
   // ============================================
-  // Security: Disable X-Powered-By Header
+  // Security: Trust Proxy & Disable X-Powered-By
   // ============================================
+  app.set('trust proxy', 1); // Trust the first proxy (Cloud Run load balancer)
   app.disable('x-powered-by'); // Prevent Express version disclosure
 
   logger.info('Initializing Express application', {
