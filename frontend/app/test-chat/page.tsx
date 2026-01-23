@@ -4,7 +4,7 @@ import { useChat } from '@/hooks/useChat';
 import { useState } from 'react';
 
 export default function TestChatPage() {
-  const { isConnected, sendMessage, error } = useChat('test-session-123');
+  const { isConnected, sendMessage, error, messages, isAssistantTyping } = useChat('test-session-123');
   const [messageInput, setMessageInput] = useState('');
 
   const handleSend = () => {
@@ -45,6 +45,50 @@ export default function TestChatPage() {
           <li>Send a test message using the input below</li>
           <li>Check backend logs for "Received user message"</li>
         </ol>
+      </div>
+
+      {/* Messages Display */}
+      <div className="mb-6 p-4 rounded-lg border">
+        <h2 className="text-xl font-semibold mb-4">Messages</h2>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {messages.length === 0 ? (
+            <p className="text-gray-500 text-sm italic">No messages yet. Send a message to test streaming!</p>
+          ) : (
+            messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`p-3 rounded-lg ${
+                  msg.role === 'user'
+                    ? 'bg-blue-100 ml-8'
+                    : 'bg-gray-100 mr-8'
+                }`}
+              >
+                <div className="flex justify-between items-start mb-1">
+                  <span className="font-semibold text-sm">
+                    {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {new Date(msg.created_at).toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              </div>
+            ))
+          )}
+          {isAssistantTyping && (
+            <div className="p-3 rounded-lg bg-gray-100 mr-8">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">🤖 Assistant</span>
+                <span className="text-xs text-gray-500">typing...</span>
+              </div>
+              <div className="flex gap-1 mt-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Message Input */}

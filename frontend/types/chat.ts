@@ -13,5 +13,6 @@ export interface SocketEvents {
   'chat:session_joined': (data: { sessionId: string }) => void;
   'chat:user_message': (data: { sessionId: string; content: string }) => void;
   'chat:message_ack': (data: { sessionId: string; status: string; timestamp: string }) => void;
-  'chat:assistant_token': (data: { sessionId: string; token: string }) => void;
+  'chat:assistant_token': (data: { sessionId: string; token: string; done?: boolean }) => void;
+  'chat:error': (data: { sessionId: string; error: string }) => void;
 }

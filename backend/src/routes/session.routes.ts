@@ -1,8 +1,14 @@
 import { Router } from 'express';
-import { listSessions, createSession } from '../controllers/session.controller.js';
+import { listSessions, createSession, healthCheck } from '../controllers/session.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router();
+
+/**
+ * @route GET /api/sessions/health
+ * @desc Health check for the session service
+ */
+router.get('/health', healthCheck);
 
 // All session routes require authentication
 router.use(authMiddleware);

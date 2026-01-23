@@ -1,7 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { env, isAuthEnabled } from './env.js';
 
-export const supabaseAdmin = isAuthEnabled()
+export const supabaseAdmin: SupabaseClient | null = isAuthEnabled()
     ? createClient(
         env.SUPABASE_URL!,
         env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -12,4 +12,4 @@ export const supabaseAdmin = isAuthEnabled()
             },
         }
     )
-    : null as any; // Cast to any to avoid type issues where it's used, but it will fail at runtime if accessed
+    : null; // Will be null if auth is not enabled (development mode)

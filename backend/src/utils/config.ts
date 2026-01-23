@@ -50,7 +50,7 @@ export const defaultConfig: AppConfig = {
     host: "localhost",
     port: 5432,
     user: "postgres",
-    password: "postgres",
+    password: "",
     database: "senate",
   },
   redis: {

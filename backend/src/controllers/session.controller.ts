@@ -7,6 +7,17 @@ import { Logger } from '../utils/logger.js';
 const logger = new Logger({ serviceName: 'SessionController' });
 
 /**
+ * Health check endpoint
+ */
+export const healthCheck = (req: Request, res: Response) => {
+    logger.info('Health check requested');
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+    });
+};
+
+/**
  * List all renovation sessions for the authenticated user
  */
 export const listSessions = async (req: Request, res: Response) => {

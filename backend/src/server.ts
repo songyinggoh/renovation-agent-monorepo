@@ -1,5 +1,5 @@
 import { createServer, Server } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { testConnection, closeConnection } from './db/index.js';
@@ -7,6 +7,8 @@ import { createChatModel } from './config/gemini.js';
 import { Logger } from './utils/logger.js';
 import { ShutdownManager } from './utils/shutdown-manager.js';
 import { verifyToken } from './middleware/auth.middleware.js';
+import { AuthenticatedSocket } from './types/socket.js';
+import { ChatService } from './services/chat.service.js';
 
 
 const logger = new Logger({ serviceName: 'Server' });
@@ -83,9 +85,8 @@ async function startServer(): Promise<void> {
     const app = createApp();
     logger.info('✅ Express application initialized');
 
-    // ============================================
-    // STEP 4: Create HTTP Server
-    // ============================================
+    // NOTE: In production (Cloud Run), TLS termination is handled by the GFE (Google Front End).
+    // The application listens on HTTP as per Cloud Run requirements.
     httpServer = createServer(app);
     logger.info('✅ HTTP server created');
 
@@ -107,16 +108,16 @@ async function startServer(): Promise<void> {
     });
 
     // Socket.io Middleware for Authentication
-    io.use(async (socket, next) => {
+    io.use(async (socket: Socket, next) => {
       try {
-        const token = socket.handshake.auth.token;
+        const token = socket.handshake.auth.token as string | undefined;
         if (!token) {
           return next(new Error('Authentication error: Token required'));
         }
 
         const user = await verifyToken(token);
         // Attach user to socket for later use
-        (socket as any).user = user;
+        (socket as AuthenticatedSocket).user = user;
         next();
       } catch (err) {
         logger.error('Socket authentication failed', err as Error);
@@ -125,8 +126,8 @@ async function startServer(): Promise<void> {
     });
 
     // Socket.io connection handler
-    io.on('connection', (socket) => {
-      const user = (socket as any).user;
+    io.on('connection', (socket: Socket) => {
+      const user = (socket as AuthenticatedSocket).user;
       logger.info('Client connected', {
         socketId: socket.id,
         userId: user?.id,
@@ -182,16 +183,74 @@ async function startServer(): Promise<void> {
         const roomName = `session:${sessionId}`;
         if (!socket.rooms.has(roomName)) {
           logger.warn('User attempted to send message to room they are not in', undefined, { socketId: socket.id, roomName });
+          socket.emit('chat:error', {
+            sessionId,
+            error: 'You must join a session before sending messages'
+          });
           return;
         }
 
-        // TODO: Process message with AI, save to DB, etc.
-        // For now, just acknowledge receipt
+        // Acknowledge receipt
         socket.emit('chat:message_ack', {
           sessionId,
           status: 'received',
           timestamp: new Date().toISOString()
         });
+
+        // Process message with ChatService (Phase 1.2: LangChain + Gemini integration)
+        try {
+          const chatService = new ChatService();
+
+          await chatService.processMessage(sessionId, content, {
+            onToken: (token: string) => {
+              // Emit token to the room (other users) and sender
+              socket.to(roomName).emit('chat:assistant_token', {
+                sessionId,
+                token,
+                done: false,
+              });
+
+              socket.emit('chat:assistant_token', {
+                sessionId,
+                token,
+                done: false,
+              });
+            },
+            onComplete: (fullResponse: string) => {
+              // Send final done signal
+              socket.to(roomName).emit('chat:assistant_token', {
+                sessionId,
+                token: '',
+                done: true,
+              });
+
+              socket.emit('chat:assistant_token', {
+                sessionId,
+                token: '',
+                done: true,
+              });
+
+              logger.info('AI response completed', {
+                socketId: socket.id,
+                sessionId,
+                responseLength: fullResponse.length,
+              });
+            },
+            onError: (error: Error) => {
+              logger.error('Error processing message', error, { socketId: socket.id, sessionId });
+              socket.emit('chat:error', {
+                sessionId,
+                error: 'Failed to process message. Please try again.',
+              });
+            },
+          });
+        } catch (error) {
+          logger.error('Error initializing ChatService', error as Error, { socketId: socket.id, sessionId });
+          socket.emit('chat:error', {
+            sessionId,
+            error: 'Failed to process message. Please try again.',
+          });
+        }
       });
     });
 
