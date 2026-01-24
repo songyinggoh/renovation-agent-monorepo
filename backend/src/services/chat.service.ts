@@ -1,5 +1,7 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
+import { StateGraph, START, MessagesAnnotation } from '@langchain/langgraph';
+import { MemorySaver } from '@langchain/langgraph';
 import { createStreamingModel } from '../config/gemini.js';
 import { Logger } from '../utils/logger.js';
 import { MessageService } from './message.service.js';
@@ -39,23 +41,58 @@ export interface StreamCallback {
 /**
  * ChatService handles AI-powered chat interactions
  *
- * Integrates LangChain with Gemini 2.5 for intelligent conversation
- * Manages message history and streaming responses
+ * Uses LangGraph StateGraph with Gemini 2.5 for intelligent conversation
+ * Manages message history, streaming responses, and session-based memory
  */
 export class ChatService {
   private model: ChatGoogleGenerativeAI;
   private messageService: MessageService;
+  private graph;
 
   constructor() {
     this.model = createStreamingModel();
     this.messageService = new MessageService();
-    logger.info('ChatService initialized');
+    this.graph = this.createAgent();
+    logger.info('ChatService initialized with LangGraph agent');
   }
 
   /**
-   * Process a user message and stream the AI response
+   * Create the LangGraph agent with StateGraph
+   * Uses a single call_model node for conversational AI
    *
-   * @param sessionId - The session ID for context
+   * @returns Compiled StateGraph with memory checkpointer
+   */
+  private createAgent() {
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode('call_model', async (state) => {
+        const messages = [...state.messages];
+
+        // Prepend system message if not already present
+        if (messages.length === 0 || messages[0].getType() !== 'system') {
+          messages.unshift(new SystemMessage(RENOVATION_AGENT_SYSTEM_PROMPT) as BaseMessage);
+        }
+
+        logger.info('LangGraph: Invoking model', {
+          messageCount: messages.length,
+        });
+
+        const response = await this.model.invoke(messages as BaseMessage[]);
+        return { messages: [response] };
+      })
+      .addEdge(START, 'call_model');
+
+    // Add memory checkpointing for session-based conversation state
+    const checkpointer = new MemorySaver();
+    const graph = workflow.compile({ checkpointer });
+
+    logger.info('LangGraph agent compiled with MemorySaver checkpointer');
+    return graph;
+  }
+
+  /**
+   * Process a user message and stream the AI response using LangGraph
+   *
+   * @param sessionId - The session ID for context and thread_id
    * @param userMessage - The user's message content
    * @param callback - Callbacks for streaming tokens
    * @returns Promise that resolves when streaming is complete
@@ -65,13 +102,13 @@ export class ChatService {
     userMessage: string,
     callback: StreamCallback
   ): Promise<void> {
-    logger.info('Processing user message', {
+    logger.info('Processing user message with LangGraph', {
       sessionId,
       messageLength: userMessage.length,
     });
 
     try {
-      // Step 1: Save user message to database
+      // Step 1: Save user message to database (for long-term persistence)
       await this.messageService.saveMessage({
         sessionId,
         userId: null, // Nullable for Phases 1-7
@@ -80,27 +117,41 @@ export class ChatService {
         type: 'text',
       });
 
-      // Step 2: Load message history for context
+      // Step 2: Load message history from database for initial context
       const history = await this.messageService.getRecentMessages(sessionId, 20);
-      const messages = this.buildMessageChain(history, userMessage);
+      const historicalMessages = this.convertHistoryToMessages(history);
 
-      // Step 3: Stream response from Gemini
+      // Step 3: Stream response from LangGraph agent
       let fullResponse = '';
 
-      const stream = await this.model.stream(messages);
+      const config = {
+        configurable: { thread_id: sessionId },
+        streamMode: 'messages' as const,
+      };
 
+      // Combine historical messages with new user message
+      const inputMessages = [...historicalMessages, new HumanMessage(userMessage) as BaseMessage];
+
+      const stream = await this.graph.stream(
+        { messages: inputMessages as BaseMessage[] },
+        config
+      );
+
+      // Process streaming chunks
       for await (const chunk of stream) {
-        const token = chunk.content as string;
-        fullResponse += token;
-        callback.onToken(token);
+        const [message] = chunk;
+        if (message && typeof message.content === 'string' && message.content) {
+          fullResponse += message.content;
+          callback.onToken(message.content);
+        }
       }
 
-      logger.info('AI response streamed successfully', {
+      logger.info('AI response streamed successfully via LangGraph', {
         sessionId,
         responseLength: fullResponse.length,
       });
 
-      // Step 4: Save assistant message to database
+      // Step 4: Save assistant message to database (for long-term persistence)
       await this.messageService.saveMessage({
         sessionId,
         userId: null,
@@ -112,27 +163,23 @@ export class ChatService {
       // Step 5: Notify completion
       callback.onComplete(fullResponse);
     } catch (error) {
-      logger.error('Error processing message', error as Error, { sessionId });
+      logger.error('Error processing message with LangGraph', error as Error, { sessionId });
       callback.onError(error as Error);
       throw error;
     }
   }
 
   /**
-   * Build the message chain for the AI model
-   * Includes system prompt + conversation history + new user message
+   * Convert database chat history to LangChain messages
+   * Used to load historical context for the LangGraph agent
    *
    * @param history - Previous messages from database
-   * @param newUserMessage - The new message from the user
    * @returns Array of LangChain messages
    */
-  private buildMessageChain(history: ChatMessage[], newUserMessage: string): BaseMessage[] {
+  private convertHistoryToMessages(history: ChatMessage[]): BaseMessage[] {
     const messages: BaseMessage[] = [];
 
-    // Add system prompt
-    messages.push(new SystemMessage(RENOVATION_AGENT_SYSTEM_PROMPT));
-
-    // Add conversation history
+    // Convert each database message to appropriate LangChain message type
     for (const msg of history) {
       if (msg.role === 'user') {
         messages.push(new HumanMessage(msg.content));
@@ -143,12 +190,9 @@ export class ChatService {
       }
     }
 
-    // Add new user message
-    messages.push(new HumanMessage(newUserMessage));
-
-    logger.info('Built message chain', {
+    logger.info('Converted history to messages', {
       totalMessages: messages.length,
-      historyMessages: history.length,
+      historyCount: history.length,
     });
 
     return messages;

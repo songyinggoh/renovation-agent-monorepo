@@ -15,6 +15,7 @@ vi.mock('../../../src/services/message.service.js', () => ({
 vi.mock('../../../src/config/gemini.js', () => ({
   createStreamingModel: vi.fn().mockReturnValue({
     stream: vi.fn(),
+    invoke: vi.fn(),
   }),
 }));
 
@@ -43,11 +44,18 @@ describe('ChatService', () => {
       const userMessage = 'Hello, AI!';
       const mockResponse = 'Hello! How can I help you?';
 
-      // Mock the streaming response
-      const mockModel = (chatService as unknown as { model: { stream: () => AsyncIterable<{ content: string }> } }).model;
-      vi.spyOn(mockModel, 'stream').mockImplementation(async function* () {
-        for (const char of mockResponse.split(' ')) {
-          yield { content: char + ' ' };
+      // Mock the model's invoke method (used by LangGraph)
+      const mockModel = (chatService as unknown as { model: { invoke: () => Promise<{ content: string }> } }).model;
+      vi.spyOn(mockModel, 'invoke').mockResolvedValue({
+        content: mockResponse,
+      } as Parameters<typeof mockModel.invoke>[0] extends Promise<infer U> ? U : never);
+
+      // Mock the graph's stream method
+      const mockGraph = (chatService as unknown as { graph: { stream: () => AsyncIterable<[{ content: string }, unknown]> } }).graph;
+      vi.spyOn(mockGraph, 'stream').mockImplementation(async function* () {
+        // LangGraph stream yields [message, metadata] tuples
+        for (const word of mockResponse.split(' ')) {
+          yield [{ content: word + ' ' }, {}];
         }
       });
 
@@ -88,9 +96,9 @@ describe('ChatService', () => {
       const userMessage = 'Hello, AI!';
       const mockError = new Error('API Error');
 
-      // Mock error in streaming
-      const mockModel = (chatService as unknown as { model: { stream: () => Promise<never> } }).model;
-      vi.spyOn(mockModel, 'stream').mockRejectedValue(mockError);
+      // Mock error in graph streaming
+      const mockGraph = (chatService as unknown as { graph: { stream: () => Promise<never> } }).graph;
+      vi.spyOn(mockGraph, 'stream').mockRejectedValue(mockError);
 
       const callback = {
         onToken: vi.fn(),
