@@ -1,5 +1,5 @@
 # Use Node.js 20 LTS as base
-FROM node:20-slim AS base
+FROM node:20.20.0-trixie-slim AS base
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-slim AS production
+FROM node:20.20.0-trixie-slim AS production
 
 WORKDIR /app
 
