@@ -85,8 +85,12 @@ async function startServer(): Promise<void> {
     const app = createApp();
     logger.info('✅ Express application initialized');
 
+    // ============================================
+    // STEP 4: Create HTTP Server
+    // ============================================
     // NOTE: In production (Cloud Run), TLS termination is handled by the GFE (Google Front End).
-    // The application listens on HTTP as per Cloud Run requirements.
+    // The application must listen on HTTP as per Cloud Run requirements.
+    // snyk:ignore: javascript:Sast/CleartextTransmission - App is deployed behind a proxy (Cloud Run GFE) which handles SSL termination.
     httpServer = createServer(app);
     logger.info('✅ HTTP server created');
 
@@ -367,7 +371,7 @@ function setupGracefulShutdown(): void {
 // ============================================
 // Start Server (only if not in test environment)
 // ============================================
-if (process.env.NODE_ENV !== 'test') {
+if (env.NODE_ENV !== 'test') {
   startServer();
 }
 

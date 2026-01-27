@@ -6,7 +6,10 @@
       "Bash(npm run build:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm test:unit:*)",
-      "Bash(npm run test:unit:*)"
+      "Bash(npm run test:unit:*)",
+      "Bash(pnpm install:*)",
+      "WebFetch(domain:docs.cloud.google.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

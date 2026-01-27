@@ -8,21 +8,38 @@ on:
       - 'backend/**'
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_ID: renovation-planner-agent
   SERVICE_NAME: renovation-backend
   REGION: us-central1
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - Check Secret
+        run: |
+          if [ -z "${{ secrets.WIF_PROVIDER }}" ]; then
+            echo "ERROR: WIF_PROVIDER secret is empty or not set"
+            exit 1
+          else
+            echo "WIF_PROVIDER is set (length: ${#WIF_PROVIDER})"
+          fi
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+
       - name: Google Auth
         uses: 'google-github-actions/auth@v2'
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: 'songyinggoh@renovation-planner-agent.iam.gserviceaccount.com'
 
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
