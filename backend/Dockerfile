@@ -29,7 +29,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 # Expose the port the app runs on (Cloud Run defaults to 8080, but uses $PORT)
-ENV PORT 8080
+ENV PORT="8080"
 EXPOSE 8080
 
 # Command to run the application
