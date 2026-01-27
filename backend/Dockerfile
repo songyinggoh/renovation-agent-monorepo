@@ -1,40 +1,37 @@
-# Use Node.js 20 LTS as base
-FROM node:20.20.0-trixie-slim AS base
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-
-# Development image
-FROM base AS development
-COPY . .
-ENV NODE_ENV=development
-CMD ["npm", "run", "dev"]
-
-# Builder image
-FROM base AS builder
-COPY . .
-RUN npm run build
-
-# Production image
-FROM node:20.20.0-trixie-slim AS production
+# Stage 1: Builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy pnpm lock file from root and backend package.json
+COPY pnpm-lock.yaml ./
+COPY backend/package.json ./package.json
 
-# Install production dependencies only
-RUN npm install --omit=dev
+# Install pnpm and dependencies
+RUN npm install -g pnpm
+RUN pnpm install --frozen-lockfile
 
-# Copy built assets from builder
+# Copy the rest of the backend source code
+COPY backend/. .
+
+# Build the TypeScript application
+RUN pnpm run build
+
+# Stage 2: Production
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+# Copy package.json for start script and dependencies
+COPY --from=builder /app/package.json ./package.json
+
+# Only copy production dependencies and build output
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+# Expose the port the app runs on (Cloud Run defaults to 8080, but uses $PORT)
+ENV PORT 8080
+EXPOSE 8080
 
-# Expose port
-EXPOSE 3000
-
-# Start the server
-CMD ["node", "dist/server.js"]
+# Command to run the application
+CMD ["pnpm", "start"]

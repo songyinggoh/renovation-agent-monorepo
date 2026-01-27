@@ -1,68 +1,45 @@
-name: Deploy Backend to Cloud Run (Cloud Build)
-
-# DISABLED: Requires additional Cloud Build permissions
-# See: docs/Cloud_Build_Permission_Fix.md for setup instructions
-# Use backend-deploy-docker.yml for immediate deployment
+name: Deploy Backend to GitHub Container Registry
 
 on:
-  workflow_dispatch:  # Manual trigger only until permissions are fixed
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - 'backend/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
 
 env:
-  PROJECT_ID: renovation-planner-agent
-  SERVICE_NAME: renovation-backend
-  REGION: us-central1
+  IMAGE_NAME: ${{ github.repository }}/backend
 
 jobs:
-  deploy:
+  build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      packages: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug - Check Secret
-        run: |
-          if [ -z "${{ secrets.WIF_PROVIDER }}" ]; then
-            echo "ERROR: WIF_PROVIDER secret is empty or not set"
-            exit 1
-          else
-            echo "WIF_PROVIDER is set (length: ${#WIF_PROVIDER})"
-          fi
-        env:
-          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
-
-      - name: Google Auth
-        uses: 'google-github-actions/auth@v2'
-        env:
-          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: 'songyinggoh@renovation-planner-agent.iam.gserviceaccount.com'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Cloud SDK
-        uses: 'google-github-actions/setup-gcloud@v2'
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAME }}
 
-      - name: Build and Push Docker Image
-        run: |
-          cd backend
-          # NOTE: Requires service account to have:
-          # - roles/cloudbuild.builds.editor
-          # - roles/serviceusage.serviceUsageConsumer
-          # - roles/storage.admin
-          # Run: bash scripts/fix-cloud-build-permissions.sh
-          gcloud builds submit --tag gcr.io/$PROJECT_ID/$SERVICE_NAME
-
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy $SERVICE_NAME \
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME \
-            --region $REGION \
-            --platform managed \
-            --allow-unauthenticated
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
