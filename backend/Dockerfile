@@ -3,9 +3,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy pnpm lock file from root and backend package.json
-COPY pnpm-lock.yaml ./
-COPY backend/package.json ./package.json
+# Copy backend's package.json and pnpm-lock.yaml
+COPY backend/package.json backend/pnpm-lock.yaml ./
 
 # Install pnpm and dependencies
 RUN npm install -g pnpm
