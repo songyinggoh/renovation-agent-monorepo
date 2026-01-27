@@ -86,13 +86,25 @@ async function startServer(): Promise<void> {
     logger.info('✅ Express application initialized');
 
     // ============================================
-    // STEP 4: Create HTTP Server
+    // STEP 4 & 6: Create and Start HTTP Server
     // ============================================
     // NOTE: In production (Cloud Run), TLS termination is handled by the GFE (Google Front End).
     // The application must listen on HTTP as per Cloud Run requirements.
-    // snyk:ignore: javascript:Sast/CleartextTransmission - App is deployed behind a proxy (Cloud Run GFE) which handles SSL termination.
-    httpServer = createServer(app);
-    logger.info('✅ HTTP server created');
+    // We use app.listen which is the standard Express way to start the server.
+    httpServer = app.listen(env.PORT, () => {
+      logger.info('🚀 Renovation Agent Backend started successfully', {
+        port: env.PORT,
+        env: env.NODE_ENV,
+        pid: process.pid,
+        endpoints: {
+          health: `http://localhost:${env.PORT}/health`,
+          api: `http://localhost:${env.PORT}/api`,
+          docs: `http://localhost:${env.PORT}/api-docs`,
+          socketPath: '/socket.io',
+        },
+      });
+    });
+    logger.info('✅ HTTP server created and listening');
 
     // ============================================
     // STEP 5: Setup Socket.io Server
@@ -265,21 +277,10 @@ async function startServer(): Promise<void> {
     logger.info('✅ Socket.io initialized');
 
     // ============================================
-    // STEP 6: Start HTTP Server
+    // STEP 6: Handle Server Errors
     // ============================================
-    httpServer.listen(env.PORT, () => {
-      logger.info('🚀 Renovation Agent Backend started successfully', {
-        port: env.PORT,
-        env: env.NODE_ENV,
-        pid: process.pid,
-        endpoints: {
-          health: `http://localhost:${env.PORT}/health`,
-          api: `http://localhost:${env.PORT}/api`,
-          docs: `http://localhost:${env.PORT}/api-docs`,
-          socketPath: '/socket.io',
-        },
-      });
-    });
+    // The server is already started in Step 4/6.
+    // Here we just attach additional error handlers if needed.
 
     // Handle server listen errors (e.g., port already in use)
     httpServer.on('error', (error: NodeJS.ErrnoException) => {

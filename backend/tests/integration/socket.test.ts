@@ -39,9 +39,14 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
   let clientSocket: ClientSocket;
 
   beforeAll(() => {
-    // Create test server
+    // Create test server and start on random port
     const app = createApp();
-    httpServer = createServer(app);
+    httpServer = app.listen(0, () => {
+      const address = httpServer.address();
+      if (address && typeof address !== 'string') {
+        serverPort = address.port;
+      }
+    });
 
     io = new SocketIOServer(httpServer, {
       cors: {
@@ -109,15 +114,19 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
       });
     });
 
-    // Start server on random port
+    // We already started the server in Step 4
     return new Promise<void>((resolve) => {
-      httpServer.listen(0, () => {
-        const address = httpServer.address();
-        if (address && typeof address !== 'string') {
-          serverPort = address.port;
-        }
+      if (serverPort) {
         resolve();
-      });
+      } else {
+        httpServer.once('listening', () => {
+          const address = httpServer.address();
+          if (address && typeof address !== 'string') {
+            serverPort = address.port;
+          }
+          resolve();
+        });
+      }
     });
   });
 

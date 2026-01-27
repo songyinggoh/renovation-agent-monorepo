@@ -57,7 +57,7 @@ The `/plan` skill automates the research → planning → tracking → TDD workf
 
 ### Output Structure
 
-```
+```text
 docs/
 ├── research/
 │   └── [TOPIC]_Research.md          # Problem analysis + 3-5 solutions
@@ -105,6 +105,7 @@ docs/
 ### Quality Gates (Automatic)
 
 Before any commit, Claude runs:
+
 ```bash
 # Backend
 npm run lint              # ESLint
@@ -128,6 +129,7 @@ npm run type-check        # TypeScript
 ### When NOT to Use `/plan`
 
 Skip `/plan` for trivial tasks:
+
 - Fixing typos
 - Updating documentation
 - Adding a single line of code
@@ -137,15 +139,18 @@ Use `/plan` for everything else.
 
 ### Troubleshooting
 
-**"Skill not found"**
+#### "Skill not found"
+
 - Make sure you're using `/plan` (with the slash)
 - Check `.claude/skills/plan.md` exists
 
-**"No research document created"**
+#### "No research document created"
+
 - Check `docs/research/` directory exists
 - Verify write permissions
 
-**"Quality gates failing"**
+#### "Quality gates failing"
+
 - Claude will not commit until all gates pass
 - Fix errors before proceeding
 - Coverage must be ≥80%
@@ -153,6 +158,7 @@ Use `/plan` for everything else.
 ### Advanced: Customizing the Skill
 
 Edit `.claude/skills/plan.md` to:
+
 - Change document templates
 - Add/remove solution vectors
 - Modify quality gate requirements
@@ -161,6 +167,7 @@ Edit `.claude/skills/plan.md` to:
 ---
 
 **Pro Tip**: Combine `/plan` with specific requirements:
+
 ```bash
 /plan add GraphQL API for sessions (use Apollo Server, follow existing patterns in backend/src/routes/)
 ```
