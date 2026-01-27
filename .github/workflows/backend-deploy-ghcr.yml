@@ -63,38 +63,3 @@ jobs:
           docker push ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest
           docker push ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:${{ github.sha }}
           echo "✓ Image pushed to ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest"
-
-      - name: Google Auth
-        uses: 'google-github-actions/auth@v2'
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: 'songyinggoh@renovation-planner-agent.iam.gserviceaccount.com'
-
-      - name: Set up Cloud SDK
-        uses: 'google-github-actions/setup-gcloud@v2'
-
-      - name: Configure Docker for GHCR on Cloud Run
-        run: |
-          # Allow Cloud Run to pull from public GHCR
-          echo "Cloud Run will pull from public GHCR image"
-
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy $SERVICE_NAME \
-            --image ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest \
-            --region $REGION \
-            --platform managed \
-            --allow-unauthenticated \
-            --project $PROJECT_ID \
-            --set-env-vars NODE_ENV=production
-
-      - name: Get Service URL
-        run: |
-          SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
-            --region $REGION \
-            --project $PROJECT_ID \
-            --format="value(status.url)")
-          echo "✅ Deployment successful!"
-          echo "Service URL: $SERVICE_URL"
-          echo "Health check: $SERVICE_URL/health"
-          echo "Container image: ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest"
