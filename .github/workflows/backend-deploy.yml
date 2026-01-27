@@ -1,11 +1,16 @@
-name: Deploy Backend to Cloud Run
+name: Deploy Backend to Cloud Run (Cloud Build)
+
+# DISABLED: Requires additional Cloud Build permissions
+# See: docs/Cloud_Build_Permission_Fix.md for setup instructions
+# Use backend-deploy-docker.yml for immediate deployment
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
+  workflow_dispatch:  # Manual trigger only until permissions are fixed
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'backend/**'
 
 env:
   PROJECT_ID: renovation-planner-agent
@@ -47,6 +52,11 @@ jobs:
       - name: Build and Push Docker Image
         run: |
           cd backend
+          # NOTE: Requires service account to have:
+          # - roles/cloudbuild.builds.editor
+          # - roles/serviceusage.serviceUsageConsumer
+          # - roles/storage.admin
+          # Run: bash scripts/fix-cloud-build-permissions.sh
           gcloud builds submit --tag gcr.io/$PROJECT_ID/$SERVICE_NAME
 
       - name: Deploy to Cloud Run
