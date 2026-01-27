@@ -1,0 +1,100 @@
+name: Deploy Backend to Cloud Run (GHCR)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+  workflow_dispatch:  # Also allow manual trigger
+
+env:
+  PROJECT_ID: renovation-planner-agent
+  SERVICE_NAME: renovation-backend
+  REGION: us-central1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/renovation-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      packages: write  # Required for pushing to GHCR
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Debug - Check Secret
+        run: |
+          if [ -z "${{ secrets.WIF_PROVIDER }}" ]; then
+            echo "ERROR: WIF_PROVIDER secret is empty or not set"
+            exit 1
+          else
+            echo "WIF_PROVIDER is set"
+          fi
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Convert repository name to lowercase
+        id: repo
+        run: |
+          echo "repo_lower=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Build Docker Image
+        run: |
+          cd backend
+          docker build \
+            -t ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest \
+            -t ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:${{ github.sha }} \
+            --build-arg NODE_ENV=production \
+            .
+
+      - name: Push Docker Image to GHCR
+        run: |
+          docker push ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest
+          docker push ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:${{ github.sha }}
+          echo "✓ Image pushed to ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest"
+
+      - name: Google Auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: 'songyinggoh@renovation-planner-agent.iam.gserviceaccount.com'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Configure Docker for GHCR on Cloud Run
+        run: |
+          # Allow Cloud Run to pull from public GHCR
+          echo "Cloud Run will pull from public GHCR image"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --image ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --project $PROJECT_ID \
+            --set-env-vars NODE_ENV=production
+
+      - name: Get Service URL
+        run: |
+          SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
+            --region $REGION \
+            --project $PROJECT_ID \
+            --format="value(status.url)")
+          echo "✅ Deployment successful!"
+          echo "Service URL: $SERVICE_URL"
+          echo "Health check: $SERVICE_URL/health"
+          echo "Container image: ghcr.io/${{ steps.repo.outputs.repo_lower }}-backend:latest"

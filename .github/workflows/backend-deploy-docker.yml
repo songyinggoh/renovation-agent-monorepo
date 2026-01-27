@@ -1,12 +1,14 @@
 name: Deploy Backend to Cloud Run (Docker)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-  workflow_dispatch:  # Also allow manual trigger
+  workflow_dispatch:  # Manual trigger only
+  # DISABLED: GCR requires Artifact Registry API (billing required)
+  # Use backend-deploy-ghcr.yml instead (GitHub Container Registry - FREE)
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'backend/**'
 
 env:
   PROJECT_ID: renovation-planner-agent

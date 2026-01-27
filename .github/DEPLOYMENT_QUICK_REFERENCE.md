@@ -1,5 +1,7 @@
 # Deployment Quick Reference
 
+**Active Workflow**: `backend-deploy-ghcr.yml` (GitHub Container Registry - FREE!)
+
 ## 🚀 Check Deployment Status
 
 ### Option 1: GitHub Actions (Fastest)
@@ -29,6 +31,16 @@ gcloud run services list \
 ```
 
 ---
+
+## 📦 Container Registry
+
+**Registry**: GitHub Container Registry (GHCR) - FREE
+**Image**: `ghcr.io/songyinggoh/renovation-agent-monorepo-backend`
+**Packages**: https://github.com/songyinggoh?tab=packages
+
+**IMPORTANT**: After first deployment, make package public:
+1. Go to packages link above
+2. Click package → Settings → Change visibility → Public
 
 ## 🧪 Test Deployed Service
 
