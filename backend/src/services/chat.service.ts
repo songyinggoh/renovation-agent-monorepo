@@ -1,10 +1,10 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, MessagesAnnotation } from '@langchain/langgraph';
-import { MemorySaver } from '@langchain/langgraph';
 import { createStreamingModel } from '../config/gemini.js';
 import { Logger } from '../utils/logger.js';
 import { MessageService } from './message.service.js';
+import { getCheckpointer } from './checkpointer.service.js';
 import { type ChatMessage } from '../db/schema/messages.schema.js';
 
 const logger = new Logger({ serviceName: 'ChatService' });
@@ -82,10 +82,11 @@ export class ChatService {
       .addEdge(START, 'call_model');
 
     // Add memory checkpointing for session-based conversation state
-    const checkpointer = new MemorySaver();
+    // Uses shared checkpointer from checkpointer.service (MemorySaver or PostgresSaver)
+    const checkpointer = getCheckpointer();
     const graph = workflow.compile({ checkpointer });
 
-    logger.info('LangGraph agent compiled with MemorySaver checkpointer');
+    logger.info('LangGraph agent compiled with checkpointer');
     return graph;
   }
 

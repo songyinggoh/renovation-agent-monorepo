@@ -117,6 +117,11 @@ export function getPoolStats(): {
 export { schema };
 
 /**
+ * Export connection pool for use by LangGraph PostgresSaver checkpointer
+ */
+export { pool };
+
+/**
  * Export types for use throughout the application
  */
 export type {

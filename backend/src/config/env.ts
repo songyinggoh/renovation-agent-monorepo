@@ -48,6 +48,13 @@ const envSchema = z.object({
     .default('info'),
 
   // ============================================
+  // LangGraph Checkpointer (Phase 1.3)
+  // ============================================
+  LANGGRAPH_CHECKPOINTER: z
+    .enum(['memory', 'postgres'])
+    .default('memory'),
+
+  // ============================================
   // Supabase Authentication (OPTIONAL - Phase 8)
   // ============================================
   SUPABASE_URL: z.string().url().optional(),
@@ -144,4 +151,11 @@ export function isAuthEnabled(): boolean {
  */
 export function isPaymentsEnabled(): boolean {
   return !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
+}
+
+/**
+ * Helper function to check if PostgreSQL checkpointer is enabled
+ */
+export function isPostgresCheckpointerEnabled(): boolean {
+  return env.LANGGRAPH_CHECKPOINTER === 'postgres';
 }

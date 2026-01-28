@@ -1,4 +1,4 @@
-import { createServer, Server } from 'http';
+import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
@@ -9,6 +9,7 @@ import { ShutdownManager } from './utils/shutdown-manager.js';
 import { verifyToken } from './middleware/auth.middleware.js';
 import { AuthenticatedSocket } from './types/socket.js';
 import { ChatService } from './services/chat.service.js';
+import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpointer.service.js';
 
 
 const logger = new Logger({ serviceName: 'Server' });
@@ -56,6 +57,23 @@ async function startServer(): Promise<void> {
         throw new Error(`Database connection failed: ${error.message}`);
       } else {
         logger.warn('Skipping fatal database error in development mode');
+      }
+    }
+
+    // ============================================
+    // STEP 1.5: Initialize LangGraph Checkpointer
+    // ============================================
+    logger.info('Initializing LangGraph checkpointer...');
+    try {
+      await initializeCheckpointer();
+      logger.info('✅ LangGraph checkpointer initialized');
+    } catch (checkpointerError) {
+      const error = checkpointerError instanceof Error ? checkpointerError : new Error(String(checkpointerError));
+      logger.error('❌ Checkpointer initialization failed', error);
+      if (env.NODE_ENV === 'production') {
+        throw new Error(`Checkpointer initialization failed: ${error.message}`);
+      } else {
+        logger.warn('Skipping fatal checkpointer error in development mode');
       }
     }
 
@@ -354,14 +372,14 @@ function setupGracefulShutdown(): void {
     timeout: 5000, // 5 second timeout for database cleanup
   });
 
-  // TODO Phase 4: Add LangChain checkpoint saver cleanup
-  // shutdownManager.registerResource({
-  //   name: 'LangChain Checkpointer',
-  //   cleanup: async () => {
-  //     await checkpointSaver.flush();
-  //   },
-  //   timeout: 5000,
-  // });
+  // LangGraph Checkpointer cleanup (Phase 1.3)
+  shutdownManager.registerResource({
+    name: 'LangGraph Checkpointer',
+    cleanup: async () => {
+      await cleanupCheckpointer();
+    },
+    timeout: 3000, // 3 second timeout for checkpointer cleanup
+  });
 
   // Register signal handlers for graceful shutdown
   shutdownManager.registerSignalHandlers();

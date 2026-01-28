@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemorySaver } from '@langchain/langgraph';
 import { ChatService } from '../../../src/services/chat.service.js';
 import { MessageService } from '../../../src/services/message.service.js';
 
@@ -9,6 +10,11 @@ vi.mock('../../../src/services/message.service.js', () => ({
     getRecentMessages: vi.fn().mockResolvedValue([]),
     getMessageHistory: vi.fn().mockResolvedValue([]),
   })),
+}));
+
+// Mock checkpointer service
+vi.mock('../../../src/services/checkpointer.service.js', () => ({
+  getCheckpointer: vi.fn().mockReturnValue(new MemorySaver()),
 }));
 
 // Mock Gemini config
