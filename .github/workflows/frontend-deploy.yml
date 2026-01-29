@@ -1,0 +1,63 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  quality-gates:
+    name: Frontend Quality Gates
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm lint
+
+      - name: Run TypeScript type-check
+        run: pnpm type-check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Verify production build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
+
+  # Vercel automatically deploys via GitHub integration
+  # This job confirms quality gates passed
+  deployment-status:
+    name: Deployment Status
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    steps:
+      - name: Quality gates passed
+        run: |
+          echo "Frontend quality gates passed."
+          echo "Vercel will automatically deploy via GitHub integration."
