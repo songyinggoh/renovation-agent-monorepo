@@ -36,6 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Run ESLint
         run: pnpm lint
@@ -111,6 +112,7 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        working-directory: .
 
       - name: Run Drizzle migrations
         run: pnpm db:migrate
