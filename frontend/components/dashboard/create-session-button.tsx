@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Route } from 'next';
 import { fetchWithAuth } from '@/lib/api';
 
 export function CreateSessionButton() {
@@ -11,14 +12,14 @@ export function CreateSessionButton() {
     const handleCreateSession = async () => {
         try {
             setIsLoading(true);
-            await fetchWithAuth('/api/sessions', {
+            const newSession = await fetchWithAuth('/api/sessions', {
                 method: 'POST',
                 body: JSON.stringify({
                     title: `Renovation Session ${new Date().toLocaleString()}`,
                     totalBudget: 50000,
                 }),
             });
-            router.refresh();
+            router.push(`/app/session/${newSession.id as string}` as Route);
         } catch (error) {
             console.error('Failed to create session:', error);
             alert('Failed to create session');

@@ -5,7 +5,7 @@
 **Tech stack you specified**
 
 - **Frontend:** Next.js (App Router) + TypeScript on Vercel
-- **Backend:** Node/TS on Cloud Run (Express/Fastify), Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
+- **Backend:** Node/TS on GitHub Container Registry, Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
 - **Backend data:** Supabase Postgres + Drizzle ORM
 - **Auth & DB:** Supabase Auth & DB
 - **Payments:** Stripe (Checkout / Subscriptions) integrated with Supabase tables via webhooks / stripe-sync-engine ([GitHub](https://github.com/supabase/stripe-sync-engine?utm_source=chatgpt.com))

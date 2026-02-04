@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
-import { createServer, Server as HTTPServer } from 'http';
+import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from '../../src/app.js';
 import { verifyToken } from '../../src/middleware/auth.middleware.js';

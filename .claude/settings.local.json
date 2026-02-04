@@ -1,4 +1,18 @@
 {
+  "mcpServers": {
+    "supabase": {
+      "type": "url",
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "stripe": {
+      "type": "url",
+      "url": "https://mcp.stripe.com"
+    },
+    "vercel": {
+      "type": "url",
+      "url": "https://mcp.vercel.com"
+    }
+  },
   "permissions": {
     "allow": [
       "WebSearch",
@@ -9,7 +23,34 @@
       "Bash(npm run test:unit:*)",
       "Bash(pnpm install:*)",
       "WebFetch(domain:docs.cloud.google.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(npx drizzle-kit push:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run dev)",
+      "Bash(powershell -Command:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(netstat:*)",
+      "Bash(xargs:*)",
+      "Bash(timeout 15 npx tsx:*)",
+      "Bash(timeout 10 npx tsx:*)",
+      "Bash(npx tsx -e \"\nimport dotenv from ''dotenv'';\ndotenv.config\\(\\);\nconst url = process.env.DATABASE_URL || '''';\n// Mask password but show host/port/db\nconst masked = url.replace\\(/:[^:@]+@/, '':****@''\\);\nconsole.log\\(''DATABASE_URL:'', masked\\);\n\")",
+      "Bash(curl:*)",
+      "Bash(ls -la \"C:\\\\Users\\\\user\\\\Desktop\\\\renovation-agent-monorepo\\\\frontend\\\\app\\\\app\"\" 2>/dev/null || echo \"no such directory \")",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix\\(ci\\): resolve pnpm cache path resolution in GitHub Actions\n\n- Point cache-dependency-path to root pnpm-lock.yaml \\(workspace monorepo\\)\n- Add packageManager field to package.json for proper corepack integration\n- Remove hardcoded pnpm version from action-setup steps\n\nQuality gates: N/A \\(CI config only\\)\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(findstr:*)",
+      "Bash(npx next lint)",
+      "Bash(npx next --version)",
+      "Bash(npx next lint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-key npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(npx tsx:*)",
+      "Bash(node:*)",
+      "mcp__vercel__search_vercel_documentation"
     ]
   }
 }

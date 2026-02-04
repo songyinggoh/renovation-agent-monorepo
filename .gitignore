@@ -64,3 +64,7 @@ coverage/
 # Package manager lockfiles (keep only one)
 # yarn.lock
 # pnpm-lock.yaml
+
+# Local/Agent files
+.claude/settings.local.json
+nul
