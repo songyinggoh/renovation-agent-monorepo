@@ -43,7 +43,7 @@ export default function TestChatPage() {
           <li>Check connection status above (should be 🟢 Connected)</li>
           <li>Open browser DevTools console to see logs</li>
           <li>Send a test message using the input below</li>
-          <li>Check backend logs for "Received user message"</li>
+          <li>Check backend logs for &quot;Received user message&quot;</li>
         </ol>
       </div>
 

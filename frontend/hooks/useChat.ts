@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { createClient } from '@/lib/supabase/client';
-import { Message, SocketEvents } from '@/types/chat';
+import { Message } from '@/types/chat';
 
 export const useChat = (sessionId: string) => {
   const [messages, setMessages] = useState<Message[]>([]);
