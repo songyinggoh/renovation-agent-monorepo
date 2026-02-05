@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   security-events: write
 
 jobs:
@@ -47,5 +48,8 @@ jobs:
       id: msdo
     - name: Upload results to Security tab
       uses: github/codeql-action/upload-sarif@v4
+      # Note: SARIF upload requires GitHub Advanced Security for private repos
+      # See: https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security
+      continue-on-error: true
       with:
         sarif_file: ${{ steps.msdo.outputs.sarifFile }}
