@@ -1,8 +1,5 @@
 import { Request, Response } from 'express';
-import { db, pool } from '../db/index.js';
-import { renovationSessions } from '../db/schema/sessions.schema.js';
-import { profiles } from '../db/schema/users.schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { pool } from '../db/index.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'SessionController' });
