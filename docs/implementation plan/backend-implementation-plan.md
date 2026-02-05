@@ -168,7 +168,7 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 ### Dependencies
 - Phase 2 completed (Models & DTOs)
 - Supabase Storage bucket created
-- GCS bucket created for renders (optional for now)
+- Supabase Storage bucket created for renders (optional for now)
 
 ### Acceptance Criteria
 - [ ] ProductService can search Taobao products
@@ -527,7 +527,7 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 
 ## Phase 10: Deployment & Documentation
 
-**Goal**: Deploy to Cloud Run and finalize documentation
+**Goal**: Deploy to Backend Container (GHCR) and finalize documentation
 **Duration**: 5-6 days
 **Priority**: Medium (Final step)
 
@@ -535,10 +535,10 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 10.1 | Create `Dockerfile` for Cloud Run | 🔴 | Multi-stage build |
-| 10.2 | Setup Cloud Run service | 🔴 | Configure environment vars |
-| 10.3 | Configure Supabase connection pooling | 🔴 | For Cloud Run environment |
-| 10.4 | Setup GCS buckets for production | 🔴 | Renders and style images |
+| 10.1 | Create `Dockerfile` for Backend Container (GHCR) | 🔴 | Multi-stage build |
+| 10.2 | Setup Backend Container (GHCR) service | 🔴 | Configure environment vars |
+| 10.3 | Configure Supabase connection pooling | 🔴 | For Backend Container (GHCR) environment |
+| 10.4 | Setup Supabase Storage buckets for production | 🔴 | Renders and style images |
 | 10.5 | Configure CORS for production frontend | 🔴 | Update allowed origins |
 | 10.6 | Setup logging and monitoring | 🔴 | Google Cloud Logging |
 | 10.7 | Configure Stripe webhook endpoint | 🔴 | Point to production URL |
@@ -552,9 +552,9 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 - Phase 9 completed (All tests pass)
 
 ### Acceptance Criteria
-- [ ] Backend deploys successfully to Cloud Run
+- [ ] Backend deploys successfully to Backend Container (GHCR)
 - [ ] All environment variables configured
-- [ ] Database connections work from Cloud Run
+- [ ] Database connections work from Backend Container (GHCR)
 - [ ] Stripe webhooks route to production
 - [ ] CORS allows production frontend
 - [ ] Logs are viewable in Cloud Console
@@ -562,7 +562,7 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 
 ### Deployment Checklist
 - [ ] Dockerfile builds successfully
-- [ ] Cloud Run deployment succeeds
+- [ ] Backend Container (GHCR) deployment succeeds
 - [ ] Health check returns 200
 - [ ] Auth works with production Supabase
 - [ ] Stripe webhooks deliver successfully
@@ -623,7 +623,7 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 | Database migration conflicts | Medium | Low | Version control migrations, test on staging |
 | Supabase Auth integration issues | Medium | Low | Use official examples, implement in Phase 8 (after core works) |
 | Stripe webhook reliability | Medium | Low | Implement retry logic, test with Stripe CLI |
-| GCS quota limits | Low | Low | Monitor usage, implement fallback |
+| Supabase Storage quota limits | Low | Low | Monitor usage, implement fallback |
 
 ### Key Benefits of This Approach
 

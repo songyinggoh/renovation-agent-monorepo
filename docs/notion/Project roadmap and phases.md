@@ -9,7 +9,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
 ### Architecture decisions
 
 - **Frontend:** Next.js (App Router) on Vercel.
-- **Backend:** Cloud Run service with Express/Fastify + TypeScript.
+- **Backend:** Container service (GHCR → Railway/Render/Fly.io) with Express/Fastify + TypeScript.
 - **DB & Auth:** Supabase (Postgres, RLS, Google login).
 - **ORM:** Drizzle ORM with generated types.
 
@@ -71,7 +71,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
 - ~~Create schema files matching above.~~
 - ~~Generate types and run migrations via Drizzle.~~
 
-**0.4 Cloud Run backend skeleton**
+**0.4 Backend container skeleton**
 
 - Express server with:
     - `/healthz`
@@ -79,7 +79,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
         - `GET /` – list user sessions (dummy data initially)
         - `POST /` – create a session
     - Middleware: `authMiddleware` that verifies Supabase JWT via service role key and attaches `req.user`.
-- Dockerfile + Cloud Build or GitHub Actions to deploy.
+- Dockerfile + GitHub Actions to build & push to GHCR, deploy to Railway/Render/Fly.io.
 
 **0.5 Next.js frontend skeleton**
 
@@ -94,9 +94,9 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
 
 - User can:
     - Log in with Google.
-    - Hit `/app` and see “You are logged in as X”.
-    - Create a dummy “renovation session” from the frontend and see it stored in Supabase via backend.
-- Cloud Run and Vercel both deployed with CI/CD.
+    - Hit `/app` and see "You are logged in as X".
+    - Create a dummy "renovation session" from the frontend and see it stored in Supabase via backend.
+- Backend container (GHCR) and Vercel both deployed with CI/CD.
 - Drizzle migrations are the **source of truth** for DB schema.
 
 ---
@@ -119,7 +119,7 @@ Make the renovation agent **actually talk**, with text-only chat, per-session me
 **1.1 Socket.io infrastructure**
 
 - Backend:
-    - Add Socket.io server to Cloud Run app.
+    - Add Socket.io server to backend container.
     - Auth handshake: frontend sends Supabase JWT → backend verifies → attaches `userId`.
     - Namespaces/rooms:
         - e.g. join room `session:<sessionId>` per renovation session.
@@ -181,10 +181,10 @@ Optional: early integration of **LangGraph MemorySaver/PostgresSaver** as checkp
 
 ### Goal
 
-Move from “plain text chatbot” to **home renovation intake & planning assistant**:
+Move from "plain text chatbot" to **home renovation intake & planning assistant**:
 
 - Accept photos & floor plans.
-- Show style moodboards (Pinterest → GCS).
+- Show style moodboards (Pinterest → Supabase Storage).
 - Have product metadata from Taobao in DB.
 - Expose tools for style & products to the agent.
 
@@ -192,7 +192,7 @@ Move from “plain text chatbot” to **home renovation intake & planning assist
 
 - **Storage:**
     - User uploads → Supabase Storage.
-    - Pinterest moodboards → GCS.
+    - Pinterest moodboards → Supabase Storage.
 - **Product data:** Taobao scraper microservice writing into `taobao_products`.
 - **Tools:** `get_style_examples`, `search_products`, `save_intake_state`, `save_checklist_state`.
 
@@ -232,13 +232,13 @@ create table public.room_assets (
     - Create `rooms` rows and `room_assets` for uploaded photos.
 - Add style preferences & budget fields to `renovation_sessions`.
 
-**2.3 Pinterest → GCS style scraper**
+**2.3 Pinterest → Supabase Storage style scraper**
 
 - Small Node/TS worker or script:
     - For each style (wabi-sabi, japandi, brutalist, scandinavian):
         - Download curated image set (manually curated board URLs).
-        - Upload to GCS bucket: `styles/<style>/xxx.jpg`.
-    - Store metadata in DB (optional) or just infer from GCS path.
+        - Upload to Supabase Storage bucket: `styles/<style>/xxx.jpg`.
+    - Store metadata in DB (optional) or just infer from storage path.
 
 **2.4 Taobao scraper microservice**
 
@@ -255,7 +255,7 @@ create table public.room_assets (
 
 Implement and register:
 
-- `get_style_examples(style)` → returns moodboard URLs from GCS.
+- `get_style_examples(style)` → returns moodboard URLs from Supabase Storage.
 - `search_products(style, category, maxPrice, roomId)` → returns candidate Taobao products.
 - `save_intake_state(...)`:
     - persists style preferences, budget, rooms.
@@ -295,7 +295,7 @@ Turn the planner into a **visual designer & actionable report generator**:
 ### Architecture decisions
 
 - **Image generation:** Gemini / Nano Banana.
-- **Render storage:** GCS (cheaper & better for image-heavy).
+- **Render storage:** Supabase Storage (consolidated with other assets).
 - **PDF generation:** Node (Playwright or `pdfkit`) running in backend container, output → Supabase Storage.
 
 ### Tasks
@@ -322,7 +322,7 @@ Turn the planner into a **visual designer & actionable report generator**:
     
 - Implementation:
     - Call Gemini image endpoint / Nano Banana.
-    - Save result to GCS bucket: `renders/<sessionId>/<roomId>/<timestamp>.webp`.
+    - Save result to Supabase Storage: `renders/<sessionId>/<roomId>/<timestamp>.webp`.
     - Return signed URL for UI.
 
 **3.2 `generate_render` & `save_renders_state` tools**
@@ -395,7 +395,7 @@ Monetise: **Stripe-powered plans & gating** on expensive operations (renders + P
 - Stripe dashboard:
     - Products: `RENOVATION_SINGLE`, `RENOVATION_PRO_MONTHLY`.
     - Prices per product.
-- Webhook endpoint on Cloud Run:
+- Webhook endpoint on backend container:
     - `/api/stripe/webhook`.
     - Verify signatures.
     - Handle events:

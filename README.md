@@ -140,9 +140,10 @@ docker-compose up --build
 ```
 
 ### Cloud Platform
-- **Google Cloud Run** configurations included
+- **GitHub Container Registry (GHCR)** for container images
+- **Railway/Render/Fly.io** deployment ready (or any container platform)
 - **Supabase** integration templates
-- **Vercel** deployment ready
+- **Vercel** deployment ready for frontend
 - **Environment variables** templates for production
 
 ## 📚 Documentation

@@ -5,13 +5,12 @@
 **Tech stack you specified**
 
 - **Frontend:** Next.js (App Router) + TypeScript on Vercel
-- **Backend:** Node/TS on GitHub Container Registry, Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
+- **Backend:** Node/TS container via GitHub Container Registry (GHCR), deployed to Railway/Render/Fly.io, Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
 - **Backend data:** Supabase Postgres + Drizzle ORM
 - **Auth & DB:** Supabase Auth & DB
 - **Payments:** Stripe (Checkout / Subscriptions) integrated with Supabase tables via webhooks / stripe-sync-engine ([GitHub](https://github.com/supabase/stripe-sync-engine?utm_source=chatgpt.com))
 - **Storage:**
-    - Supabase Storage for user uploads (room photos, floor plans, outputs PDFs)
-    - Google Cloud Storage (GCS) for scraped Pinterest style image sets + Nano Banana render artifacts
+    - Supabase Storage for all file storage (user uploads, room photos, floor plans, PDFs, Pinterest style image sets, Nano Banana render artifacts)
 - **LLM & image gen:**
     - `ChatGoogleGenerativeAI` from `@langchain/google-genai` for Gemini 2.5 (text+vision) ([LangChain Docs](https://docs.langchain.com/oss/javascript/integrations/chat/google_generative_ai?utm_source=chatgpt.com))
     - Gemini 2.5 Flash Image (“Nano Banana”) for image generation/edit ([unwind ai](https://www.theunwindai.com/p/build-an-ai-home-renovation-planner-agent-using-nano-banana))
@@ -31,7 +30,7 @@ flowchart LR
     FE_API["/Next.js API Routes</br>(for lightweight calls)/"]
   end
 
-  subgraph BE["Cloud Run - Backend API"]
+  subgraph BE["Backend API (GHCR → Railway/Render/Fly.io)"]
     APIGW["Express</br>REST + WebSocket"]
     Socket[Socket.io Server]
     AuthSvc["Auth Middleware</br>(Supabase JWT verify)"]
@@ -45,8 +44,7 @@ flowchart LR
   subgraph Data["Data Layer"]
     SB["Supabase Postgres</br>(Drizzle ORM)"]
     SBAuth[Supabase Auth]
-    SBStorage["Supabase Storage</br>(User uploads, PDFs)"]
-    GCS["(GCS Buckets</br>Style sets & Renders)"]
+    SBStorage["Supabase Storage</br>(User uploads, PDFs, Style sets, Renders)"]
   end
 
   subgraph 3rd["3rd Party Services"]
@@ -69,7 +67,7 @@ flowchart LR
 
   ChatSvc --> ImageSvc
   ImageSvc --> Gemini
-  ImageSvc --> GCS
+  ImageSvc --> SBStorage
 
   ChatSvc --> ProductSvc
   ProductSvc --> SB
@@ -85,7 +83,7 @@ flowchart LR
   StripeWebhook --> Stripe
   StripeWebhook --> SB
 
-  Pinterest --> GCS
+  Pinterest --> SBStorage
   TaobaoAPI --> SB
 
 ```
@@ -178,10 +176,10 @@ Use a simple router chain (no need LangGraph initially):
         - `RenderingChain` (+ image tool) (phase 4)
         - `IterationChain` (phase 7)
 - **Tools exposed to the model:**
-    - `get_style_examples(style)` → fetches Pinterest-scraped images from GCS bucket and returns signed URLs
+    - `get_style_examples(style)` → fetches Pinterest-scraped images from Supabase Storage and returns signed URLs
     - `search_products(style, category, max_price)` → Supabase query for Taobao items
     - `check_budget(total_budget, items[])` → ensures recommended BOM ≤ budget; returns suggestions if over
-    - `generate_render(prompt, base_image_url?)` → calls Nano Banana, saves image to GCS, returns URL
+    - `generate_render(prompt, base_image_url?)` → calls Nano Banana, saves image to Supabase Storage, returns URL
     - `create_pdf_report(session_id)` → triggers PDF generation once payment confirmed
 
 ### 3.2 Agent backend diagram
@@ -220,7 +218,8 @@ flowchart TD
   Coord --> StyleTool
   PDFTool --> SBStorage[(Supabase Storage)]
   ProductTool --> SB[(Supabase Postgres)]
-  RenderTool --> GeminiAPI[(Gemini 2.5</br>Image API + GCS)]
+  RenderTool --> GeminiAPI[(Gemini 2.5</br>Image API)]
+  RenderTool --> SBStorage
 
 ```
 
@@ -230,7 +229,7 @@ flowchart TD
 sequenceDiagram
   participant U as User Browser
   participant FE as Next.js Frontend
-  participant WS as Socket.io (Cloud Run)
+  participant WS as Socket.io (Backend Container)
   participant AG as Chat Agent Service
   participant DB as Supabase (DB + Storage)
   participant GM as Gemini API
@@ -517,7 +516,7 @@ You want a **clean backend layering** in TS with Drizzle.
         - Emit `chat:assistant_token` as they stream
     - `chat:phase_update` { sessionId, phase } (optional UI updates)
     
-    This fits the “agent on frontend, brain on backend” story: the **UI** is on the frontend, but **agent logic and keys** live only on Cloud Run.
+    This fits the "agent on frontend, brain on backend" story: the **UI** is on the frontend, but **agent logic and keys** live only on the backend container.
     
 
 ---
@@ -540,10 +539,10 @@ The modern **“blessed” pattern** is:
     - Use `@supabase/ssr` / Supabase Starter pattern. ([Vercel](https://vercel.com/templates/next.js/supabase?utm_source=chatgpt.com))
     - User signs up / logs in → gets Supabase JWT
     - JWT is attached to:
-        - REST calls to Cloud Run backend in `Authorization: Bearer <token>`
+        - REST calls to backend container in `Authorization: Bearer <token>`
         - Socket.io connection payload
-- **Backend (Cloud Run)**
-    - `AuthMiddleware` verifies JWT using Supabase’s JWKS or Admin client with `SUPABASE_SERVICE_ROLE_KEY` (server-only).
+- **Backend (Container via GHCR)**
+    - `AuthMiddleware` verifies JWT using Supabase's JWKS or Admin client with `SUPABASE_SERVICE_ROLE_KEY` (server-only).
     - Resolves `user_id` and injects into `req.user`.
 
 ### 6.2 Stripe + Supabase blueprint
@@ -556,12 +555,12 @@ The modern **“blessed” pattern** is:
     - Use **Stripe Subscriptions Quickstart** from Supabase SQL editor (creates `products`, `prices`, `customers`, `subscriptions` etc.). ([DEV Community](https://dev.to/alexzrlu/nextjs-supabase-stripe-subscriptions-integration-818?utm_source=chatgpt.com))
     - Optionally, add your own `subscriptions` table as *view* or *joined* to keep your app logic clean.
 3. **Stripe→Supabase sync**
-    - Option A (simple): implement webhooks in your **Cloud Run backend** directly (using Stripe SDK) → upsert relevant rows in your `subscriptions` + `renovation_sessions`.
-    - Option B (more scalable): deploy **`stripe-sync-engine`** (Fastify server or library) that listens to `/webhooks` and mirrors Stripe into a `stripe` schema, as described in Supabase’s blog. ([Supabase](https://supabase.com/blog/stripe-engine-as-sync-library?utm_source=chatgpt.com))
-    
+    - Option A (simple): implement webhooks in your **backend container** directly (using Stripe SDK) → upsert relevant rows in your `subscriptions` + `renovation_sessions`.
+    - Option B (more scalable): deploy **`stripe-sync-engine`** (Fastify server or library) that listens to `/webhooks` and mirrors Stripe into a `stripe` schema, as described in Supabase's blog. ([Supabase](https://supabase.com/blog/stripe-engine-as-sync-library?utm_source=chatgpt.com))
+
     For your scope, **Option A** is enough:
-    
-    - `POST /api/stripe/webhook` (Cloud Run)
+
+    - `POST /api/stripe/webhook` (Backend container)
     - Verify signature (`STRIPE_WEBHOOK_SECRET`)
     - On events:
         - `checkout.session.completed` → mark `renovation_sessions.is_paid = true` and create or update `subscriptions` row if needed
@@ -590,7 +589,7 @@ The modern **“blessed” pattern** is:
 
 - Next.js app on Vercel
 - Supabase project + Auth set up
-- Cloud Run backend with Express/Fastify, Supabase connection, health routes
+- Backend container (GHCR → Railway/Render/Fly.io) with Express/Fastify, Supabase connection, health routes
 - Basic Drizzle schema for users, sessions, chat_messages
 
 **Phase 1 – Chat MVP (no Stripe yet)**
@@ -602,13 +601,13 @@ The modern **“blessed” pattern** is:
 **Phase 2 – Images + Style & Products**
 
 - Upload room photos + layout → Supabase Storage
-- Pinterest scraper → GCS style buckets
+- Pinterest scraper → Supabase Storage style buckets
 - Taobao scraper microservice → `taobao_products`
 - Tools wired into LangChain (style lookup + product search)
 
 **Phase 3 – Nano Banana + PDF**
 
-- Nano Banana image generation & editing service (GCS storage)
+- Nano Banana image generation & editing service (Supabase Storage)
 - PDF report generator (per room: image + list of Taobao items + links + totals)
 
 **Phase 4 – Stripe & Plans**
@@ -616,7 +615,3 @@ The modern **“blessed” pattern** is:
 - Stripe Checkout integration as above
 - Gating PDF generation on payment or plan
 - Simple account dashboard showing plan, usage, last reports
-
----
-
-[User Media Storage : GCS vs Supabase](https://www.notion.so/User-Media-Storage-GCS-vs-Supabase-2c2650424122808aa61ae935ba166f27?pvs=21)

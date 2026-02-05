@@ -12,7 +12,7 @@
     - `public.profiles` table for app-specific profile.
     - `public.subscriptions` / `public.payments` for your own view of billing.
     - Optionally **`stripe` schema** populated by **Stripe Sync Engine**. ([supabase.github.io](https://supabase.github.io/stripe-sync-engine/?utm_source=chatgpt.com))
-- **Cloud Run backend**
+- **Backend Container backend**
     - Verifies Supabase JWT (Google-auth’d user) using service role. ([Supabase](https://supabase.com/docs/guides/auth?utm_source=chatgpt.com))
     - Creates Stripe Checkout sessions.
     - Handles Stripe webhooks (or runs Stripe Sync Engine as a sidecar).
@@ -35,7 +35,7 @@ flowchart LR
     Storage["Storage<br/>(optional: avatars, docs)"]
   end
 
-  subgraph Backend["Cloud Run Backend"]
+  subgraph Backend["Backend Container Backend"]
     API["REST API<br/>(sessions, auth check, billing)"]
     Webhooks["/stripe/webhooks<br/>(or stripe-sync-engine)"]
   end
@@ -148,7 +148,7 @@ create table public.profiles (
 
 Two main options:
 
-- **Option A – Minimal:** Cloud Run handles webhooks and writes to `public.subscriptions`.
+- **Option A – Minimal:** Backend Container handles webhooks and writes to `public.subscriptions`.
 - **Option B – Rich:** Use **Stripe Sync Engine** to mirror Stripe into a `stripe` schema, then derive app tables/views. ([supabase.github.io](https://supabase.github.io/stripe-sync-engine/?utm_source=chatgpt.com))
 
 For your renovation SaaS, I’d do:
@@ -162,7 +162,7 @@ For your renovation SaaS, I’d do:
 sequenceDiagram
   participant U as User
   participant FE as Next.js Frontend
-  participant API as Cloud Run API
+  participant API as Backend Container API
   participant STR as Stripe
   participant WH as Webhook Listener
   participant DB as Supabase DB
@@ -190,7 +190,7 @@ sequenceDiagram
 If you use **Stripe Sync Engine**:
 
 - You configure it to listen to Stripe webhooks and sync to `stripe.*` tables in your Supabase Postgres. ([supabase.github.io](https://supabase.github.io/stripe-sync-engine/?utm_source=chatgpt.com))
-- Your app’s webhook (Cloud Run) can either:
+- Your app’s webhook (Backend Container) can either:
     - Be **just the sync-engine** (Fastify app in its own container), or
     - Or you call the stripe-sync-engine library from your own Node server.
 
@@ -266,9 +266,9 @@ Notes:
 
 ---
 
-## 5. Backend auth layer (Cloud Run)
+## 5. Backend auth layer (Backend Container)
 
-Your Cloud Run backend will:
+Your Backend Container backend will:
 
 1. Receive requests from the Next.js frontend with `Authorization: Bearer <supabase_jwt>`.
 2. Validate the JWT using the **Supabase service role key** or JWKS. ([Supabase](https://supabase.com/docs/guides/auth?utm_source=chatgpt.com))
@@ -279,7 +279,7 @@ Your Cloud Run backend will:
 ```mermaid
 flowchart LR
   FE["Next.js Frontend<br/>(Supabase session)"]
-  API["Cloud Run API<br/>(Node/TS)"]
+  API["Backend Container API<br/>(Node/TS)"]
   Auth["Supabase Auth<br/>(verify JWT)"]
   DB["Supabase DB<br/>(profiles, subscriptions)"]
 
@@ -362,7 +362,7 @@ Use this middleware on:
     - Point it to the same Postgres as Supabase.
     - Configure Stripe webhook endpoint to the sync-engine’s `/webhooks`. ([supabase.github.io](https://supabase.github.io/stripe-sync-engine/?utm_source=chatgpt.com))
 3. **Add app-level tables** (`subscriptions`, `payments`) that join onto `stripe` schema.
-4. **Cloud Run API**:
+4. **Backend Container API**:
     - `/api/billing/checkout` (auth-protected)
     - optionally `/api/billing/portal` to create Stripe Billing Portal sessions.
 5. **Frontend**:
@@ -372,6 +372,6 @@ Use this middleware on:
 ### 6.3 Security checklist
 
 - Use **RLS** on `profiles`, `subscriptions`, `payments`, only allow `user_id = auth.uid()`. ([Supabase](https://supabase.com/docs/guides/auth?utm_source=chatgpt.com))
-- Never expose **service role key** to the frontend (Cloud Run only).
+- Never expose **service role key** to the frontend (Backend Container only).
 - Validate Stripe webhook signatures with `STRIPE_WEBHOOK_SECRET`.
-- Use HTTPS for all URLs (Vercel & Cloud Run handle this by default).
+- Use HTTPS for all URLs (Vercel & Backend Container handle this by default).

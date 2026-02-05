@@ -11,12 +11,12 @@ flowchart LR
     Dashboard["Project dashboard<br/>(rooms, budget, renders)"]
   end
 
-  subgraph APIGW["Cloud Run - API & Agent Gateway"]
+  subgraph APIGW["Backend Container (GHCR) - API & Agent Gateway"]
     RestAPI["REST Routes<br/>(auth, sessions, Stripe)"]
     WS["Socket.io Gateway<br/>(agent streaming bridge)"]
   end
 
-  subgraph AgentRuntime["Cloud Run - Agent Runtime<br/>LangChain v1 + LangGraph"]
+  subgraph AgentRuntime["Backend Container (GHCR) - Agent Runtime<br/>LangChain v1 + LangGraph"]
     Agent["createAgent()<br/>(Gemini + tools)"]
     Middleware["Middleware stack<br/>(logging, summarization,<br/>model routing, guardrails)"]
     Checkpointer["Checkpointer<br/>(PostgresSaver)"]
@@ -26,7 +26,7 @@ flowchart LR
   subgraph DomainServices["Domain Services"]
     IntakeSvc["Intake Service<br/>(Supabase via Drizzle)"]
     ProductSvc["Product Service<br/>(Taobao DB)"]
-    RenderSvc["Render Service<br/>(Nano Banana / GCS)"]
+    RenderSvc["Render Service<br/>(Nano Banana / Supabase Storage)"]
     ContractorSvc["Contractor Service<br/>(verified partners)"]
     ReportSvc["Report Service<br/>(PDF + Storage)"]
   end
@@ -34,7 +34,7 @@ flowchart LR
   subgraph Data["Data & Infra"]
     SupaDB["Supabase Postgres"]
     SupaStorage["Supabase Storage<br/>(user uploads, PDFs)"]
-    GCS["Google Cloud Storage<br/>(style sets & renders)"]
+    Supabase Storage["Supabase Storage<br/>(style sets & renders)"]
     Stripe["Stripe"]
   end
 
@@ -49,7 +49,7 @@ flowchart LR
   AgentRuntime --> Store
   DomainServices --> SupaDB
   DomainServices --> SupaStorage
-  DomainServices --> GCS
+  DomainServices --> Supabase Storage
 
   RestAPI --> Stripe
   Stripe --> RestAPI
@@ -205,7 +205,7 @@ You already designed the high-level tools earlier; now we align with **LangChain
     - `update_phase` – update phase in Supabase & state
     - `save_intake_state`, `save_checklist_state`, `save_plan_state`, `save_renders_state`
 2. **Design reasoning tools**
-    - `get_style_examples` – fetch moodboard URLs from GCS
+    - `get_style_examples` – fetch moodboard URLs from Supabase Storage
     - `search_products` – Taobao furniture search via Supabase
     - `check_budget` – validate BOM vs budget
 3. **Image tools**
@@ -229,7 +229,7 @@ flowchart LR
 
   IntakeSvc --> SupaDB[(Supabase Postgres)]
   ProductSvc --> SupaDB
-  RenderSvc --> GCS[(GCS Buckets)]
+  RenderSvc --> Supabase Storage[(Supabase Storage Buckets)]
   ReportSvc --> SupaStorage[(Supabase Storage)]
   ContractorSvc --> SupaDB
 

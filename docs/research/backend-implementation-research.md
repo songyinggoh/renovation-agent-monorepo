@@ -99,7 +99,7 @@ backend/
 ### 2.1 System Architecture Overview
 
 **Core Tech Stack (Phases 1-7):**
-- **Runtime**: Node.js/TypeScript on Cloud Run
+- **Runtime**: Node.js/TypeScript on Backend Container (GHCR)
 - **Framework**: Express.js with Socket.io
 - **Database**: Supabase Postgres with Drizzle ORM
 - **AI/ML**:
@@ -108,7 +108,7 @@ backend/
   - Nano Banana (image generation)
 - **Storage**:
   - Supabase Storage (user uploads, PDFs)
-  - Google Cloud Storage (style images, renders)
+  - Supabase Storage (style images, renders)
 - **Real-time**: Socket.io for streaming responses ⭐ PRIORITY
 
 **Security & Monetization (Phases 8-9):**
@@ -128,7 +128,7 @@ backend/
                  │ (No auth required in Phases 1-7)
                  ▼
 ┌─────────────────────────────────────────────────────────┐
-│           Cloud Run Backend (This Project)              │
+│           Backend Container (GHCR) Backend (This Project)              │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │  Express + Socket.io Gateway                    │   │
 │  │  - REST API Routes (open access initially)     │   │
@@ -455,10 +455,10 @@ DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:
 # Google Gemini API (REQUIRED - Phase 1)
 GOOGLE_API_KEY=[YOUR-GEMINI-KEY]
 
-# Google Cloud Storage (for renders & style images)
-GCS_PROJECT_ID=[YOUR-GCP-PROJECT]
-GCS_BUCKET_NAME=renovation-renders
-GCS_STYLE_BUCKET=renovation-styles
+# Supabase Storage (for renders & style images)
+Supabase Storage_PROJECT_ID=[YOUR-GCP-PROJECT]
+Supabase Storage_BUCKET_NAME=renovation-renders
+Supabase Storage_STYLE_BUCKET=renovation-styles
 
 # Frontend URL (for CORS and redirects)
 FRONTEND_URL=http://localhost:3001
@@ -635,7 +635,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   GOOGLE_API_KEY: z.string().min(1), // REQUIRED for Gemini
   FRONTEND_URL: z.string().url().default('http://localhost:3001'),
-  GCS_BUCKET_NAME: z.string().optional(),
+  Supabase Storage_BUCKET_NAME: z.string().optional(),
   LANGCHAIN_TRACING_V2: z.string().optional(),
 
   // Optional in Phases 1-7 (required in Phase 8)
@@ -1580,7 +1580,7 @@ export class BillingService {
 
 ### Phase 10: Deployment (Week 7)
 - [ ] Create Dockerfile
-- [ ] Setup Cloud Run service
+- [ ] Setup Backend Container (GHCR) service
 - [ ] Configure production environment
 - [ ] Deploy and test
 - [ ] Write documentation
