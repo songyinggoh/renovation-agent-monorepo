@@ -3,30 +3,39 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy backend's package.json and pnpm-lock.yaml
-COPY backend/package.json backend/pnpm-lock.yaml ./
-
-# Install pnpm and dependencies
+# Install pnpm
 RUN npm install -g pnpm
-RUN pnpm install --frozen-lockfile
+
+# Copy monorepo root files needed for pnpm workspace
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy backend package.json
+COPY backend/package.json ./backend/
+
+# Install dependencies for backend only
+RUN pnpm install --frozen-lockfile --filter renovation-agent-backend
 
 # Copy the rest of the backend source code
-COPY backend/. .
+COPY backend/. ./backend/
 
 # Build the TypeScript application
+WORKDIR /app/backend
 RUN pnpm run build
 
 # Stage 2: Production
 FROM node:20-alpine AS production
 
+# Install pnpm for start script
+RUN npm install -g pnpm
+
 WORKDIR /app
 
 # Copy package.json for start script and dependencies
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/backend/package.json ./package.json
 
 # Only copy production dependencies and build output
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/backend/node_modules ./node_modules
+COPY --from=builder /app/backend/dist ./dist
 
 # Expose the port the app runs on (Cloud Run defaults to 8080, but uses $PORT)
 ENV PORT="8080"
