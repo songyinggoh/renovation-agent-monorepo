@@ -1,15 +1,21 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { useChat } from '@/hooks/useChat';
-import { Socket } from 'socket.io-client';
 
-// Mock Socket.io client
-const mockSocket = {
+// Mock Socket.io client with proper typing
+interface MockSocket {
+  on: Mock;
+  emit: Mock;
+  disconnect: Mock;
+  connected: boolean;
+}
+
+const mockSocket: MockSocket = {
   on: vi.fn(),
   emit: vi.fn(),
   disconnect: vi.fn(),
   connected: false,
-} as unknown as Socket;
+};
 
 vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket),
@@ -25,6 +31,12 @@ const mockSupabase = {
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(() => mockSupabase),
 }));
+
+// Helper to get mock handler by event name
+function getMockHandler<T>(eventName: string): T | undefined {
+  const calls = mockSocket.on.mock.calls as Array<[string, T]>;
+  return calls.find((call) => call[0] === eventName)?.[1];
+}
 
 describe('useChat Hook - Phase 1.1', () => {
   beforeEach(() => {
@@ -106,9 +118,7 @@ describe('useChat Hook - Phase 1.1', () => {
       });
 
       // Simulate connect event
-      const connectHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'connect'
-      )?.[1];
+      const connectHandler = getMockHandler<() => void>('connect');
 
       act(() => {
         mockSocket.connected = true;
@@ -132,9 +142,7 @@ describe('useChat Hook - Phase 1.1', () => {
       });
 
       // First connect
-      const connectHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'connect'
-      )?.[1];
+      const connectHandler = getMockHandler<() => void>('connect');
 
       act(() => {
         mockSocket.connected = true;
@@ -146,9 +154,7 @@ describe('useChat Hook - Phase 1.1', () => {
       });
 
       // Then disconnect
-      const disconnectHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'disconnect'
-      )?.[1];
+      const disconnectHandler = getMockHandler<(reason: string) => void>('disconnect');
 
       act(() => {
         mockSocket.connected = false;
@@ -168,9 +174,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('connect_error', expect.any(Function));
       });
 
-      const errorHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'connect_error'
-      )?.[1];
+      const errorHandler = getMockHandler<(err: Error) => void>('connect_error');
 
       act(() => {
         errorHandler?.(new Error('Connection refused'));
@@ -191,9 +195,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:session_joined', expect.any(Function));
       });
 
-      const joinedHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:session_joined'
-      )?.[1];
+      const joinedHandler = getMockHandler<(data: { sessionId: string }) => void>('chat:session_joined');
 
       act(() => {
         joinedHandler?.({ sessionId: 'session-123' });
@@ -211,9 +213,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:message_ack', expect.any(Function));
       });
 
-      const ackHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:message_ack'
-      )?.[1];
+      const ackHandler = getMockHandler<(data: { sessionId: string; status: string; timestamp: string }) => void>('chat:message_ack');
 
       act(() => {
         ackHandler?.({
@@ -232,12 +232,15 @@ describe('useChat Hook - Phase 1.1', () => {
     it('should send message via sendMessage()', async () => {
       const { result } = renderHook(() => useChat('session-123'));
 
-      // First connect
-      const connectHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'connect'
-      )?.[1];
+      // Wait for handlers to be registered
+      await waitFor(() => {
+        expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+      });
 
-      await act(async () => {
+      // First connect
+      const connectHandler = getMockHandler<() => void>('connect');
+
+      act(() => {
         mockSocket.connected = true;
         connectHandler?.();
       });
@@ -284,9 +287,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:assistant_token', expect.any(Function));
       });
 
-      const tokenHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:assistant_token'
-      )?.[1];
+      const tokenHandler = getMockHandler<(data: { sessionId: string; token: string; done?: boolean }) => void>('chat:assistant_token');
 
       // Simulate streaming tokens
       act(() => {
@@ -325,9 +326,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:assistant_token', expect.any(Function));
       });
 
-      const tokenHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:assistant_token'
-      )?.[1];
+      const tokenHandler = getMockHandler<(data: { sessionId: string; token: string; done?: boolean }) => void>('chat:assistant_token');
 
       act(() => {
         tokenHandler?.({ sessionId: 'different-session', token: 'Should ignore', done: false });
@@ -343,9 +342,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:error', expect.any(Function));
       });
 
-      const errorHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:error'
-      )?.[1];
+      const errorHandler = getMockHandler<(data: { sessionId: string; error: string }) => void>('chat:error');
 
       act(() => {
         errorHandler?.({
@@ -367,9 +364,7 @@ describe('useChat Hook - Phase 1.1', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('chat:error', expect.any(Function));
       });
 
-      const errorHandler = mockSocket.on.mock.calls.find(
-        (call) => call[0] === 'chat:error'
-      )?.[1];
+      const errorHandler = getMockHandler<(data: { sessionId: string; error: string }) => void>('chat:error');
 
       act(() => {
         errorHandler?.({
