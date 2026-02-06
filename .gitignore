@@ -67,4 +67,14 @@ coverage/
 
 # Local/Agent files
 .claude/settings.local.json
-nul
+
+# Personal IDE/tool configs
+.continue/
+.trae/
+.factory/
+.agent/
+.agents/
+
+# Claude Code runtime state
+.claude/get-shit-done/
+.claude/hooks/
