@@ -6,6 +6,7 @@ import { Message } from '@/types/chat';
 interface MessageListProps {
   messages: Message[];
   isAssistantTyping: boolean;
+  isLoadingHistory?: boolean;
 }
 
 function formatTime(dateString: string): string {
@@ -15,12 +16,41 @@ function formatTime(dateString: string): string {
   });
 }
 
-export function MessageList({ messages, isAssistantTyping }: MessageListProps) {
+function MessageSkeleton({ align }: { align: 'left' | 'right' }) {
+  return (
+    <div className={`flex ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+          align === 'right'
+            ? 'rounded-br-sm bg-indigo-100'
+            : 'rounded-bl-sm bg-gray-100'
+        }`}
+      >
+        <div className="space-y-2">
+          <div className="h-3 w-48 animate-pulse rounded bg-gray-200" />
+          <div className="h-3 w-32 animate-pulse rounded bg-gray-200" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MessageList({ messages, isAssistantTyping, isLoadingHistory }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isAssistantTyping]);
+
+  if (isLoadingHistory) {
+    return (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <MessageSkeleton align="right" />
+        <MessageSkeleton align="left" />
+        <MessageSkeleton align="right" />
+      </div>
+    );
+  }
 
   if (messages.length === 0 && !isAssistantTyping) {
     return (

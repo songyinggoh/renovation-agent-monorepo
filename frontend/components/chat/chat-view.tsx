@@ -11,7 +11,7 @@ interface ChatViewProps {
 
 export function ChatView({ sessionId }: ChatViewProps) {
   const router = useRouter();
-  const { messages, sendMessage, isConnected, error, isAssistantTyping } = useChat(sessionId);
+  const { messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory } = useChat(sessionId);
 
   return (
     <div className="flex h-[calc(100vh-10rem)] flex-col rounded-lg border bg-white shadow-sm">
@@ -56,7 +56,7 @@ export function ChatView({ sessionId }: ChatViewProps) {
       )}
 
       {/* Messages */}
-      <MessageList messages={messages} isAssistantTyping={isAssistantTyping} />
+      <MessageList messages={messages} isAssistantTyping={isAssistantTyping} isLoadingHistory={isLoadingHistory} />
 
       {/* Input */}
       <ChatInput onSend={sendMessage} disabled={!isConnected} />

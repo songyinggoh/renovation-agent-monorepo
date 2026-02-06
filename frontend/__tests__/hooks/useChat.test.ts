@@ -32,6 +32,12 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(() => mockSupabase),
 }));
 
+// Mock fetchWithAuth for message history loading
+const mockFetchWithAuth = vi.fn();
+vi.mock('@/lib/api', () => ({
+  fetchWithAuth: (...args: unknown[]) => mockFetchWithAuth(...args),
+}));
+
 // Helper to get mock handler by event name
 function getMockHandler<T>(eventName: string): T | undefined {
   const calls = mockSocket.on.mock.calls as Array<[string, T]>;
@@ -42,6 +48,9 @@ describe('useChat Hook - Phase 1.1', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSocket.connected = false;
+
+    // Setup default fetchWithAuth mock (empty history)
+    mockFetchWithAuth.mockResolvedValue({ messages: [] });
 
     // Setup default auth mock
     mockSupabase.auth.getSession.mockResolvedValue({
@@ -374,6 +383,91 @@ describe('useChat Hook - Phase 1.1', () => {
       });
 
       expect(result.current.error).toBeNull();
+    });
+  });
+
+  describe('Message History Loading', () => {
+    it('should load message history after joining session', async () => {
+      const mockHistory = [
+        { id: 'msg-1', role: 'user', content: 'Hello', created_at: '2026-01-01T00:00:00Z', session_id: 'session-123' },
+        { id: 'msg-2', role: 'assistant', content: 'Hi there!', created_at: '2026-01-01T00:01:00Z', session_id: 'session-123' },
+      ];
+
+      mockFetchWithAuth.mockResolvedValue({ messages: mockHistory });
+
+      const { result } = renderHook(() => useChat('session-123'));
+
+      await waitFor(() => {
+        expect(mockSocket.on).toHaveBeenCalledWith('chat:session_joined', expect.any(Function));
+      });
+
+      // Simulate session joined
+      const joinedHandler = getMockHandler<(data: { sessionId: string }) => void>('chat:session_joined');
+
+      await act(async () => {
+        joinedHandler?.({ sessionId: 'session-123' });
+      });
+
+      await waitFor(() => {
+        expect(mockFetchWithAuth).toHaveBeenCalledWith('/api/sessions/session-123/messages');
+        expect(result.current.messages).toHaveLength(2);
+        expect(result.current.messages[0].content).toBe('Hello');
+        expect(result.current.messages[1].content).toBe('Hi there!');
+      });
+    });
+
+    it('should set isLoadingHistory while fetching', async () => {
+      // Make fetchWithAuth hang
+      let resolveFetch: (value: { messages: never[] }) => void;
+      mockFetchWithAuth.mockReturnValue(new Promise((resolve) => {
+        resolveFetch = resolve;
+      }));
+
+      const { result } = renderHook(() => useChat('session-123'));
+
+      await waitFor(() => {
+        expect(mockSocket.on).toHaveBeenCalledWith('chat:session_joined', expect.any(Function));
+      });
+
+      const joinedHandler = getMockHandler<(data: { sessionId: string }) => void>('chat:session_joined');
+
+      act(() => {
+        joinedHandler?.({ sessionId: 'session-123' });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoadingHistory).toBe(true);
+      });
+
+      // Resolve the fetch
+      await act(async () => {
+        resolveFetch!({ messages: [] });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoadingHistory).toBe(false);
+      });
+    });
+
+    it('should handle history load failure gracefully', async () => {
+      mockFetchWithAuth.mockRejectedValue(new Error('Network error'));
+
+      const { result } = renderHook(() => useChat('session-123'));
+
+      await waitFor(() => {
+        expect(mockSocket.on).toHaveBeenCalledWith('chat:session_joined', expect.any(Function));
+      });
+
+      const joinedHandler = getMockHandler<(data: { sessionId: string }) => void>('chat:session_joined');
+
+      await act(async () => {
+        joinedHandler?.({ sessionId: 'session-123' });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoadingHistory).toBe(false);
+        expect(result.current.messages).toHaveLength(0);
+      });
     });
   });
 

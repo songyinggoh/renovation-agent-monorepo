@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { createClient } from '@/lib/supabase/client';
+import { fetchWithAuth } from '@/lib/api';
 import { Message } from '@/types/chat';
 
 export const useChat = (sessionId: string) => {
@@ -8,6 +9,7 @@ export const useChat = (sessionId: string) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const supabase = createClient();
 
@@ -15,6 +17,27 @@ export const useChat = (sessionId: string) => {
     if (!sessionId) return;
 
     let socket: Socket;
+
+    const loadMessageHistory = async () => {
+      setIsLoadingHistory(true);
+      try {
+        const data = await fetchWithAuth(`/api/sessions/${sessionId}/messages`);
+        const history: Message[] = (data.messages || []).map(
+          (msg: Record<string, unknown>) => ({
+            id: msg.id as string,
+            role: msg.role as Message['role'],
+            content: msg.content as string,
+            created_at: msg.created_at as string,
+            session_id: msg.session_id as string,
+          })
+        );
+        setMessages(history);
+      } catch (err) {
+        console.error('[useChat] Failed to load message history:', err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
 
     const initSocket = async () => {
       try {
@@ -69,6 +92,7 @@ export const useChat = (sessionId: string) => {
         socket.on('chat:session_joined', (data: { sessionId: string }) => {
           console.log('[useChat] Joined session:', data.sessionId);
           setError(null);
+          loadMessageHistory();
         });
 
         // Handle message acknowledgment/receipt
@@ -167,5 +191,6 @@ export const useChat = (sessionId: string) => {
     isConnected,
     error,
     isAssistantTyping,
+    isLoadingHistory,
   };
 };

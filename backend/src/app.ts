@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
 import sessionRoutes from './routes/session.routes.js';
+import messageRoutes from './routes/message.routes.js';
 
 const logger = new Logger({ serviceName: 'App' });
 
@@ -68,6 +69,7 @@ export function createApp(): Application {
   // API Routes
   // ============================================
   app.use('/api/sessions', sessionRoutes);
+  app.use('/api/sessions', messageRoutes);
   // TODO Phase 5: Add remaining routes
   // app.use('/api/chat', chatRoutes);
   // app.use('/api/rooms', roomRoutes);
