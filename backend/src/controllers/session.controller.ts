@@ -38,11 +38,31 @@ export const listSessions = async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        logger.error('Failed to list sessions', error as Error);
-        res.status(500).json({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve renovation sessions'
+        const err = error as Error;
+        logger.error('Failed to list sessions', err, {
+            userId: req.user?.id,
+            errorCode: (err as Error & { code?: string }).code,
         });
+
+        // Surface database connection errors in development for faster debugging
+        const isDev = process.env.NODE_ENV === 'development';
+        const isAuthError = (err as Error & { code?: string }).code === '28P01';
+        const isConnectionError = (err as Error & { code?: string }).code === 'ECONNREFUSED'
+            || err.message?.includes('ECONNREFUSED')
+            || err.message?.includes('password authentication failed');
+
+        if (isDev && (isAuthError || isConnectionError)) {
+            res.status(503).json({
+                error: 'Database Connection Failed',
+                message: 'Cannot connect to PostgreSQL. Check DATABASE_URL in backend/.env — the password may be incorrect or the database may be unreachable.',
+                hint: 'Get the correct connection string from Supabase Dashboard > Settings > Database > Connection String',
+            });
+        } else {
+            res.status(500).json({
+                error: 'Internal Server Error',
+                message: 'Failed to retrieve renovation sessions'
+            });
+        }
     }
 };
 
@@ -53,10 +73,6 @@ export const createSession = async (req: Request, res: Response) => {
     const { title, totalBudget } = req.body;
 
     logger.info('Creating session for user', { userId: req.user?.id, title });
-
-    if (!title) {
-        return res.status(400).json({ error: 'Title is required' });
-    }
 
     try {
         // Check if user has a profile row before setting userId
@@ -79,10 +95,31 @@ export const createSession = async (req: Request, res: Response) => {
 
         res.status(201).json(newSession);
     } catch (error) {
-        logger.error('Failed to create session', error as Error);
-        res.status(500).json({
-            error: 'Internal Server Error',
-            message: 'Failed to create renovation session'
+        const err = error as Error;
+        logger.error('Failed to create session', err, {
+            userId: req.user?.id,
+            title,
+            errorCode: (err as Error & { code?: string }).code,
         });
+
+        // Surface database connection errors in development for faster debugging
+        const isDev = process.env.NODE_ENV === 'development';
+        const isAuthError = (err as Error & { code?: string }).code === '28P01';
+        const isConnectionError = (err as Error & { code?: string }).code === 'ECONNREFUSED'
+            || err.message?.includes('ECONNREFUSED')
+            || err.message?.includes('password authentication failed');
+
+        if (isDev && (isAuthError || isConnectionError)) {
+            res.status(503).json({
+                error: 'Database Connection Failed',
+                message: 'Cannot connect to PostgreSQL. Check DATABASE_URL in backend/.env — the password may be incorrect or the database may be unreachable.',
+                hint: 'Get the correct connection string from Supabase Dashboard > Settings > Database > Connection String',
+            });
+        } else {
+            res.status(500).json({
+                error: 'Internal Server Error',
+                message: 'Failed to create renovation session'
+            });
+        }
     }
 };
