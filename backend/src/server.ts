@@ -8,7 +8,7 @@ import { Logger } from './utils/logger.js';
 import { ShutdownManager } from './utils/shutdown-manager.js';
 import { verifyToken } from './middleware/auth.middleware.js';
 import { AuthenticatedSocket } from './types/socket.js';
-import { ChatService } from './services/chat.service.js';
+import { ChatService, type StreamCallback } from './services/chat.service.js';
 import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpointer.service.js';
 
 
@@ -159,6 +159,37 @@ async function startServer(): Promise<void> {
       }
     });
 
+    // ============================================
+    // Rate Limiter (in-memory token bucket)
+    // ============================================
+    const RATE_LIMIT_MAX_TOKENS = 10;
+    const RATE_LIMIT_REFILL_MS = 60_000; // 60 seconds
+    const rateLimitBuckets = new Map<string, { tokens: number; lastRefill: number }>();
+
+    function checkRateLimit(socketId: string): boolean {
+      const now = Date.now();
+      let bucket = rateLimitBuckets.get(socketId);
+
+      if (!bucket) {
+        bucket = { tokens: RATE_LIMIT_MAX_TOKENS, lastRefill: now };
+        rateLimitBuckets.set(socketId, bucket);
+      }
+
+      // Refill tokens based on elapsed time
+      const elapsed = now - bucket.lastRefill;
+      if (elapsed >= RATE_LIMIT_REFILL_MS) {
+        bucket.tokens = RATE_LIMIT_MAX_TOKENS;
+        bucket.lastRefill = now;
+      }
+
+      if (bucket.tokens > 0) {
+        bucket.tokens--;
+        return true;
+      }
+
+      return false;
+    }
+
     // Socket.io connection handler
     io.on('connection', (socket: Socket) => {
       const user = (socket as AuthenticatedSocket).user;
@@ -182,6 +213,7 @@ async function startServer(): Promise<void> {
           socketId: socket.id,
           reason,
         });
+        rateLimitBuckets.delete(socket.id);
       });
 
       // Join Session Room
@@ -204,6 +236,16 @@ async function startServer(): Promise<void> {
         const { sessionId, content } = data;
         if (!sessionId || !content) {
           logger.warn('Invalid message format', undefined, { socketId: socket.id });
+          return;
+        }
+
+        // Rate limit check
+        if (!checkRateLimit(socket.id)) {
+          logger.warn('Rate limit exceeded', undefined, { socketId: socket.id, sessionId });
+          socket.emit('chat:error', {
+            sessionId,
+            error: 'Rate limit exceeded. Please wait before sending more messages.',
+          });
           return;
         }
 
@@ -235,15 +277,13 @@ async function startServer(): Promise<void> {
         try {
           const chatService = new ChatService();
 
-          await chatService.processMessage(sessionId, content, {
+          const streamCallback: StreamCallback = {
             onToken: (token: string) => {
-              // Emit token to the room (other users) and sender
               socket.to(roomName).emit('chat:assistant_token', {
                 sessionId,
                 token,
                 done: false,
               });
-
               socket.emit('chat:assistant_token', {
                 sessionId,
                 token,
@@ -251,19 +291,16 @@ async function startServer(): Promise<void> {
               });
             },
             onComplete: (fullResponse: string) => {
-              // Send final done signal
               socket.to(roomName).emit('chat:assistant_token', {
                 sessionId,
                 token: '',
                 done: true,
               });
-
               socket.emit('chat:assistant_token', {
                 sessionId,
                 token: '',
                 done: true,
               });
-
               logger.info('AI response completed', {
                 socketId: socket.id,
                 sessionId,
@@ -277,7 +314,19 @@ async function startServer(): Promise<void> {
                 error: 'Failed to process message. Please try again.',
               });
             },
-          });
+            onToolCall: (toolName: string, input: string) => {
+              logger.info('Agent calling tool', { socketId: socket.id, sessionId, toolName });
+              socket.to(roomName).emit('chat:tool_call', { sessionId, toolName, input });
+              socket.emit('chat:tool_call', { sessionId, toolName, input });
+            },
+            onToolResult: (toolName: string, result: string) => {
+              logger.info('Tool returned result', { socketId: socket.id, sessionId, toolName });
+              socket.to(roomName).emit('chat:tool_result', { sessionId, toolName, result });
+              socket.emit('chat:tool_result', { sessionId, toolName, result });
+            },
+          };
+
+          await chatService.processMessage(sessionId, content, streamCallback);
         } catch (error) {
           logger.error('Error initializing ChatService', error as Error, { socketId: socket.id, sessionId });
           socket.emit('chat:error', {

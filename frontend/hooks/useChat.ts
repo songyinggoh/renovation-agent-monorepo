@@ -3,6 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import { createClient } from '@/lib/supabase/client';
 import { fetchWithAuth } from '@/lib/api';
 import { Message } from '@/types/chat';
+import { Logger } from '@/lib/logger';
+
+const logger = new Logger({ serviceName: 'useChat' });
 
 export const useChat = (sessionId: string) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -33,7 +36,7 @@ export const useChat = (sessionId: string) => {
         );
         setMessages(history);
       } catch (err) {
-        console.error('[useChat] Failed to load message history:', err);
+        logger.error('Failed to load message history', err as Error);
       } finally {
         setIsLoadingHistory(false);
       }
@@ -45,7 +48,7 @@ export const useChat = (sessionId: string) => {
 
         if (authError) {
           setError(`Authentication error: ${authError.message}`);
-          console.error('Auth error:', authError);
+          logger.error('Auth error', authError);
           return;
         }
 
@@ -53,7 +56,7 @@ export const useChat = (sessionId: string) => {
 
         if (!token) {
           setError('No authentication token found. Please sign in.');
-          console.error('No auth token found');
+          logger.error('No auth token found', new Error('Missing token'));
           return;
         }
 
@@ -68,14 +71,14 @@ export const useChat = (sessionId: string) => {
         socketRef.current = socket;
 
         socket.on('connect', () => {
-          console.log('[useChat] Connected to server');
+          logger.info('Connected to server');
           setIsConnected(true);
           setError(null);
           socket.emit('chat:join_session', sessionId);
         });
 
         socket.on('disconnect', (reason) => {
-          console.log('[useChat] Disconnected:', reason);
+          logger.info('Disconnected', { reason });
           setIsConnected(false);
           setIsAssistantTyping(false);
           if (reason === 'io server disconnect') {
@@ -84,20 +87,20 @@ export const useChat = (sessionId: string) => {
         });
 
         socket.on('connect_error', (err) => {
-          console.error('[useChat] Connection error:', err);
+          logger.error('Connection error', err);
           setIsConnected(false);
           setError(`Connection error: ${err.message}`);
         });
 
         socket.on('chat:session_joined', (data: { sessionId: string }) => {
-          console.log('[useChat] Joined session:', data.sessionId);
+          logger.info('Joined session', { sessionId: data.sessionId });
           setError(null);
           loadMessageHistory();
         });
 
         // Handle message acknowledgment/receipt
         socket.on('chat:message_ack', (data: { sessionId: string; status: string; timestamp: string }) => {
-          console.log('[useChat] Message acknowledged:', data);
+          logger.debug('Message acknowledged', { sessionId: data.sessionId });
         });
 
         // Handle incoming assistant tokens (streaming)
@@ -107,7 +110,7 @@ export const useChat = (sessionId: string) => {
           if (data.done) {
             // Final token - mark assistant as done typing
             setIsAssistantTyping(false);
-            console.log('[useChat] Assistant finished streaming');
+            logger.info('Assistant finished streaming');
           } else {
             // Streaming token
             setIsAssistantTyping(true);
@@ -142,17 +145,63 @@ export const useChat = (sessionId: string) => {
           }
         });
 
+        // Handle tool call events (agent is calling a tool)
+        socket.on('chat:tool_call', (data: { sessionId: string; toolName: string; input: string }) => {
+          if (data.sessionId !== sessionId) return;
+          logger.info('Tool call', { toolName: data.toolName });
+
+          setMessages((prev: Message[]) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant' as const,
+              content: data.toolName,
+              created_at: new Date().toISOString(),
+              session_id: sessionId,
+              type: 'tool_call',
+              tool_name: data.toolName,
+            },
+          ]);
+        });
+
+        // Handle tool result events (tool returned a result)
+        socket.on('chat:tool_result', (data: { sessionId: string; toolName: string; result: string }) => {
+          if (data.sessionId !== sessionId) return;
+          logger.info('Tool result', { toolName: data.toolName });
+
+          let toolData: Record<string, unknown> = {};
+          try {
+            toolData = JSON.parse(data.result) as Record<string, unknown>;
+          } catch {
+            toolData = { raw: data.result };
+          }
+
+          setMessages((prev: Message[]) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant' as const,
+              content: data.result,
+              created_at: new Date().toISOString(),
+              session_id: sessionId,
+              type: 'tool_result',
+              tool_name: data.toolName,
+              tool_data: toolData,
+            },
+          ]);
+        });
+
         // Handle errors from server
         socket.on('chat:error', (data: { sessionId: string; error: string }) => {
           if (data.sessionId !== sessionId) return;
-          console.error('[useChat] Server error:', data.error);
+          logger.error('Server error', new Error(data.error));
           setError(data.error);
           setIsAssistantTyping(false);
         });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setError(`Failed to initialize chat: ${errorMessage}`);
-        console.error('[useChat] Initialization error:', err);
+        logger.error('Initialization error', err instanceof Error ? err : new Error(String(err)));
       }
     };
 
