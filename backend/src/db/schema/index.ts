@@ -28,3 +28,9 @@ export * from './contractors.schema.js';
 
 // Chat messages
 export * from './messages.schema.js';
+
+// Style catalog
+export * from './styles.schema.js';
+
+// Room assets (file uploads)
+export * from './assets.schema.js';

@@ -6,6 +6,10 @@ import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
 import sessionRoutes from './routes/session.routes.js';
 import messageRoutes from './routes/message.routes.js';
+import roomRoutes from './routes/room.routes.js';
+import styleRoutes from './routes/style.routes.js';
+import productRoutes from './routes/product.routes.js';
+import assetRoutes from './routes/asset.routes.js';
 
 const logger = new Logger({ serviceName: 'App' });
 
@@ -70,9 +74,10 @@ export function createApp(): Application {
   // ============================================
   app.use('/api/sessions', sessionRoutes);
   app.use('/api/sessions', messageRoutes);
-  // TODO Phase 5: Add remaining routes
-  // app.use('/api/chat', chatRoutes);
-  // app.use('/api/rooms', roomRoutes);
+  app.use('/api', roomRoutes);
+  app.use('/api/styles', styleRoutes);
+  app.use('/api', productRoutes);
+  app.use('/api', assetRoutes);
 
   // ============================================
   // 404 Handler

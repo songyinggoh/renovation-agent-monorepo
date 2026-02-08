@@ -62,6 +62,11 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 
   // ============================================
+  // Supabase Storage (OPTIONAL - Phase 2.1)
+  // ============================================
+  SUPABASE_STORAGE_BUCKET: z.string().default('room-assets'),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -151,6 +156,13 @@ export function isAuthEnabled(): boolean {
  */
 export function isPaymentsEnabled(): boolean {
   return !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
+}
+
+/**
+ * Helper function to check if Supabase Storage is configured
+ */
+export function isStorageEnabled(): boolean {
+  return isAuthEnabled() && !!env.SUPABASE_STORAGE_BUCKET;
 }
 
 /**
