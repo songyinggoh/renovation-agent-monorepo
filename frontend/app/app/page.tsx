@@ -1,23 +1,32 @@
 import { SessionList } from '@/components/dashboard/session-list';
 import { CreateSessionButton } from '@/components/dashboard/create-session-button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export default function DashboardPage() {
     return (
         <div className="space-y-8">
             <div className="md:flex md:items-center md:justify-between">
                 <div className="min-w-0 flex-1">
-                    <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
+                    <h2 className="text-fluid-2xl">
                         My Renovations
                     </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Manage your renovation projects and track progress.
+                    </p>
                 </div>
                 <div className="mt-4 flex md:ml-4 md:mt-0">
                     <CreateSessionButton />
                 </div>
             </div>
 
-            <div className="bg-white shadow sm:rounded-lg px-4 py-5 sm:p-6">
-                <SessionList />
-            </div>
+            <Card>
+                <CardHeader className="sr-only">
+                    <h3>Session List</h3>
+                </CardHeader>
+                <CardContent className="p-0 sm:p-6">
+                    <SessionList />
+                </CardContent>
+            </Card>
         </div>
     );
 }

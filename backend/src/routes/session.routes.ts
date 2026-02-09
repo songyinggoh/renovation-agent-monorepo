@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { listSessions, createSession, healthCheck } from '../controllers/session.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { validate } from '../middleware/validate.js';
+import { createSessionSchema } from '../validators/session.validators.js';
 
 const router = Router();
 
@@ -23,6 +25,6 @@ router.get('/', listSessions);
  * @route POST /api/sessions
  * @desc Create a new renovation session
  */
-router.post('/', createSession);
+router.post('/', validate(createSessionSchema), createSession);
 
 export default router;
