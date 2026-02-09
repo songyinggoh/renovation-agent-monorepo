@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { apiLimiter, chatLimiter } from './middleware/rate-limit.middleware.js';
 import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
 import sessionRoutes from './routes/session.routes.js';
@@ -63,6 +64,12 @@ export function createApp(): Application {
     });
     next();
   });
+
+  // ============================================
+  // Rate Limiting
+  // ============================================
+  app.use('/api/', apiLimiter);
+  app.use('/api/sessions/:sessionId/messages', chatLimiter);
 
   // ============================================
   // Health Check Routes (no auth required)

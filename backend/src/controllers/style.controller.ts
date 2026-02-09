@@ -67,6 +67,12 @@ export const searchStyles = async (req: Request, res: Response) => {
  * POST /api/styles/seed
  */
 export const seedStyles = async (_req: Request, res: Response) => {
+  if (process.env.NODE_ENV !== 'development') {
+    logger.warn('Seed endpoint called in non-development environment');
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+
   logger.info('Seeding style catalog');
 
   try {

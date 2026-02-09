@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { searchProducts, getRoomProducts } from '../controllers/product.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 
 const router = Router();
 
@@ -17,6 +18,6 @@ router.get('/products/search', searchProducts);
  * @route GET /api/rooms/:roomId/products
  * @desc Get product recommendations for a room
  */
-router.get('/rooms/:roomId/products', getRoomProducts);
+router.get('/rooms/:roomId/products', verifyRoomOwnership, getRoomProducts);
 
 export default router;
