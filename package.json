@@ -15,5 +15,10 @@
     },
     "devDependencies": {
         "concurrently": "^8.2.2"
+    },
+    "pnpm": {
+        "overrides": {
+            "esbuild": ">=0.25.0"
+        }
     }
 }

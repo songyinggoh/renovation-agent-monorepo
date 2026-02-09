@@ -186,7 +186,7 @@ describe('ChatService', () => {
   });
 
   describe('getHistory', () => {
-    it('should delegate to MessageService.getMessageHistory', async () => {
+    it('should delegate to MessageService.getMessageHistory with default limit', async () => {
       const sessionId = 'test-session';
       const mockHistory = [
         { id: '1', content: 'Message 1' },
@@ -195,10 +195,305 @@ describe('ChatService', () => {
 
       vi.spyOn(mockMessageService, 'getMessageHistory').mockResolvedValue(mockHistory as Parameters<typeof mockMessageService.getMessageHistory>[1] extends Promise<infer U> ? U : never);
 
-      const result = await chatService.getHistory(sessionId, 50);
+      const result = await chatService.getHistory(sessionId);
 
       expect(mockMessageService.getMessageHistory).toHaveBeenCalledWith(sessionId, 50);
       expect(result).toEqual(mockHistory);
+    });
+
+    it('should delegate to MessageService.getMessageHistory with custom limit', async () => {
+      const sessionId = 'test-session';
+      const mockHistory = [{ id: '1', content: 'Message 1' }];
+
+      vi.spyOn(mockMessageService, 'getMessageHistory').mockResolvedValue(mockHistory as Parameters<typeof mockMessageService.getMessageHistory>[1] extends Promise<infer U> ? U : never);
+
+      const result = await chatService.getHistory(sessionId, 100);
+
+      expect(mockMessageService.getMessageHistory).toHaveBeenCalledWith(sessionId, 100);
+      expect(result).toEqual(mockHistory);
+    });
+  });
+
+  describe('tool execution flow', () => {
+    it('should handle tool calls and stream tool results', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Get room products';
+
+      // Mock graph stream with tool execution flow
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        // Step 1: AI requests tool call
+        yield [
+          {
+            content: '',
+            tool_call_chunks: [{ name: 'get_room_products', args: { roomId: '123' } }],
+          },
+          { langgraph_node: 'call_model' },
+        ];
+
+        // Step 2: Tool execution result
+        yield [
+          {
+            name: 'get_room_products',
+            content: JSON.stringify({ products: [{ id: 1, name: 'Product A' }] }),
+            tool_call_id: 'call_123',
+          },
+          { langgraph_node: 'tools' },
+        ];
+
+        // Step 3: AI final response
+        yield [
+          { content: 'Found 1 product for you!' },
+          { langgraph_node: 'call_model' },
+        ];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+        onToolCall: vi.fn(),
+        onToolResult: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback);
+
+      // Verify tool call was logged
+      expect(callback.onToolCall).toHaveBeenCalledWith('get_room_products', '');
+
+      // Verify tool result was logged
+      expect(callback.onToolResult).toHaveBeenCalledWith(
+        'get_room_products',
+        expect.stringContaining('Product A')
+      );
+
+      // Verify tool messages were saved to database
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'tool_call',
+          toolName: 'get_room_products',
+        })
+      );
+
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'tool_result',
+          toolName: 'get_room_products',
+          toolOutput: { products: [{ id: 1, name: 'Product A' }] },
+        })
+      );
+
+      // Verify final text response
+      expect(callback.onComplete).toHaveBeenCalledWith('Found 1 product for you!');
+    });
+
+    it('should handle multiple tool calls without duplication', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Search products';
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        // Same tool name appears in multiple chunks (streaming)
+        yield [
+          {
+            content: '',
+            tool_call_chunks: [{ name: 'search_products', args: {} }],
+          },
+          { langgraph_node: 'call_model' },
+        ];
+        yield [
+          {
+            content: '',
+            tool_call_chunks: [{ name: 'search_products', args: {} }],
+          },
+          { langgraph_node: 'call_model' },
+        ];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+        onToolCall: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback);
+
+      // Should only emit tool call once
+      expect(callback.onToolCall).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle invalid JSON in tool results gracefully', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Test';
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [
+          {
+            name: 'test_tool',
+            content: 'invalid json {[',
+            tool_call_id: 'call_123',
+          },
+          { langgraph_node: 'tools' },
+        ];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+        onToolResult: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback);
+
+      // Should save with null toolOutput
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolOutput: null,
+        })
+      );
+
+      // Should still call onToolResult callback
+      expect(callback.onToolResult).toHaveBeenCalledWith('test_tool', 'invalid json {[');
+    });
+  });
+
+  describe('message history and context', () => {
+    it('should load and include message history in context', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Continue our conversation';
+
+      // Mock previous conversation
+      const mockHistory = [
+        { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
+        { id: '2', sessionId, userId: null, role: 'assistant', content: 'Hi there', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
+      ];
+
+      vi.spyOn(mockMessageService, 'getRecentMessages').mockResolvedValue(mockHistory);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Continuing...' }, { langgraph_node: 'call_model' }];
+      });
+
+      await chatService.processMessage(sessionId, userMessage, {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // Verify history was loaded
+      expect(mockMessageService.getRecentMessages).toHaveBeenCalledWith(sessionId, 20);
+
+      // Verify graph was called (with history included in messages)
+      expect(mockGraph.stream).toHaveBeenCalled();
+    });
+
+    it('should filter out messages with invalid roles', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Test';
+
+      // Include a message with invalid role
+      const mockHistory = [
+        { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
+        { id: '2', sessionId, userId: null, role: 'invalid_role' as 'user', content: 'Bad', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
+        { id: '3', sessionId, userId: null, role: 'assistant', content: 'Hi', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
+      ];
+
+      vi.spyOn(mockMessageService, 'getRecentMessages').mockResolvedValue(mockHistory);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      await chatService.processMessage(sessionId, userMessage, {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // Should still process successfully (invalid role filtered out)
+      expect(mockGraph.stream).toHaveBeenCalled();
+    });
+  });
+
+  describe('phase handling', () => {
+    it('should fetch session phase and use in system prompt', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Test';
+
+      // Mock database to return specific phase
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([{ phase: 'RENDER' }]);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      const { getSystemPrompt } = await import('../../../src/config/prompts.js');
+
+      await chatService.processMessage(sessionId, userMessage, {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // Verify system prompt was called with RENDER phase
+      expect(getSystemPrompt).toHaveBeenCalledWith('RENDER', sessionId);
+    });
+
+    it('should default to INTAKE phase if session phase lookup fails', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Test';
+
+      // Mock database to return empty (no session found)
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([]);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      const { getSystemPrompt } = await import('../../../src/config/prompts.js');
+
+      await chatService.processMessage(sessionId, userMessage, {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // Should default to INTAKE
+      expect(getSystemPrompt).toHaveBeenCalledWith('INTAKE', sessionId);
+    });
+
+    it('should handle database errors when fetching phase', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Test';
+
+      // Mock database to throw error
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockRejectedValue(new Error('DB Error'));
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      const { getSystemPrompt } = await import('../../../src/config/prompts.js');
+
+      await chatService.processMessage(sessionId, userMessage, {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // Should still proceed with default INTAKE phase
+      expect(getSystemPrompt).toHaveBeenCalledWith('INTAKE', sessionId);
     });
   });
 });

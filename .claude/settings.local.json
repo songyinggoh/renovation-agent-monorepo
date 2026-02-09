@@ -36,7 +36,9 @@
       "Bash(pnpm update:*)",
       "Bash(pnpm remove:*)",
       "Bash(python:*)",
-      "Bash(git status:*)"
+      "Bash(git status:*)",
+      "Bash(pnpm audit fix:*)",
+      "Bash(pnpm audit:*)"
     ]
   },
   "mcpServers": {
