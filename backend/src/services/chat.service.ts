@@ -1,48 +1,44 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
-import { StateGraph, START, MessagesAnnotation } from '@langchain/langgraph';
+import {
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+  BaseMessage,
+  ToolMessage,
+  type AIMessageChunk,
+} from '@langchain/core/messages';
+import { StateGraph, START, END, MessagesAnnotation } from '@langchain/langgraph';
+import { ToolNode } from '@langchain/langgraph/prebuilt';
+import { eq } from 'drizzle-orm';
 import { createStreamingModel } from '../config/gemini.js';
+import { getSystemPrompt } from '../config/prompts.js';
+import { renovationTools } from '../tools/index.js';
 import { Logger } from '../utils/logger.js';
 import { MessageService } from './message.service.js';
 import { getCheckpointer } from './checkpointer.service.js';
+import { db } from '../db/index.js';
+import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { type ChatMessage } from '../db/schema/messages.schema.js';
 
 const logger = new Logger({ serviceName: 'ChatService' });
 
 /**
- * System prompt for the renovation agent
- * Defines the agent's personality, capabilities, and behavior
- */
-const RENOVATION_AGENT_SYSTEM_PROMPT = `You are a helpful AI renovation planning assistant. Your role is to help users plan and design their home renovation projects.
-
-You assist with:
-- Understanding the user's renovation goals and preferences
-- Analyzing room photos and floor plans
-- Suggesting design styles and creating mood boards
-- Recommending furniture and decor products
-- Creating detailed renovation plans and checklists
-- Generating realistic room renders
-
-You are friendly, professional, and detail-oriented. You ask clarifying questions when needed and provide specific, actionable advice. You understand interior design principles, color theory, and spatial planning.
-
-Current conversation phase: INTAKE (gathering initial requirements)
-
-Please engage with the user naturally and help them articulate their renovation vision.`;
-
-/**
  * Callback interface for streaming responses
+ * Includes optional tool event callbacks for ReAct agent
  */
 export interface StreamCallback {
   onToken: (token: string) => void;
   onComplete: (fullResponse: string) => void;
   onError: (error: Error) => void;
+  onToolCall?: (toolName: string, input: string) => void;
+  onToolResult?: (toolName: string, result: string) => void;
 }
 
 /**
- * ChatService handles AI-powered chat interactions
+ * ChatService handles AI-powered chat interactions using a ReAct agent
  *
- * Uses LangGraph StateGraph with Gemini 2.5 for intelligent conversation
- * Manages message history, streaming responses, and session-based memory
+ * Uses LangGraph StateGraph with Gemini 2.5 Flash and tool calling
+ * for intelligent, tool-augmented conversation with phase-aware prompts.
  */
 export class ChatService {
   private model: ChatGoogleGenerativeAI;
@@ -52,151 +48,258 @@ export class ChatService {
   constructor() {
     this.model = createStreamingModel();
     this.messageService = new MessageService();
-    this.graph = this.createAgent();
-    logger.info('ChatService initialized with LangGraph agent');
+    this.graph = this.createReActAgent();
+    logger.info('ChatService initialized with ReAct agent');
   }
 
   /**
-   * Create the LangGraph agent with StateGraph
-   * Uses a single call_model node for conversational AI
+   * Create the ReAct agent graph with tool calling
    *
-   * @returns Compiled StateGraph with memory checkpointer
+   * Graph: START → call_model → shouldContinue? → tools → call_model (loop)
+   *                                             → END (no tool calls)
+   *
+   * @returns Compiled StateGraph with tool calling and checkpointer
    */
-  private createAgent() {
+  private createReActAgent() {
+    const modelWithTools = this.model.bindTools(renovationTools);
+
+    const toolNode = new ToolNode(renovationTools);
+
+    function shouldContinue(
+      state: typeof MessagesAnnotation.State
+    ): typeof END | 'tools' {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (
+        lastMessage &&
+        lastMessage._getType() === 'ai' &&
+        (lastMessage as AIMessage).tool_calls?.length
+      ) {
+        return 'tools';
+      }
+      return END;
+    }
+
     const workflow = new StateGraph(MessagesAnnotation)
       .addNode('call_model', async (state) => {
-        const messages = [...state.messages];
-
-        // Prepend system message if not already present
-        if (messages.length === 0 || messages[0].getType() !== 'system') {
-          messages.unshift(new SystemMessage(RENOVATION_AGENT_SYSTEM_PROMPT) as BaseMessage);
-        }
-
-        logger.info('LangGraph: Invoking model', {
-          messageCount: messages.length,
+        logger.info('ReAct: Invoking model', {
+          messageCount: state.messages.length,
         });
-
-        const response = await this.model.invoke(messages as BaseMessage[]);
+        const response = await modelWithTools.invoke(
+          state.messages as BaseMessage[]
+        );
         return { messages: [response] };
       })
-      .addEdge(START, 'call_model');
+      .addNode('tools', toolNode)
+      .addEdge(START, 'call_model')
+      .addConditionalEdges('call_model', shouldContinue)
+      .addEdge('tools', 'call_model');
 
-    // Add memory checkpointing for session-based conversation state
-    // Uses shared checkpointer from checkpointer.service (MemorySaver or PostgresSaver)
     const checkpointer = getCheckpointer();
     const graph = workflow.compile({ checkpointer });
 
-    logger.info('LangGraph agent compiled with checkpointer');
+    logger.info('ReAct agent compiled with tool calling and checkpointer');
     return graph;
   }
 
   /**
-   * Process a user message and stream the AI response using LangGraph
+   * Fetch the current phase for a session
+   *
+   * @param sessionId - The session ID
+   * @returns Phase string (defaults to 'INTAKE')
+   */
+  private async getSessionPhase(sessionId: string): Promise<string> {
+    try {
+      const [session] = await db
+        .select({ phase: renovationSessions.phase })
+        .from(renovationSessions)
+        .where(eq(renovationSessions.id, sessionId))
+        .limit(1);
+      return session?.phase ?? 'INTAKE';
+    } catch (err) {
+      logger.warn('Failed to fetch session phase, defaulting to INTAKE', undefined, {
+        sessionId,
+        error: (err as Error).message,
+      });
+      return 'INTAKE';
+    }
+  }
+
+  /**
+   * Process a user message through the ReAct agent and stream the response
+   *
+   * Handles tool calls and results, saving all interactions to the database
+   * and firing appropriate callbacks for real-time Socket.io events.
    *
    * @param sessionId - The session ID for context and thread_id
    * @param userMessage - The user's message content
-   * @param callback - Callbacks for streaming tokens
-   * @returns Promise that resolves when streaming is complete
+   * @param callback - Callbacks for streaming tokens and tool events
    */
   async processMessage(
     sessionId: string,
     userMessage: string,
     callback: StreamCallback
   ): Promise<void> {
-    logger.info('Processing user message with LangGraph', {
+    logger.info('Processing user message with ReAct agent', {
       sessionId,
       messageLength: userMessage.length,
     });
 
     try {
-      // Step 1: Save user message to database (for long-term persistence)
+      // Step 1: Save user message to database
       await this.messageService.saveMessage({
         sessionId,
-        userId: null, // Nullable for Phases 1-7
+        userId: null,
         role: 'user',
         content: userMessage,
         type: 'text',
       });
 
-      // Step 2: Load message history from database for initial context
+      // Step 2: Get session phase and build phase-aware system prompt
+      const phase = await this.getSessionPhase(sessionId);
+      const systemPrompt = getSystemPrompt(phase, sessionId);
+
+      // Step 3: Load message history from database for context
       const history = await this.messageService.getRecentMessages(sessionId, 20);
       const historicalMessages = this.convertHistoryToMessages(history);
 
-      // Step 3: Stream response from LangGraph agent
+      // Step 4: Build input messages with system prompt + history + new message
+      const inputMessages: BaseMessage[] = [
+        new SystemMessage(systemPrompt),
+        ...historicalMessages,
+        new HumanMessage(userMessage),
+      ];
+
+      // Step 5: Stream response from ReAct agent
       let fullResponse = '';
+      const emittedToolCalls = new Set<string>();
 
       const config = {
         configurable: { thread_id: sessionId },
         streamMode: 'messages' as const,
       };
 
-      // Combine historical messages with new user message
-      const inputMessages = [...historicalMessages, new HumanMessage(userMessage) as BaseMessage];
-
       const stream = await this.graph.stream(
         { messages: inputMessages as BaseMessage[] },
         config
       );
 
-      // Process streaming chunks
       for await (const chunk of stream) {
-        const [message] = chunk;
-        if (message && typeof message.content === 'string' && message.content) {
-          fullResponse += message.content;
-          callback.onToken(message.content);
+        const [message, metadata] = chunk as [
+          BaseMessage,
+          Record<string, unknown>,
+        ];
+        const nodeId = metadata?.langgraph_node as string | undefined;
+
+        // Tool execution results (from 'tools' node)
+        if (nodeId === 'tools' && message) {
+          const toolMsg = message as unknown as ToolMessage;
+          const toolName = toolMsg.name ?? 'unknown';
+          const toolResult =
+            typeof toolMsg.content === 'string'
+              ? toolMsg.content
+              : JSON.stringify(toolMsg.content);
+
+          callback.onToolResult?.(toolName, toolResult);
+
+          await this.messageService.saveMessage({
+            sessionId,
+            userId: null,
+            role: 'assistant',
+            content: toolResult,
+            type: 'tool_result',
+            toolName,
+            toolOutput: this.safeJsonParse(toolResult),
+          });
+          continue;
+        }
+
+        // Model output (from 'call_model' node)
+        if (nodeId === 'call_model' && message) {
+          const aiChunk = message as unknown as AIMessageChunk;
+
+          // Detect tool call chunks (model is requesting tool execution)
+          if (
+            aiChunk.tool_call_chunks &&
+            aiChunk.tool_call_chunks.length > 0
+          ) {
+            for (const tc of aiChunk.tool_call_chunks) {
+              if (tc.name && !emittedToolCalls.has(tc.name)) {
+                emittedToolCalls.add(tc.name);
+                callback.onToolCall?.(tc.name, '');
+
+                await this.messageService.saveMessage({
+                  sessionId,
+                  userId: null,
+                  role: 'assistant',
+                  content: `Calling tool: ${tc.name}`,
+                  type: 'tool_call',
+                  toolName: tc.name,
+                });
+              }
+            }
+            continue;
+          }
+
+          // Regular text content - stream to user
+          if (typeof aiChunk.content === 'string' && aiChunk.content) {
+            fullResponse += aiChunk.content;
+            callback.onToken(aiChunk.content);
+          }
         }
       }
 
-      logger.info('AI response streamed successfully via LangGraph', {
+      logger.info('ReAct agent response completed', {
         sessionId,
         responseLength: fullResponse.length,
+        toolCallCount: emittedToolCalls.size,
       });
 
-      // Step 4: Save assistant message to database (for long-term persistence)
-      await this.messageService.saveMessage({
-        sessionId,
-        userId: null,
-        role: 'assistant',
-        content: fullResponse,
-        type: 'text',
-      });
+      // Step 6: Save final assistant text response to database
+      if (fullResponse) {
+        await this.messageService.saveMessage({
+          sessionId,
+          userId: null,
+          role: 'assistant',
+          content: fullResponse,
+          type: 'text',
+        });
+      }
 
-      // Step 5: Notify completion
+      // Step 7: Notify completion
       callback.onComplete(fullResponse);
     } catch (error) {
-      logger.error('Error processing message with LangGraph', error as Error, { sessionId });
+      logger.error('Error processing message with ReAct agent', error as Error, {
+        sessionId,
+      });
       callback.onError(error as Error);
       throw error;
     }
   }
 
   /**
+   * Safely parse a JSON string, returning null on failure
+   */
+  private safeJsonParse(str: string): Record<string, unknown> | null {
+    try {
+      return JSON.parse(str) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Convert database chat history to LangChain messages
-   * Used to load historical context for the LangGraph agent
-   *
-   * @param history - Previous messages from database
-   * @returns Array of LangChain messages
    */
   private convertHistoryToMessages(history: ChatMessage[]): BaseMessage[] {
-    const messages: BaseMessage[] = [];
+    const constructors: Record<string, (content: string) => BaseMessage> = {
+      user: (content) => new HumanMessage(content),
+      assistant: (content) => new AIMessage(content),
+      system: (content) => new SystemMessage(content),
+    };
 
-    // Convert each database message to appropriate LangChain message type
-    for (const msg of history) {
-      if (msg.role === 'user') {
-        messages.push(new HumanMessage(msg.content));
-      } else if (msg.role === 'assistant') {
-        messages.push(new AIMessage(msg.content));
-      } else if (msg.role === 'system') {
-        messages.push(new SystemMessage(msg.content));
-      }
-    }
-
-    logger.info('Converted history to messages', {
-      totalMessages: messages.length,
-      historyCount: history.length,
-    });
-
-    return messages;
+    return history
+      .filter((msg) => msg.role in constructors)
+      .map((msg) => constructors[msg.role]!(msg.content));
   }
 
   /**

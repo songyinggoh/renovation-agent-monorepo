@@ -4,6 +4,11 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { LoadingState } from '@/components/ui/loading-state';
+import { Menu, LogOut } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -26,41 +31,79 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }, [router, supabase.auth]);
 
     if (loading) {
-        return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <LoadingState variant="blueprint" message="Preparing your workspace..." />
+            </div>
+        );
     }
 
     if (!user) {
-        return null; // Will redirect
+        return null;
     }
 
+    const handleSignOut = async () => {
+        await supabase.auth.signOut();
+        router.push('/');
+    };
+
     return (
-        <div className="min-h-screen bg-gray-50">
-            <nav className="bg-white shadow">
+        <div className="min-h-screen bg-background">
+            <nav className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 justify-between">
-                        <div className="flex">
-                            <div className="flex shrink-0 items-center">
-                                <span className="font-bold text-xl">Renovation Agent</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center">
-                            <span className="text-sm text-gray-500 mr-4">
-                                Logged in as: {user.email}
+                    <div className="flex h-16 items-center justify-between">
+                        {/* Left: Logo */}
+                        <span className="font-display text-base tracking-tight">Renovation Agent</span>
+
+                        {/* Right: Desktop nav */}
+                        <div className="hidden items-center gap-4 sm:flex">
+                            <span className="text-sm text-muted-foreground">
+                                {user.email}
                             </span>
-                            <button
-                                onClick={async () => {
-                                    await supabase.auth.signOut();
-                                    router.push('/');
-                                }}
-                                className="text-sm font-semibold leading-6 text-gray-900"
+                            <ThemeToggle />
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleSignOut}
+                                className="gap-2"
                             >
+                                <LogOut className="h-4 w-4" />
                                 Sign out
-                            </button>
+                            </Button>
+                        </div>
+
+                        {/* Right: Mobile hamburger */}
+                        <div className="flex items-center gap-2 sm:hidden">
+                            <ThemeToggle />
+                            <Sheet>
+                                <SheetTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9">
+                                        <Menu className="h-5 w-5" />
+                                        <span className="sr-only">Open menu</span>
+                                    </Button>
+                                </SheetTrigger>
+                                <SheetContent side="right" className="w-72">
+                                    <div className="flex flex-col gap-6 pt-6">
+                                        <span className="font-display text-base tracking-tight">Renovation Agent</span>
+                                        <p className="text-sm text-muted-foreground">
+                                            {user.email}
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            onClick={handleSignOut}
+                                            className="gap-2"
+                                        >
+                                            <LogOut className="h-4 w-4" />
+                                            Sign out
+                                        </Button>
+                                    </div>
+                                </SheetContent>
+                            </Sheet>
                         </div>
                     </div>
                 </div>
             </nav>
-            <main className="py-10">
+            <main className="py-10 surface-dashboard">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     {children}
                 </div>

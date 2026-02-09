@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemorySaver } from '@langchain/langgraph';
 import { ChatService } from '../../../src/services/chat.service.js';
 import { MessageService } from '../../../src/services/message.service.js';
 
@@ -14,15 +13,83 @@ vi.mock('../../../src/services/message.service.js', () => ({
 
 // Mock checkpointer service
 vi.mock('../../../src/services/checkpointer.service.js', () => ({
-  getCheckpointer: vi.fn().mockReturnValue(new MemorySaver()),
+  getCheckpointer: vi.fn().mockReturnValue({}),
 }));
 
-// Mock Gemini config
+// Mock Gemini config - include bindTools for ReAct agent creation
 vi.mock('../../../src/config/gemini.js', () => ({
   createStreamingModel: vi.fn().mockReturnValue({
     stream: vi.fn(),
     invoke: vi.fn(),
+    bindTools: vi.fn().mockReturnValue({
+      invoke: vi.fn(),
+    }),
   }),
+}));
+
+// Mock renovation tools
+vi.mock('../../../src/tools/index.js', () => ({
+  renovationTools: [],
+}));
+
+// Mock prompts
+vi.mock('../../../src/config/prompts.js', () => ({
+  getSystemPrompt: vi.fn().mockReturnValue('You are a helpful renovation assistant.'),
+}));
+
+// Mock database
+vi.mock('../../../src/db/index.js', () => ({
+  db: {
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ phase: 'INTAKE' }]),
+        }),
+      }),
+    }),
+  },
+}));
+
+vi.mock('../../../src/db/schema/sessions.schema.js', () => ({
+  renovationSessions: {
+    id: 'id',
+    phase: 'phase',
+  },
+}));
+
+vi.mock('../../../src/db/schema/messages.schema.js', () => ({}));
+
+// Mock drizzle-orm eq operator
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn().mockReturnValue({}),
+}));
+
+// Hoist the mock graph so it's available in vi.mock factories
+const { mockCompiledGraph } = vi.hoisted(() => ({
+  mockCompiledGraph: {
+    stream: vi.fn(),
+    invoke: vi.fn(),
+  },
+}));
+
+// Mock LangGraph - provide a fake compiled graph
+vi.mock('@langchain/langgraph', () => {
+  const mockWorkflow = {
+    addNode: vi.fn().mockReturnThis(),
+    addEdge: vi.fn().mockReturnThis(),
+    addConditionalEdges: vi.fn().mockReturnThis(),
+    compile: vi.fn().mockReturnValue(mockCompiledGraph),
+  };
+  return {
+    StateGraph: vi.fn().mockReturnValue(mockWorkflow),
+    START: 'START',
+    END: 'END',
+    MessagesAnnotation: { State: {} },
+  };
+});
+
+vi.mock('@langchain/langgraph/prebuilt', () => ({
+  ToolNode: vi.fn().mockReturnValue({}),
 }));
 
 // Mock logger
@@ -50,18 +117,15 @@ describe('ChatService', () => {
       const userMessage = 'Hello, AI!';
       const mockResponse = 'Hello! How can I help you?';
 
-      // Mock the model's invoke method (used by LangGraph)
-      const mockModel = (chatService as unknown as { model: { invoke: () => Promise<{ content: string }> } }).model;
-      vi.spyOn(mockModel, 'invoke').mockResolvedValue({
-        content: mockResponse,
-      } as Parameters<typeof mockModel.invoke>[0] extends Promise<infer U> ? U : never);
-
-      // Mock the graph's stream method
-      const mockGraph = (chatService as unknown as { graph: { stream: () => AsyncIterable<[{ content: string }, unknown]> } }).graph;
-      vi.spyOn(mockGraph, 'stream').mockImplementation(async function* () {
-        // LangGraph stream yields [message, metadata] tuples
+      // Mock the graph's stream method to yield [message, metadata] tuples
+      // Metadata must include langgraph_node: 'call_model' to reach the text streaming branch
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
         for (const word of mockResponse.split(' ')) {
-          yield [{ content: word + ' ' }, {}];
+          yield [
+            { content: word + ' ', tool_call_chunks: [] },
+            { langgraph_node: 'call_model' },
+          ];
         }
       });
 
@@ -103,8 +167,8 @@ describe('ChatService', () => {
       const mockError = new Error('API Error');
 
       // Mock error in graph streaming
-      const mockGraph = (chatService as unknown as { graph: { stream: () => Promise<never> } }).graph;
-      vi.spyOn(mockGraph, 'stream').mockRejectedValue(mockError);
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockRejectedValue(mockError);
 
       const callback = {
         onToken: vi.fn(),

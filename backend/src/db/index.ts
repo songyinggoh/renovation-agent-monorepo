@@ -137,4 +137,6 @@ export type {
   NewContractorRecommendation,
   ChatMessage,
   NewChatMessage,
+  StyleCatalogEntry,
+  NewStyleCatalogEntry,
 } from './schema/index.js';
