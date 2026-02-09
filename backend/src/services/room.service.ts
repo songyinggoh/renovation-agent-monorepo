@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { renovationRooms, type RenovationRoom, type NewRenovationRoom } from '../db/schema/rooms.schema.js';
+import { type Checklist } from '../validators/checklist.validators.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'RoomService' });
@@ -126,7 +127,7 @@ export class RoomService {
   /**
    * Update the checklist for a room
    */
-  async updateRoomChecklist(roomId: string, checklist: unknown): Promise<RenovationRoom> {
+  async updateRoomChecklist(roomId: string, checklist: Checklist): Promise<RenovationRoom> {
     logger.info('Updating room checklist', { roomId });
 
     try {

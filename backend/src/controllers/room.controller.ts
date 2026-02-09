@@ -10,11 +10,15 @@ const roomService = new RoomService();
  * GET /api/sessions/:sessionId/rooms
  */
 export const listRooms = async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const sessionId = req.params.sessionId;
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
   logger.info('Listing rooms for session', { sessionId });
 
   try {
-    const rooms = await roomService.getRoomsBySession(sessionId!);
+    const rooms = await roomService.getRoomsBySession(sessionId);
     res.json({ rooms });
   } catch (error) {
     logger.error('Failed to list rooms', error as Error, { sessionId });
@@ -27,14 +31,18 @@ export const listRooms = async (req: Request, res: Response) => {
  * POST /api/sessions/:sessionId/rooms
  */
 export const createRoom = async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const sessionId = req.params.sessionId;
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
   const { name, type, budget, requirements } = req.body;
 
   logger.info('Creating room', { sessionId, name, type });
 
   try {
     const room = await roomService.createRoom({
-      sessionId: sessionId!,
+      sessionId,
       name,
       type,
       budget: budget ? String(budget) : null,
@@ -52,13 +60,18 @@ export const createRoom = async (req: Request, res: Response) => {
  * GET /api/rooms/:roomId
  */
 export const getRoom = async (req: Request, res: Response) => {
-  const { roomId } = req.params;
+  const roomId = req.params.roomId;
+  if (!roomId) {
+    res.status(400).json({ error: 'roomId is required' });
+    return;
+  }
   logger.info('Getting room', { roomId });
 
   try {
-    const room = await roomService.getRoomById(roomId!);
+    const room = await roomService.getRoomById(roomId);
     if (!room) {
-      return res.status(404).json({ error: 'Room not found' });
+      res.status(404).json({ error: 'Room not found' });
+      return;
     }
     res.json(room);
   } catch (error) {
@@ -72,13 +85,17 @@ export const getRoom = async (req: Request, res: Response) => {
  * PATCH /api/rooms/:roomId
  */
 export const updateRoom = async (req: Request, res: Response) => {
-  const { roomId } = req.params;
+  const roomId = req.params.roomId;
+  if (!roomId) {
+    res.status(400).json({ error: 'roomId is required' });
+    return;
+  }
   const { name, type, budget, requirements } = req.body;
 
   logger.info('Updating room', { roomId });
 
   try {
-    const updated = await roomService.updateRoom(roomId!, {
+    const updated = await roomService.updateRoom(roomId, {
       name,
       type,
       budget: budget !== undefined ? String(budget) : undefined,
@@ -96,11 +113,15 @@ export const updateRoom = async (req: Request, res: Response) => {
  * DELETE /api/rooms/:roomId
  */
 export const deleteRoom = async (req: Request, res: Response) => {
-  const { roomId } = req.params;
+  const roomId = req.params.roomId;
+  if (!roomId) {
+    res.status(400).json({ error: 'roomId is required' });
+    return;
+  }
   logger.info('Deleting room', { roomId });
 
   try {
-    await roomService.deleteRoom(roomId!);
+    await roomService.deleteRoom(roomId);
     res.status(204).send();
   } catch (error) {
     logger.error('Failed to delete room', error as Error, { roomId });

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Use vi.hoisted so mocks are available inside hoisted vi.mock factories
-const { mockCreateRoom, mockDbUpdate } = vi.hoisted(() => ({
-  mockCreateRoom: vi.fn(),
+const { mockDbUpdate, mockDbInsert } = vi.hoisted(() => ({
   mockDbUpdate: vi.fn(),
+  mockDbInsert: vi.fn(),
 }));
 
 // Mock logger to suppress logs during tests
@@ -19,6 +19,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
 vi.mock('../../../src/db/index.js', () => ({
   db: {
     update: mockDbUpdate,
+    insert: mockDbInsert,
   },
 }));
 
@@ -34,11 +35,12 @@ vi.mock('../../../src/db/schema/sessions.schema.js', () => ({
   },
 }));
 
-// Mock RoomService module with stable hoisted reference
-vi.mock('../../../src/services/room.service.js', () => ({
-  RoomService: vi.fn().mockImplementation(() => ({
-    createRoom: mockCreateRoom,
-  })),
+// Mock rooms schema
+vi.mock('../../../src/db/schema/rooms.schema.js', () => ({
+  renovationRooms: {
+    id: 'renovation_rooms.id',
+    sessionId: 'renovation_rooms.session_id',
+  },
 }));
 
 import { saveIntakeStateTool } from '../../../src/tools/save-intake-state.tool.js';
@@ -53,26 +55,36 @@ const setupDbUpdateChain = () => {
   return { mockSet, mockWhere };
 };
 
+/** Sets up db.insert().values().returning() chain */
+const setupDbInsertChain = (returnValues: unknown[]) => {
+  const mockReturning = vi.fn().mockResolvedValue(returnValues);
+  const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
+  mockDbInsert.mockReturnValue({ values: mockValues });
+  return { mockValues, mockReturning };
+};
+
 describe('saveIntakeStateTool', () => {
   beforeEach(() => {
-    mockCreateRoom.mockReset();
     mockDbUpdate.mockReset();
+    mockDbInsert.mockReset();
   });
 
   it('should create rooms and update session when budget and style are provided', async () => {
     const { mockSet, mockWhere } = setupDbUpdateChain();
 
-    mockCreateRoom.mockResolvedValue({
-      id: 'room-uuid-1',
-      sessionId: SESSION_ID,
-      name: 'Kitchen',
-      type: 'kitchen',
-      budget: '15000',
-      requirements: { stylePreference: 'Modern Minimalist' },
-      checklist: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    setupDbInsertChain([
+      {
+        id: 'room-uuid-1',
+        sessionId: SESSION_ID,
+        name: 'Kitchen',
+        type: 'kitchen',
+        budget: '15000',
+        requirements: { stylePreference: 'Modern Minimalist' },
+        checklist: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
 
     const result = await saveIntakeStateTool.invoke({
       sessionId: SESSION_ID,
@@ -105,30 +117,24 @@ describe('saveIntakeStateTool', () => {
     expect(mockSet).toHaveBeenCalled();
     expect(mockWhere).toHaveBeenCalled();
 
-    // Verify room was created with correct parameters
-    expect(mockCreateRoom).toHaveBeenCalledWith({
-      sessionId: SESSION_ID,
-      name: 'Kitchen',
-      type: 'kitchen',
-      budget: '15000',
-      requirements: {
-        stylePreference: 'Modern Minimalist',
-      },
-    });
+    // Verify batch insert was called once (not N times)
+    expect(mockDbInsert).toHaveBeenCalledTimes(1);
   });
 
   it('should skip session update when no budget or style preference', async () => {
-    mockCreateRoom.mockResolvedValue({
-      id: 'room-uuid-2',
-      sessionId: SESSION_ID,
-      name: 'Bathroom',
-      type: 'bathroom',
-      budget: null,
-      requirements: null,
-      checklist: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    setupDbInsertChain([
+      {
+        id: 'room-uuid-2',
+        sessionId: SESSION_ID,
+        name: 'Bathroom',
+        type: 'bathroom',
+        budget: null,
+        requirements: null,
+        checklist: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
 
     const result = await saveIntakeStateTool.invoke({
       sessionId: SESSION_ID,
@@ -144,11 +150,11 @@ describe('saveIntakeStateTool', () => {
     expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 
-  it('should create multiple rooms in sequence', async () => {
+  it('should batch-insert multiple rooms in a single query', async () => {
     setupDbUpdateChain();
 
-    mockCreateRoom
-      .mockResolvedValueOnce({
+    setupDbInsertChain([
+      {
         id: 'room-uuid-1',
         sessionId: SESSION_ID,
         name: 'Kitchen',
@@ -158,8 +164,8 @@ describe('saveIntakeStateTool', () => {
         checklist: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         id: 'room-uuid-2',
         sessionId: SESSION_ID,
         name: 'Bathroom',
@@ -169,7 +175,8 @@ describe('saveIntakeStateTool', () => {
         checklist: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+      },
+    ]);
 
     const result = await saveIntakeStateTool.invoke({
       sessionId: SESSION_ID,
@@ -187,12 +194,17 @@ describe('saveIntakeStateTool', () => {
 
     expect(parsed.success).toBe(true);
     expect(parsed.rooms).toHaveLength(2);
-    expect(mockCreateRoom).toHaveBeenCalledTimes(2);
+
+    // Verify only ONE insert call was made (batch, not N+1)
+    expect(mockDbInsert).toHaveBeenCalledTimes(1);
   });
 
   it('should return failure JSON when an error is thrown', async () => {
     setupDbUpdateChain();
-    mockCreateRoom.mockRejectedValue(new Error('DB insert failed'));
+
+    const mockReturning = vi.fn().mockRejectedValue(new Error('DB insert failed'));
+    const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
+    mockDbInsert.mockReturnValue({ values: mockValues });
 
     const result = await saveIntakeStateTool.invoke({
       sessionId: SESSION_ID,

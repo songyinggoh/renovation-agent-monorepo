@@ -30,7 +30,11 @@ export const getStyleBySlug = async (req: Request, res: Response) => {
   logger.info('Getting style by slug', { slug });
 
   try {
-    const style = await styleService.getStyleBySlug(slug!);
+    if (!slug) {
+      res.status(400).json({ error: 'slug is required' });
+      return;
+    }
+    const style = await styleService.getStyleBySlug(slug);
     if (!style) {
       return res.status(404).json({ error: 'Style not found' });
     }
@@ -46,12 +50,9 @@ export const getStyleBySlug = async (req: Request, res: Response) => {
  * GET /api/styles/search?q=
  */
 export const searchStyles = async (req: Request, res: Response) => {
-  const query = req.query.q as string;
+  // Query params are pre-validated by validateQuery middleware
+  const { q: query } = req.query as { q: string };
   logger.info('Searching styles', { query });
-
-  if (!query) {
-    return res.status(400).json({ error: 'Query parameter "q" is required' });
-  }
 
   try {
     const styles = await styleService.searchStyles(query);

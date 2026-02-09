@@ -7,6 +7,9 @@ import toast from 'react-hot-toast';
 import { fetchWithAuth } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2 } from 'lucide-react';
+import { Logger } from '@/lib/logger';
+
+const logger = new Logger({ serviceName: 'CreateSessionButton' });
 
 export function CreateSessionButton() {
     const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +27,7 @@ export function CreateSessionButton() {
             });
             router.push(`/app/session/${newSession.id as string}` as Route);
         } catch (error) {
-            console.error('Failed to create session:', error);
+            logger.error('Failed to create session', error as Error);
             toast.error('Failed to create session. Please try again.');
         } finally {
             setIsLoading(false);

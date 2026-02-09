@@ -6,6 +6,8 @@ import {
   seedStyles,
 } from '../controllers/style.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { validateQuery } from '../middleware/validate.js';
+import { searchStylesQuerySchema } from '../validators/style.validators.js';
 
 const router = Router();
 
@@ -22,7 +24,7 @@ router.get('/', listStyles);
  * @route GET /api/styles/search?q=
  * @desc Search styles by query (must be before :slug to avoid conflict)
  */
-router.get('/search', searchStyles);
+router.get('/search', validateQuery(searchStylesQuerySchema), searchStyles);
 
 /**
  * @route POST /api/styles/seed

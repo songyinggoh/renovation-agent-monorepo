@@ -145,7 +145,14 @@ export class ChatService {
     });
 
     try {
-      // Step 1: Save user message to database
+      // Step 1: Load message history BEFORE saving the new message
+      // to avoid duplicating the user message in context
+      const [phase, history] = await Promise.all([
+        this.getSessionPhase(sessionId),
+        this.messageService.getRecentMessages(sessionId, 20),
+      ]);
+
+      // Step 2: Save user message to database
       await this.messageService.saveMessage({
         sessionId,
         userId: null,
@@ -154,15 +161,10 @@ export class ChatService {
         type: 'text',
       });
 
-      // Step 2: Get session phase and build phase-aware system prompt
-      const phase = await this.getSessionPhase(sessionId);
+      // Step 3: Build phase-aware system prompt and input messages
       const systemPrompt = getSystemPrompt(phase, sessionId);
-
-      // Step 3: Load message history from database for context
-      const history = await this.messageService.getRecentMessages(sessionId, 20);
       const historicalMessages = this.convertHistoryToMessages(history);
 
-      // Step 4: Build input messages with system prompt + history + new message
       const inputMessages: BaseMessage[] = [
         new SystemMessage(systemPrompt),
         ...historicalMessages,

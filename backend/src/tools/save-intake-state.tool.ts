@@ -3,12 +3,10 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { renovationSessions } from '../db/schema/sessions.schema.js';
-import { RoomService } from '../services/room.service.js';
+import { renovationRooms } from '../db/schema/rooms.schema.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'SaveIntakeStateTool' });
-
-const roomService = new RoomService();
 
 const RoomSchema = z.object({
   name: z.string().describe('Room name, e.g., "Kitchen", "Master Bedroom"'),
@@ -60,24 +58,27 @@ export const saveIntakeStateTool = tool(
           .where(eq(renovationSessions.id, sessionId));
       }
 
-      // Create rooms
-      const createdRooms = [];
-      for (const room of rooms) {
+      // Create rooms (batch insert)
+      const roomValues = rooms.map((room) => {
         const requirements = room.requirements
           ? { ...room.requirements, stylePreference }
           : stylePreference
             ? { stylePreference }
             : null;
 
-        const created = await roomService.createRoom({
+        return {
           sessionId,
           name: room.name,
           type: room.type,
           budget: room.budget ? String(room.budget) : null,
           requirements,
-        });
-        createdRooms.push(created);
-      }
+        };
+      });
+
+      const createdRooms = await db
+        .insert(renovationRooms)
+        .values(roomValues)
+        .returning();
 
       const result = {
         success: true,

@@ -38,7 +38,10 @@
       "Bash(python:*)",
       "Bash(git status:*)",
       "Bash(pnpm audit fix:*)",
-      "Bash(pnpm audit:*)"
+      "Bash(pnpm audit:*)",
+      "Bash(npm run test:coverage:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm test:*)"
     ]
   },
   "mcpServers": {

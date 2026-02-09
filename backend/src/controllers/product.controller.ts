@@ -10,7 +10,14 @@ const productService = new ProductService();
  * GET /api/products/search?style=&category=&maxPrice=&roomType=&q=
  */
 export const searchProducts = (req: Request, res: Response) => {
-  const { style, category, maxPrice, roomType, q } = req.query;
+  // Query params are pre-validated and coerced by validateQuery middleware
+  const { style, category, maxPrice, roomType, q } = req.query as {
+    style?: string;
+    category?: string;
+    maxPrice?: number;
+    roomType?: string;
+    q?: string;
+  };
 
   logger.info('Searching products', {
     style,
@@ -22,11 +29,11 @@ export const searchProducts = (req: Request, res: Response) => {
 
   try {
     const results = productService.searchSeedProducts({
-      style: style as string | undefined,
-      category: category as string | undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
-      roomType: roomType as string | undefined,
-      query: q as string | undefined,
+      style,
+      category,
+      maxPrice,
+      roomType,
+      query: q,
     });
 
     res.json({
@@ -44,11 +51,15 @@ export const searchProducts = (req: Request, res: Response) => {
  * GET /api/rooms/:roomId/products
  */
 export const getRoomProducts = async (req: Request, res: Response) => {
-  const { roomId } = req.params;
+  const roomId = req.params.roomId;
+  if (!roomId) {
+    res.status(400).json({ error: 'roomId is required' });
+    return;
+  }
   logger.info('Getting products for room', { roomId });
 
   try {
-    const products = await productService.getProductsByRoom(roomId!);
+    const products = await productService.getProductsByRoom(roomId);
     res.json({ products, count: products.length });
   } catch (error) {
     logger.error('Failed to get room products', error as Error, { roomId });

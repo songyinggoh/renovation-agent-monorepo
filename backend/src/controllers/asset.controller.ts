@@ -30,7 +30,7 @@ export const requestUpload = async (req: Request, res: Response) => {
 
   try {
     const result = await assetService.requestUpload({
-      roomId: roomId!,
+      roomId: roomId as string,
       sessionId,
       filename,
       contentType,
@@ -64,7 +64,7 @@ export const confirmUpload = async (req: Request, res: Response) => {
   logger.info('Confirming upload', { assetId });
 
   try {
-    const asset = await assetService.confirmUpload(assetId!);
+    const asset = await assetService.confirmUpload(assetId as string);
     res.json({ asset });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to confirm upload';
@@ -90,7 +90,7 @@ export const listAssets = async (req: Request, res: Response) => {
   logger.info('Listing assets', { roomId });
 
   try {
-    const assets = await assetService.getAssetsByRoom(roomId!);
+    const assets = await assetService.getAssetsByRoom(roomId as string);
     res.json({ assets });
   } catch (error) {
     logger.error('Failed to list assets', error as Error, { roomId });
@@ -106,7 +106,7 @@ export const getAsset = async (req: Request, res: Response) => {
   const { assetId } = req.params;
 
   try {
-    const asset = await assetService.getAssetById(assetId!);
+    const asset = await assetService.getAssetById(assetId as string);
     if (!asset) {
       return res.status(404).json({ error: 'Asset not found' });
     }
@@ -127,7 +127,7 @@ export const deleteAsset = async (req: Request, res: Response) => {
   logger.info('Deleting asset', { assetId });
 
   try {
-    await assetService.deleteAsset(assetId!);
+    await assetService.deleteAsset(assetId as string);
     res.status(204).send();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete asset';
@@ -148,7 +148,7 @@ export const getAssetUrl = async (req: Request, res: Response) => {
   const { assetId } = req.params;
 
   try {
-    const url = await assetService.getSignedUrl(assetId!);
+    const url = await assetService.getSignedUrl(assetId as string);
     if (!url) {
       return res.status(404).json({ error: 'Asset not found' });
     }

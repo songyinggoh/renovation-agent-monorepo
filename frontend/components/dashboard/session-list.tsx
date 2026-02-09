@@ -9,6 +9,9 @@ import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
 import { SkeletonLoader } from '@/components/ui/skeleton-loader';
 import { ClipboardList, ChevronRight } from 'lucide-react';
+import { Logger } from '@/lib/logger';
+
+const logger = new Logger({ serviceName: 'SessionList' });
 
 interface Session {
     id: string;
@@ -27,7 +30,7 @@ export function SessionList() {
                 const data = await fetchWithAuth('/api/sessions');
                 setSessions(data.sessions || []);
             } catch (error) {
-                console.error('Failed to load sessions:', error);
+                logger.error('Failed to load sessions', error as Error);
                 toast.error('Failed to load sessions. Please refresh the page.');
             } finally {
                 setLoading(false);
