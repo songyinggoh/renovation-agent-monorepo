@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AssetService } from '../services/asset.service.js';
 import { ASSET_TYPES, type AssetType } from '../db/schema/assets.schema.js';
 import { Logger } from '../utils/logger.js';
+import { NotFoundError, ValidationError, ResourceLimitError } from '../utils/service-errors.js';
 
 const logger = new Logger({ serviceName: 'AssetController' });
 const assetService = new AssetService();
@@ -12,13 +13,13 @@ const assetService = new AssetService();
  */
 export const requestUpload = async (req: Request, res: Response) => {
   const { roomId } = req.params;
-  const { filename, contentType, fileSize, assetType, sessionId } = req.body;
+  const { filename, contentType, fileSize, assetType } = req.body;
 
   logger.info('Upload request', { roomId, filename, contentType, fileSize, assetType });
 
-  if (!filename || !contentType || !fileSize || !assetType || !sessionId) {
+  if (!filename || !contentType || !fileSize || !assetType) {
     return res.status(400).json({
-      error: 'filename, contentType, fileSize, assetType, and sessionId are required',
+      error: 'filename, contentType, fileSize, and assetType are required',
     });
   }
 
@@ -28,27 +29,33 @@ export const requestUpload = async (req: Request, res: Response) => {
     });
   }
 
+  // Validate fileSize is a finite number
+  const fileSizeNum = Number(fileSize);
+  if (!Number.isFinite(fileSizeNum) || fileSizeNum <= 0) {
+    return res.status(400).json({
+      error: 'fileSize must be a positive finite number',
+    });
+  }
+
   try {
     const result = await assetService.requestUpload({
       roomId: roomId as string,
-      sessionId,
       filename,
       contentType,
-      fileSize: Number(fileSize),
+      fileSize: fileSizeNum,
       assetType: assetType as AssetType,
       uploadedBy: req.user?.id,
     });
 
     res.status(201).json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to request upload';
     logger.error('Failed to request upload', error as Error, { roomId });
 
-    if (message.includes('not found')) {
-      return res.status(404).json({ error: message });
+    if (error instanceof NotFoundError) {
+      return res.status(404).json({ error: error.message });
     }
-    if (message.includes('Invalid') || message.includes('Maximum')) {
-      return res.status(400).json({ error: message });
+    if (error instanceof ValidationError || error instanceof ResourceLimitError) {
+      return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: 'Failed to request upload' });
   }

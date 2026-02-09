@@ -36,11 +36,11 @@ export const verifySessionOwnership = async (
     }
 
     // If session is owned by a user, verify the requester matches
-    if (session.user_id && req.user?.id && session.user_id !== req.user.id) {
+    if (session.user_id && (!req.user?.id || session.user_id !== req.user.id)) {
       logger.warn('Unauthorized session access attempt', undefined, {
         sessionId,
         ownerId: session.user_id,
-        requesterId: req.user.id,
+        requesterId: req.user?.id ?? 'unauthenticated',
       });
       res.status(404).json({ error: 'Session not found' });
       return;
@@ -87,11 +87,11 @@ export const verifyRoomOwnership = async (
       return;
     }
 
-    if (row.user_id && req.user?.id && row.user_id !== req.user.id) {
+    if (row.user_id && (!req.user?.id || row.user_id !== req.user.id)) {
       logger.warn('Unauthorized room access attempt', undefined, {
         roomId,
         ownerId: row.user_id,
-        requesterId: req.user.id,
+        requesterId: req.user?.id ?? 'unauthenticated',
       });
       res.status(404).json({ error: 'Room not found' });
       return;

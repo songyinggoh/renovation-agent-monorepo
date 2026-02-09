@@ -45,7 +45,7 @@ export const createRoom = async (req: Request, res: Response) => {
       sessionId,
       name,
       type,
-      budget: budget ? String(budget) : null,
+      budget: budget !== undefined && budget !== null ? String(budget) : null,
       requirements: requirements ?? null,
     });
     res.status(201).json(room);

@@ -2,6 +2,9 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { Logger } from "@/lib/logger";
+
+const logger = new Logger({ serviceName: "GlobalError" });
 
 export default function GlobalError({
   error,
@@ -11,7 +14,11 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Global error:", error);
+    // Log error with structured logger
+    logger.error("Global error boundary caught error", error, {
+      digest: error.digest,
+      errorName: error.name,
+    });
   }, [error]);
 
   return (

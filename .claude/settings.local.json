@@ -41,7 +41,9 @@
       "Bash(pnpm audit:*)",
       "Bash(npm run test:coverage:*)",
       "Bash(npm run test:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(pnpm list:*)",
+      "Bash(npm run:*)"
     ]
   },
   "mcpServers": {

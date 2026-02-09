@@ -145,12 +145,10 @@ export class ChatService {
     });
 
     try {
-      // Step 1: Load message history BEFORE saving the new message
-      // to avoid duplicating the user message in context
-      const [phase, history] = await Promise.all([
-        this.getSessionPhase(sessionId),
-        this.messageService.getRecentMessages(sessionId, 20),
-      ]);
+      // Step 1: Get session phase
+      // Note: LangGraph checkpointer handles message history persistence,
+      // so we don't need to load it here
+      const phase = await this.getSessionPhase(sessionId);
 
       // Step 2: Save user message to database
       await this.messageService.saveMessage({
@@ -162,18 +160,19 @@ export class ChatService {
       });
 
       // Step 3: Build phase-aware system prompt and input messages
+      // NOTE: The LangGraph checkpointer already persists message history,
+      // so we only pass the new user message here to avoid duplication.
+      // System prompt is included on every turn to maintain phase context.
       const systemPrompt = getSystemPrompt(phase, sessionId);
-      const historicalMessages = this.convertHistoryToMessages(history);
 
       const inputMessages: BaseMessage[] = [
         new SystemMessage(systemPrompt),
-        ...historicalMessages,
         new HumanMessage(userMessage),
       ];
 
       // Step 5: Stream response from ReAct agent
       let fullResponse = '';
-      const emittedToolCalls = new Set<string>();
+      const emittedToolCalls = new Set<string>(); // Track by tool call ID, not name
 
       const config = {
         configurable: { thread_id: sessionId },
@@ -225,8 +224,10 @@ export class ChatService {
             aiChunk.tool_call_chunks.length > 0
           ) {
             for (const tc of aiChunk.tool_call_chunks) {
-              if (tc.name && !emittedToolCalls.has(tc.name)) {
-                emittedToolCalls.add(tc.name);
+              // Use tc.id (unique call ID) not tc.name to allow multiple calls to same tool
+              const callId = tc.id || tc.name || 'unknown';
+              if (tc.name && !emittedToolCalls.has(callId)) {
+                emittedToolCalls.add(callId);
                 callback.onToolCall?.(tc.name, '');
 
                 await this.messageService.saveMessage({

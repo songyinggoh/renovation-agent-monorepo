@@ -30,7 +30,9 @@ router.get('/search', validateQuery(searchStylesQuerySchema), searchStyles);
  * @route POST /api/styles/seed
  * @desc Seed the style catalog (dev only)
  */
-router.post('/seed', seedStyles);
+if (process.env.NODE_ENV === 'development') {
+  router.post('/seed', seedStyles);
+}
 
 /**
  * @route GET /api/styles/:slug

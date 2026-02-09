@@ -160,9 +160,11 @@ export function isPaymentsEnabled(): boolean {
 
 /**
  * Helper function to check if Supabase Storage is configured
+ * Storage should be able to work independently of auth as long as
+ * the service role key and storage bucket are configured.
  */
 export function isStorageEnabled(): boolean {
-  return isAuthEnabled() && !!env.SUPABASE_STORAGE_BUCKET;
+  return !!(env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_STORAGE_BUCKET);
 }
 
 /**

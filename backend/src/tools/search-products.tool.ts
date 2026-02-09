@@ -40,9 +40,9 @@ export const searchProductsTool = tool(
         category: p.category,
         description: p.description,
         price: `$${p.estimatedPrice}`,
-        brand: p.metadata.brand,
-        material: p.metadata.material ?? null,
-        compatibleStyles: p.metadata.style,
+        brand: p.metadata?.brand ?? null,
+        material: p.metadata?.material ?? null,
+        compatibleStyles: p.metadata?.style ?? null,
       }));
 
       return JSON.stringify({

@@ -10,6 +10,7 @@ import { renovationRooms } from '../db/schema/rooms.schema.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { env, isStorageEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
+import { NotFoundError, ValidationError, ResourceLimitError } from '../utils/service-errors.js';
 
 const logger = new Logger({ serviceName: 'AssetService' });
 
@@ -28,10 +29,9 @@ const SIGNED_URL_EXPIRY = 900; // 15 minutes
  * Sanitize a filename for safe storage path usage
  */
 export function sanitizeFilename(filename: string): string {
-  const ext = filename.lastIndexOf('.') >= 0
-    ? filename.slice(filename.lastIndexOf('.'))
-    : '';
-  const name = filename.slice(0, filename.lastIndexOf('.') >= 0 ? filename.lastIndexOf('.') : undefined);
+  const dotIndex = filename.lastIndexOf('.');
+  const ext = dotIndex >= 0 ? filename.slice(dotIndex) : '';
+  const name = dotIndex >= 0 ? filename.slice(0, dotIndex) : filename;
 
   const safeName = name
     .replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -39,7 +39,13 @@ export function sanitizeFilename(filename: string): string {
     .replace(/^\./, '_')
     .substring(0, 80);
 
-  return `${safeName}${ext}`.substring(0, 100);
+  // Sanitize extension to prevent path traversal
+  const safeExt = ext
+    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .replace(/\.{2,}/g, '.')
+    .substring(0, 20);
+
+  return `${safeName}${safeExt}`.substring(0, 100);
 }
 
 /**
@@ -72,7 +78,6 @@ export function buildStoragePath(
 
 interface RequestUploadParams {
   roomId: string;
-  sessionId: string;
   filename: string;
   contentType: string;
   fileSize: number;
@@ -96,35 +101,38 @@ export class AssetService {
    * Request a signed upload URL and create a pending asset record
    */
   async requestUpload(params: RequestUploadParams): Promise<RequestUploadResult> {
-    const { roomId, sessionId, filename, contentType, fileSize, assetType, uploadedBy } = params;
+    const { roomId, filename, contentType, fileSize, assetType, uploadedBy } = params;
 
-    logger.info('Requesting upload', { roomId, sessionId, assetType, contentType, fileSize });
+    logger.info('Requesting upload', { roomId, assetType, contentType, fileSize });
 
     // Validate asset type
     if (!ASSET_TYPES.includes(assetType)) {
-      throw new Error(`Invalid asset type: ${assetType}. Must be one of: ${ASSET_TYPES.join(', ')}`);
+      throw new ValidationError(`Invalid asset type: ${assetType}. Must be one of: ${ASSET_TYPES.join(', ')}`);
     }
 
     // Validate file type
     if (!validateFileType(contentType, assetType)) {
       const allowed = ALLOWED_MIME_TYPES[assetType];
-      throw new Error(`Invalid file type: ${contentType}. Allowed for ${assetType}: ${allowed.join(', ')}`);
+      throw new ValidationError(`Invalid file type: ${contentType}. Allowed for ${assetType}: ${allowed.join(', ')}`);
     }
 
     // Validate file size
     if (!validateFileSize(fileSize)) {
-      throw new Error(`Invalid file size: ${fileSize} bytes. Maximum: ${MAX_FILE_SIZE} bytes (10 MB)`);
+      throw new ValidationError(`Invalid file size: ${fileSize} bytes. Maximum: ${MAX_FILE_SIZE} bytes (10 MB)`);
     }
 
-    // Check room exists
+    // Check room exists and get its session ID
     const [room] = await db
       .select()
       .from(renovationRooms)
       .where(eq(renovationRooms.id, roomId));
 
     if (!room) {
-      throw new Error(`Room not found: ${roomId}`);
+      throw new NotFoundError('Room', roomId);
     }
+
+    // Infer session ID from room (don't trust client-supplied sessionId)
+    const sessionId = room.sessionId;
 
     // Check asset count limit
     const [countResult] = await db
@@ -133,7 +141,7 @@ export class AssetService {
       .where(eq(roomAssets.roomId, roomId));
 
     if (countResult && countResult.count >= MAX_ASSETS_PER_ROOM) {
-      throw new Error(`Maximum assets per room reached (${MAX_ASSETS_PER_ROOM})`);
+      throw new ResourceLimitError('assets per room', MAX_ASSETS_PER_ROOM);
     }
 
     // Build storage path

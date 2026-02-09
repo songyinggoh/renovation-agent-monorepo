@@ -50,8 +50,12 @@ export const getStyleBySlug = async (req: Request, res: Response) => {
  * GET /api/styles/search?q=
  */
 export const searchStyles = async (req: Request, res: Response) => {
-  // Query params are pre-validated by validateQuery middleware
-  const { q: query } = req.query as { q: string };
+  // Validate query parameter is string not array
+  const q = req.query.q;
+  if (!q || typeof q !== 'string') {
+    return res.status(400).json({ error: 'Query parameter q must be a non-empty string' });
+  }
+  const query = q;
   logger.info('Searching styles', { query });
 
   try {

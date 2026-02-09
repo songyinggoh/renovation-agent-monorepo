@@ -361,17 +361,9 @@ describe('ChatService', () => {
   });
 
   describe('message history and context', () => {
-    it('should load and include message history in context', async () => {
+    it('should pass user message and system prompt to graph (checkpointer handles history)', async () => {
       const sessionId = 'test-session';
       const userMessage = 'Continue our conversation';
-
-      // Mock previous conversation
-      const mockHistory = [
-        { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
-        { id: '2', sessionId, userId: null, role: 'assistant', content: 'Hi there', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
-      ];
-
-      vi.spyOn(mockMessageService, 'getRecentMessages').mockResolvedValue(mockHistory);
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
@@ -384,25 +376,19 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Verify history was loaded
-      expect(mockMessageService.getRecentMessages).toHaveBeenCalledWith(sessionId, 20);
-
-      // Verify graph was called (with history included in messages)
+      // Verify graph was called with messages (system prompt + user message)
       expect(mockGraph.stream).toHaveBeenCalled();
+      const callArgs = mockGraph.stream.mock.calls[0];
+      const inputMessages = callArgs[0].messages;
+      // Should have SystemMessage + HumanMessage
+      expect(inputMessages).toHaveLength(2);
+      // Config should include thread_id for checkpointer
+      expect(callArgs[1].configurable.thread_id).toBe(sessionId);
     });
 
-    it('should filter out messages with invalid roles', async () => {
+    it('should save user message before streaming from graph', async () => {
       const sessionId = 'test-session';
       const userMessage = 'Test';
-
-      // Include a message with invalid role
-      const mockHistory = [
-        { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
-        { id: '2', sessionId, userId: null, role: 'invalid_role' as 'user', content: 'Bad', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
-        { id: '3', sessionId, userId: null, role: 'assistant', content: 'Hi', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
-      ];
-
-      vi.spyOn(mockMessageService, 'getRecentMessages').mockResolvedValue(mockHistory);
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
@@ -415,7 +401,16 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Should still process successfully (invalid role filtered out)
+      // User message should be saved to database
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId,
+          role: 'user',
+          content: userMessage,
+          type: 'text',
+        })
+      );
+      // Graph should be called after saving
       expect(mockGraph.stream).toHaveBeenCalled();
     });
   });
