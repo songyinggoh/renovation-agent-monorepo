@@ -110,7 +110,7 @@
 
 **Production:**
 - Docker Compose deployment (includes PostgreSQL, frontend, backend, Redis)
-- Cloud Run compatible (TLS termination at load balancer)
+- Container-ready (TLS termination at reverse proxy / load balancer)
 - Exposes ports: 3001 (frontend), 3000 (backend), 5432 (postgres), 6379 (redis)
 - Environment: PostgreSQL database, Gemini API access
 

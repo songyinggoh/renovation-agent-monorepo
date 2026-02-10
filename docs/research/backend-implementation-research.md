@@ -99,7 +99,7 @@ backend/
 ### 2.1 System Architecture Overview
 
 **Core Tech Stack (Phases 1-7):**
-- **Runtime**: Node.js/TypeScript on Backend Container (GHCR)
+- **Runtime**: Node.js/TypeScript on Backend Container
 - **Framework**: Express.js with Socket.io
 - **Database**: Supabase Postgres with Drizzle ORM
 - **AI/ML**:
@@ -128,7 +128,7 @@ backend/
                  │ (No auth required in Phases 1-7)
                  ▼
 ┌─────────────────────────────────────────────────────────┐
-│           Backend Container (GHCR) Backend (This Project)              │
+│           Backend Container Backend (This Project)              │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │  Express + Socket.io Gateway                    │   │
 │  │  - REST API Routes (open access initially)     │   │
@@ -456,7 +456,7 @@ DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:
 GOOGLE_API_KEY=[YOUR-GEMINI-KEY]
 
 # Supabase Storage (for renders & style images)
-Supabase Storage_PROJECT_ID=[YOUR-GCP-PROJECT]
+Supabase Storage_PROJECT_ID=[YOUR-PROJECT-ID]
 Supabase Storage_BUCKET_NAME=renovation-renders
 Supabase Storage_STYLE_BUCKET=renovation-styles
 
@@ -1580,7 +1580,7 @@ export class BillingService {
 
 ### Phase 10: Deployment (Week 7)
 - [ ] Create Dockerfile
-- [ ] Setup Backend Container (GHCR) service
+- [ ] Setup Backend Container service
 - [ ] Configure production environment
 - [ ] Deploy and test
 - [ ] Write documentation

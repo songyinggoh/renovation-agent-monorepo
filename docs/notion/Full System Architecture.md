@@ -5,7 +5,7 @@
 **Tech stack you specified**
 
 - **Frontend:** Next.js (App Router) + TypeScript on Vercel
-- **Backend:** Node/TS container via GitHub Container Registry (GHCR), deployed to Railway/Render/Fly.io, Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
+- **Backend:** Node/TS Docker container, Socket.io, LangChain v1, Gemini (chat + Nano Banana image)
 - **Backend data:** Supabase Postgres + Drizzle ORM
 - **Auth & DB:** Supabase Auth & DB
 - **Payments:** Stripe (Checkout / Subscriptions) integrated with Supabase tables via webhooks / stripe-sync-engine ([GitHub](https://github.com/supabase/stripe-sync-engine?utm_source=chatgpt.com))
@@ -30,7 +30,7 @@ flowchart LR
     FE_API["/Next.js API Routes</br>(for lightweight calls)/"]
   end
 
-  subgraph BE["Backend API (GHCR → Railway/Render/Fly.io)"]
+  subgraph BE["Backend API (Docker Container)"]
     APIGW["Express</br>REST + WebSocket"]
     Socket[Socket.io Server]
     AuthSvc["Auth Middleware</br>(Supabase JWT verify)"]
@@ -541,7 +541,7 @@ The modern **“blessed” pattern** is:
     - JWT is attached to:
         - REST calls to backend container in `Authorization: Bearer <token>`
         - Socket.io connection payload
-- **Backend (Container via GHCR)**
+- **Backend (Docker Container)**
     - `AuthMiddleware` verifies JWT using Supabase's JWKS or Admin client with `SUPABASE_SERVICE_ROLE_KEY` (server-only).
     - Resolves `user_id` and injects into `req.user`.
 
@@ -589,7 +589,7 @@ The modern **“blessed” pattern** is:
 
 - Next.js app on Vercel
 - Supabase project + Auth set up
-- Backend container (GHCR → Railway/Render/Fly.io) with Express/Fastify, Supabase connection, health routes
+- Backend Docker container with Express/Fastify, Supabase connection, health routes
 - Basic Drizzle schema for users, sessions, chat_messages
 
 **Phase 1 – Chat MVP (no Stripe yet)**

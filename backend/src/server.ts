@@ -106,9 +106,8 @@ async function startServer(): Promise<void> {
     // ============================================
     // STEP 4 & 6: Create and Start HTTP Server
     // ============================================
-    // NOTE: In production (Cloud Run), TLS termination is handled by the GFE (Google Front End).
-    // The application must listen on HTTP as per Cloud Run requirements.
-    // We use app.listen which is the standard Express way to start the server.
+    // NOTE: In production, TLS termination is handled by the reverse proxy / load balancer.
+    // The application listens on HTTP internally.
     httpServer = app.listen(env.PORT, () => {
       logger.info('🚀 Renovation Agent Backend started successfully', {
         port: env.PORT,

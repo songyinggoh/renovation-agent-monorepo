@@ -37,7 +37,7 @@ COPY --from=builder /app/backend/package.json ./package.json
 COPY --from=builder /app/backend/node_modules ./node_modules
 COPY --from=builder /app/backend/dist ./dist
 
-# Expose the port the app runs on (Cloud Run defaults to 8080, but uses $PORT)
+# Expose the port the app runs on (override via $PORT env var)
 ENV PORT="8080"
 EXPOSE 8080
 

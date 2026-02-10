@@ -11,12 +11,12 @@ flowchart LR
     Dashboard["Project dashboard<br/>(rooms, budget, renders)"]
   end
 
-  subgraph APIGW["Backend Container (GHCR) - API & Agent Gateway"]
+  subgraph APIGW["Backend Container - API & Agent Gateway"]
     RestAPI["REST Routes<br/>(auth, sessions, Stripe)"]
     WS["Socket.io Gateway<br/>(agent streaming bridge)"]
   end
 
-  subgraph AgentRuntime["Backend Container (GHCR) - Agent Runtime<br/>LangChain v1 + LangGraph"]
+  subgraph AgentRuntime["Backend Container - Agent Runtime<br/>LangChain v1 + LangGraph"]
     Agent["createAgent()<br/>(Gemini + tools)"]
     Middleware["Middleware stack<br/>(logging, summarization,<br/>model routing, guardrails)"]
     Checkpointer["Checkpointer<br/>(PostgresSaver)"]

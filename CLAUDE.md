@@ -49,7 +49,7 @@ npm run type-check       # TypeScript type checking (tsc --noEmit)
 ### Tech Stack
 - **Frontend**: Next.js 15 (App Router), React 19, TanStack Query v5, Tailwind CSS, shadcn/ui, Supabase Auth
 - **Backend**: Express.js (ESM), Drizzle ORM, PostgreSQL, Socket.io, LangChain + Gemini AI
-- **Infrastructure**: Docker Compose, GitHub Actions → GitHub Container Registry (GHCR)
+- **Infrastructure**: Docker Compose, GitHub Actions, Vercel (frontend)
 
 ### Key Directories
 ```

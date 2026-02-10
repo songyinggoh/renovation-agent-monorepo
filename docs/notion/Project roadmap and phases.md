@@ -9,7 +9,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
 ### Architecture decisions
 
 - **Frontend:** Next.js (App Router) on Vercel.
-- **Backend:** Container service (GHCR → Railway/Render/Fly.io) with Express/Fastify + TypeScript.
+- **Backend:** Docker container service with Express/Fastify + TypeScript.
 - **DB & Auth:** Supabase (Postgres, RLS, Google login).
 - **ORM:** Drizzle ORM with generated types.
 
@@ -19,7 +19,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
 
 - ~~Create mono-repo or two repos:~~
     - `~~/apps/web` → Next.js frontend~~
-    - `~~/apps/api` → Cloud Run backend~~
+    - `~~/apps/api` → backend container~~
 - ~~Set up shared `env/` spec and `.env` loading (t3 style or custom).~~
 
 **~~0.2 Supabase project~~**
@@ -79,7 +79,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
         - `GET /` – list user sessions (dummy data initially)
         - `POST /` – create a session
     - Middleware: `authMiddleware` that verifies Supabase JWT via service role key and attaches `req.user`.
-- Dockerfile + GitHub Actions to build & push to GHCR, deploy to Railway/Render/Fly.io.
+- Dockerfile + GitHub Actions to build & push container image, deploy to container platform.
 
 **0.5 Next.js frontend skeleton**
 
@@ -96,7 +96,7 @@ Get the **bare skeleton** of the app up: deployable FE + BE + DB + Auth, with th
     - Log in with Google.
     - Hit `/app` and see "You are logged in as X".
     - Create a dummy "renovation session" from the frontend and see it stored in Supabase via backend.
-- Backend container (GHCR) and Vercel both deployed with CI/CD.
+- Backend container and Vercel both deployed with CI/CD.
 - Drizzle migrations are the **source of truth** for DB schema.
 
 ---

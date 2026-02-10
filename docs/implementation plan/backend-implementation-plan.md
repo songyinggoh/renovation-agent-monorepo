@@ -527,7 +527,7 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 
 ## Phase 10: Deployment & Documentation
 
-**Goal**: Deploy to Backend Container (GHCR) and finalize documentation
+**Goal**: Deploy to Backend Container and finalize documentation
 **Duration**: 5-6 days
 **Priority**: Medium (Final step)
 
@@ -535,12 +535,12 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 10.1 | Create `Dockerfile` for Backend Container (GHCR) | 🔴 | Multi-stage build |
-| 10.2 | Setup Backend Container (GHCR) service | 🔴 | Configure environment vars |
-| 10.3 | Configure Supabase connection pooling | 🔴 | For Backend Container (GHCR) environment |
+| 10.1 | Create `Dockerfile` for Backend Container | 🔴 | Multi-stage build |
+| 10.2 | Setup Backend Container service | 🔴 | Configure environment vars |
+| 10.3 | Configure Supabase connection pooling | 🔴 | For Backend Container environment |
 | 10.4 | Setup Supabase Storage buckets for production | 🔴 | Renders and style images |
 | 10.5 | Configure CORS for production frontend | 🔴 | Update allowed origins |
-| 10.6 | Setup logging and monitoring | 🔴 | Google Cloud Logging |
+| 10.6 | Setup logging and monitoring | 🔴 | Structured logging |
 | 10.7 | Configure Stripe webhook endpoint | 🔴 | Point to production URL |
 | 10.8 | Test deployment in staging | 🔴 | Verify all features work |
 | 10.9 | Write deployment guide | 🔴 | Step-by-step deployment |
@@ -552,17 +552,17 @@ This implementation plan breaks down the backend setup into **10 phases**, prior
 - Phase 9 completed (All tests pass)
 
 ### Acceptance Criteria
-- [ ] Backend deploys successfully to Backend Container (GHCR)
+- [ ] Backend deploys successfully to Backend Container
 - [ ] All environment variables configured
-- [ ] Database connections work from Backend Container (GHCR)
+- [ ] Database connections work from Backend Container
 - [ ] Stripe webhooks route to production
 - [ ] CORS allows production frontend
-- [ ] Logs are viewable in Cloud Console
+- [ ] Logs are viewable in logging dashboard
 - [ ] Documentation is complete
 
 ### Deployment Checklist
 - [ ] Dockerfile builds successfully
-- [ ] Backend Container (GHCR) deployment succeeds
+- [ ] Backend Container deployment succeeds
 - [ ] Health check returns 200
 - [ ] Auth works with production Supabase
 - [ ] Stripe webhooks deliver successfully

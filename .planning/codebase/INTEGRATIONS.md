@@ -62,21 +62,21 @@
 - Custom structured JSON logger (`backend/src/utils/logger.ts`)
 - Format: Timestamp, level (DEBUG/INFO/WARN/ERROR), service name, message, metadata
 - MDC pattern: Includes userId, sessionId, socketId contextual fields
-- Output: console.log with JSON.stringify (Cloud Run compatible)
+- Output: console.log with JSON.stringify (container compatible)
 - No external log aggregation service configured
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Google Cloud Run (production target)
-  - HTTP server (TLS termination at GFE - Google Front End)
+- Frontend: Vercel
+- Backend: Docker container (any container platform)
+  - HTTP server (TLS termination at reverse proxy / load balancer)
   - Health endpoints: `/health`, `/health/live`, `/health/ready`, `/health/status`
   - Graceful shutdown: 10s timeout with resource cleanup
 
 **CI Pipeline:**
-- GitHub Actions (implied by GHCR in CLAUDE.md)
-- Container Registry: GitHub Container Registry (GHCR)
-- Docker: Multi-stage builds (`backend/Dockerfile`, `frontend/Dockerfile`)
+- GitHub Actions
+- Docker: Multi-stage builds (`backend/Dockerfile`)
 - Docker Compose: `docker-compose.yml` for development environment
 
 **Build Tools:**
@@ -91,7 +91,7 @@
 
 **Secrets location:**
 - Development: `.env` files (gitignored)
-- Production: Environment variables injected at container runtime (Cloud Run secrets)
+- Production: Environment variables injected at container runtime
 - Schema validation: `backend/src/config/env.ts` with Zod
 
 ## Webhooks & Callbacks

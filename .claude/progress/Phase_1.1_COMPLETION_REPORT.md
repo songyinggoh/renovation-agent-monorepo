@@ -117,7 +117,7 @@ npm test            # ✅ 15/16 tests passing
 From `docs/Project roadmap and phases.md` Phase 1.1:
 
 #### Backend Requirements
-- [x] Add Socket.io server to Cloud Run app
+- [x] Add Socket.io server to backend app
   - **Evidence**: `server.ts:96-108` - Socket.io server initialization
   - **Test**: `socket.test.ts:beforeAll()` - server starts successfully
 

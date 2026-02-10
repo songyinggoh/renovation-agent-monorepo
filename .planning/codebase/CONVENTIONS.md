@@ -135,7 +135,7 @@ logger.error('Error processing message with ReAct agent', error as Error, {
 });
 ```
 
-**Output format:** Structured JSON to console (Cloud Run compatible)
+**Output format:** Structured JSON to console (container compatible)
 
 ## Comments
 

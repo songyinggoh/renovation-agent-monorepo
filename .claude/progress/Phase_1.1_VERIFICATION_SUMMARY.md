@@ -150,7 +150,7 @@ Phase 1.1 (Socket.io Infrastructure) has been **verified complete** through:
 From `docs/Project roadmap and phases.md`:
 
 ### Backend Requirements ✅
-- [x] Add Socket.io server to Cloud Run app
+- [x] Add Socket.io server to backend app
 - [x] Auth handshake: frontend sends Supabase JWT → backend verifies → attaches userId
 - [x] Namespaces/rooms: join room `session:<sessionId>` per renovation session
 - [x] Events:
