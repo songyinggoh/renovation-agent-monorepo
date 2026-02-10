@@ -4,48 +4,144 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 40 33% 98%;
+    --foreground: 20 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 20 20% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 20 20% 12%;
+    --primary: 16 65% 45%;
+    --primary-foreground: 40 33% 98%;
+    --secondary: 140 20% 92%;
+    --secondary-foreground: 140 25% 20%;
+    --muted: 30 15% 93%;
+    --muted-foreground: 20 10% 38%;
+    --accent: 140 20% 92%;
+    --accent-foreground: 140 25% 20%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 15% 88%;
+    --input: 30 15% 85%;
+    --ring: 16 65% 45%;
     --radius: 0.5rem;
+
+    --chat-user: 16 65% 45%;
+    --chat-assistant: 30 15% 93%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+
+    /* Phase accent colors */
+    --phase-intake: 210 60% 50%;
+    --phase-checklist: 45 85% 50%;
+    --phase-plan: 160 50% 42%;
+    --phase-render: 270 55% 55%;
+    --phase-payment: 16 65% 45%;
+    --phase-complete: 142 71% 45%;
+    --phase-iterate: 200 60% 50%;
+
+    /* Material palette */
+    --material-oak: 30 45% 55%;
+    --material-walnut: 25 40% 35%;
+    --material-maple: 40 50% 70%;
+    --material-marble: 220 10% 90%;
+    --material-granite: 0 0% 45%;
+    --material-slate: 210 10% 40%;
+    --material-copper: 20 70% 50%;
+    --material-brass: 45 65% 55%;
+    --material-steel: 210 5% 65%;
+    --material-porcelain: 200 15% 95%;
+    --material-terracotta: 16 65% 45%;
+    --material-concrete: 30 5% 60%;
+
+    /* Data visualization */
+    --chart-budget: 142 71% 45%;
+    --chart-spent: 16 65% 45%;
+    --chart-remaining: 210 60% 50%;
+    --chart-timeline: 45 85% 50%;
+    --chart-rooms-kitchen: 16 65% 45%;
+    --chart-rooms-bathroom: 210 60% 50%;
+    --chart-rooms-bedroom: 270 55% 55%;
+    --chart-rooms-living: 160 50% 42%;
+    --chart-rooms-other: 30 15% 60%;
+
+    /* Semantic additions */
+    --info: 210 60% 50%;
+    --info-foreground: 0 0% 100%;
+
+    /* Ambient surfaces */
+    --surface-chat: 30 20% 97%;
+    --surface-dashboard: 40 33% 98%;
+    --surface-planning: 210 20% 97%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 32.6% 17.5%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 220 25% 8%;
+    --foreground: 30 15% 90%;
+    --card: 220 20% 12%;
+    --card-foreground: 30 15% 90%;
+    --popover: 220 20% 12%;
+    --popover-foreground: 30 15% 90%;
+    --primary: 20 70% 55%;
+    --primary-foreground: 220 25% 8%;
+    --secondary: 160 12% 18%;
+    --secondary-foreground: 160 15% 80%;
+    --muted: 220 15% 16%;
+    --muted-foreground: 220 10% 60%;
+    --accent: 160 12% 18%;
+    --accent-foreground: 160 15% 80%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 20 70% 55%;
+
+    --chat-user: 20 70% 55%;
+    --chat-assistant: 220 15% 16%;
+    --success: 142 71% 35%;
+    --warning: 38 92% 40%;
+
+    /* Phase accents (dark) */
+    --phase-intake: 210 55% 55%;
+    --phase-checklist: 45 80% 55%;
+    --phase-plan: 160 45% 48%;
+    --phase-render: 270 50% 60%;
+    --phase-payment: 20 70% 55%;
+    --phase-complete: 142 65% 40%;
+    --phase-iterate: 200 55% 55%;
+
+    /* Materials (dark) */
+    --material-oak: 30 40% 45%;
+    --material-walnut: 25 35% 28%;
+    --material-maple: 40 45% 55%;
+    --material-marble: 220 8% 75%;
+    --material-granite: 0 0% 35%;
+    --material-slate: 210 8% 32%;
+    --material-copper: 20 65% 45%;
+    --material-brass: 45 60% 45%;
+    --material-steel: 210 5% 55%;
+    --material-porcelain: 200 12% 80%;
+    --material-terracotta: 16 60% 40%;
+    --material-concrete: 30 5% 48%;
+
+    /* Data viz (dark) */
+    --chart-budget: 142 65% 40%;
+    --chart-spent: 20 70% 55%;
+    --chart-remaining: 210 55% 55%;
+    --chart-timeline: 45 80% 55%;
+    --chart-rooms-kitchen: 20 70% 55%;
+    --chart-rooms-bathroom: 210 55% 55%;
+    --chart-rooms-bedroom: 270 50% 60%;
+    --chart-rooms-living: 160 45% 48%;
+    --chart-rooms-other: 30 12% 48%;
+
+    /* Semantic (dark) */
+    --info: 210 55% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Ambient surfaces (dark) */
+    --surface-chat: 220 22% 10%;
+    --surface-dashboard: 220 25% 8%;
+    --surface-planning: 220 28% 9%;
   }
 }
 
@@ -55,5 +151,98 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  h1,
+  h2 {
+    @apply font-display tracking-tight;
+  }
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display-text), Georgia, serif;
+  }
+}
+
+@layer utilities {
+  .bg-grid-pattern {
+    background-image: radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .bg-blueprint-grid {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .currency {
+    font-family: var(--font-mono), Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .measurement {
+    font-family: var(--font-mono), Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .technical-code {
+    font-family: var(--font-mono), Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .surface-chat {
+    background-color: hsl(var(--surface-chat));
+  }
+
+  .surface-dashboard {
+    background-color: hsl(var(--surface-dashboard));
+  }
+
+  .surface-planning {
+    background-color: hsl(var(--surface-planning));
+  }
+
+  /* Fluid type scale */
+  .text-fluid-xs { font-size: clamp(0.7rem, 0.65rem + 0.25vw, 0.8rem); }
+  .text-fluid-sm { font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.9rem); }
+  .text-fluid-base { font-size: clamp(0.9rem, 0.85rem + 0.25vw, 1rem); }
+  .text-fluid-lg { font-size: clamp(1.1rem, 1rem + 0.5vw, 1.25rem); }
+  .text-fluid-xl { font-size: clamp(1.25rem, 1.1rem + 0.75vw, 1.5rem); }
+  .text-fluid-2xl { font-size: clamp(1.5rem, 1.25rem + 1.25vw, 2rem); }
+  .text-fluid-3xl { font-size: clamp(1.875rem, 1.5rem + 1.875vw, 2.75rem); }
+  .text-fluid-4xl { font-size: clamp(2.25rem, 1.75rem + 2.5vw, 3.5rem); }
+}
+
+@keyframes blueprint-draw {
+  from { stroke-dashoffset: inherit; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes blocks-stack {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes shimmer-bar {
+  0%, 100% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

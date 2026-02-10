@@ -1,7 +1,7 @@
 {
     "name": "renovation-agent-monorepo",
     "private": true,
-    "packageManager": "pnpm@9.15.4",
+    "packageManager": "pnpm@10.29.1",
     "scripts": {
         "dev:frontend": "pnpm --filter frontend dev",
         "dev:backend": "pnpm --filter renovation-agent-backend dev",
@@ -16,5 +16,9 @@
     "devDependencies": {
         "concurrently": "^8.2.2"
     },
-    "dependencies": {}
+    "pnpm": {
+        "overrides": {
+            "esbuild": ">=0.25.0"
+        }
+    }
 }

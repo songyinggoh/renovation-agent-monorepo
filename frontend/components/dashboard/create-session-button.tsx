@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Route } from 'next';
+import toast from 'react-hot-toast';
 import { fetchWithAuth } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Plus, Loader2 } from 'lucide-react';
+import { Logger } from '@/lib/logger';
+
+const logger = new Logger({ serviceName: 'CreateSessionButton' });
 
 export function CreateSessionButton() {
     const [isLoading, setIsLoading] = useState(false);
@@ -21,20 +27,17 @@ export function CreateSessionButton() {
             });
             router.push(`/app/session/${newSession.id as string}` as Route);
         } catch (error) {
-            console.error('Failed to create session:', error);
-            alert('Failed to create session');
+            logger.error('Failed to create session', error as Error);
+            toast.error('Failed to create session. Please try again.');
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <button
-            onClick={handleCreateSession}
-            disabled={isLoading}
-            className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
-        >
-            {isLoading ? 'Creating...' : 'Create New Session'}
-        </button>
+        <Button onClick={handleCreateSession} disabled={isLoading} className="gap-2">
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {isLoading ? 'Creating...' : 'New Session'}
+        </Button>
     );
 }

@@ -2,47 +2,52 @@
 
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/hooks/useChat';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatInput } from '@/components/chat/chat-input';
+import { ArrowLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
 
 interface ChatViewProps {
   sessionId: string;
+  phase?: RenovationPhase;
+  roomId?: string;
 }
 
-export function ChatView({ sessionId }: ChatViewProps) {
+export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
   const router = useRouter();
   const { messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory } = useChat(sessionId);
 
+  const upload = useFileUpload({
+    roomId: roomId ?? sessionId,
+    sessionId,
+  });
+
   return (
-    <div className="flex h-[calc(100vh-10rem)] flex-col rounded-lg border bg-white shadow-sm">
+    <div className="flex h-[calc(100vh-10rem)] flex-col rounded-lg border border-border surface-chat shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/app')}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Back to dashboard"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-5 w-5"
-            >
-              <path
-                fillRule="evenodd"
-                d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <ArrowLeft className="h-5 w-5" />
           </button>
-          <h2 className="text-sm font-semibold text-gray-900">Renovation Chat</h2>
+          <h2 className="text-sm font-semibold">Renovation Chat</h2>
+          {phase && (
+            <Badge variant={`phase-${phase.toLowerCase()}` as "phase-intake" | "phase-checklist" | "phase-plan" | "phase-render" | "phase-payment" | "phase-complete" | "phase-iterate"}>
+              {PHASE_CONFIG[phase].label}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span
-            className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+            className={`h-2 w-2 rounded-full ${isConnected ? 'bg-success' : 'bg-destructive'}`}
           />
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted-foreground">
             {isConnected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
@@ -50,16 +55,31 @@ export function ChatView({ sessionId }: ChatViewProps) {
 
       {/* Error banner */}
       {error && (
-        <div className="border-b bg-red-50 px-4 py-2 text-sm text-red-700">
+        <div className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {/* Messages */}
-      <MessageList messages={messages} isAssistantTyping={isAssistantTyping} isLoadingHistory={isLoadingHistory} />
+      <MessageList
+        messages={messages}
+        isAssistantTyping={isAssistantTyping}
+        isLoadingHistory={isLoadingHistory}
+        phase={phase}
+        onSuggestionSelect={sendMessage}
+      />
 
-      {/* Input */}
-      <ChatInput onSend={sendMessage} disabled={!isConnected} />
+      {/* Input with upload support */}
+      <ChatInput
+        onSend={sendMessage}
+        disabled={!isConnected}
+        phase={phase}
+        uploadFiles={upload.files}
+        onAddFiles={upload.addFiles}
+        onRemoveFile={upload.removeFile}
+        onRetryFile={upload.retryFile}
+        onClearCompleted={upload.clearCompleted}
+      />
     </div>
   );
 }

@@ -8,6 +8,13 @@
       "when": 1767719235828,
       "tag": "0000_nosy_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1770577006510,
+      "tag": "0001_cultured_the_hood",
+      "breakpoints": true
     }
   ]
 }

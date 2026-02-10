@@ -3,7 +3,15 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
+import toast from 'react-hot-toast';
 import { fetchWithAuth } from '@/lib/api';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
+import { SkeletonLoader } from '@/components/ui/skeleton-loader';
+import { ClipboardList, ChevronRight } from 'lucide-react';
+import { Logger } from '@/lib/logger';
+
+const logger = new Logger({ serviceName: 'SessionList' });
 
 interface Session {
     id: string;
@@ -22,7 +30,8 @@ export function SessionList() {
                 const data = await fetchWithAuth('/api/sessions');
                 setSessions(data.sessions || []);
             } catch (error) {
-                console.error('Failed to load sessions:', error);
+                logger.error('Failed to load sessions', error as Error);
+                toast.error('Failed to load sessions. Please refresh the page.');
             } finally {
                 setLoading(false);
             }
@@ -32,34 +41,55 @@ export function SessionList() {
     }, []);
 
     if (loading) {
-        return <div className="text-gray-500">Loading sessions...</div>;
+        return (
+            <div className="p-6">
+                <SkeletonLoader variant="session-card" count={3} />
+            </div>
+        );
     }
 
     if (sessions.length === 0) {
-        return <div className="text-gray-500">No sessions found. Create one to get started!</div>;
+        return (
+            <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
+                <div className="rounded-full bg-primary/10 p-4">
+                    <ClipboardList className="h-10 w-10 text-primary" />
+                </div>
+                <div>
+                    <p className="font-semibold text-foreground">
+                        Your renovation journey starts here
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Create your first session to begin planning with AI.
+                    </p>
+                </div>
+            </div>
+        );
     }
 
     return (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border">
             {sessions.map((session) => (
                 <li key={session.id}>
                     <Link
                         href={`/app/session/${session.id}` as Route}
-                        className="flex justify-between gap-x-6 py-5 rounded-lg px-3 transition-colors hover:bg-gray-100"
+                        className="flex items-center justify-between gap-x-6 rounded-lg px-4 py-5 transition-colors hover:bg-muted/50"
                     >
-                        <div className="flex min-w-0 gap-x-4">
-                            <div className="min-w-0 flex-auto">
-                                <p className="text-sm font-semibold leading-6 text-gray-900">{session.title}</p>
-                                <p className="mt-1 truncate text-xs leading-5 text-gray-500">
-                                    Created: {new Date(session.createdAt).toLocaleDateString()}
-                                </p>
-                            </div>
+                        <div className="min-w-0 flex-auto">
+                            <p className="text-sm font-semibold leading-6 text-foreground">
+                                {session.title}
+                            </p>
+                            <p className="mt-1 truncate text-xs leading-5 text-muted-foreground">
+                                Created: {new Date(session.createdAt).toLocaleDateString()}
+                            </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                            <span className="hidden text-sm leading-6 text-gray-900 sm:block">{session.status}</span>
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-gray-400">
-                                <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-                            </svg>
+                            <Badge
+                                variant={`phase-${session.status.toLowerCase()}` as BadgeProps['variant']}
+                                className="hidden sm:inline-flex"
+                            >
+                                {PHASE_CONFIG[session.status as RenovationPhase]?.label ?? session.status}
+                            </Badge>
+                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
                         </div>
                     </Link>
                 </li>
