@@ -10,6 +10,7 @@ import { renovationRooms } from '../db/schema/rooms.schema.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { env, isStorageEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
+import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors.js';
 
 const logger = new Logger({ serviceName: 'AssetService' });
 
@@ -102,18 +103,18 @@ export class AssetService {
 
     // Validate asset type
     if (!ASSET_TYPES.includes(assetType)) {
-      throw new Error(`Invalid asset type: ${assetType}. Must be one of: ${ASSET_TYPES.join(', ')}`);
+      throw new BadRequestError(`Invalid asset type: ${assetType}. Must be one of: ${ASSET_TYPES.join(', ')}`);
     }
 
     // Validate file type
     if (!validateFileType(contentType, assetType)) {
       const allowed = ALLOWED_MIME_TYPES[assetType];
-      throw new Error(`Invalid file type: ${contentType}. Allowed for ${assetType}: ${allowed.join(', ')}`);
+      throw new BadRequestError(`Invalid file type: ${contentType}. Allowed for ${assetType}: ${allowed.join(', ')}`);
     }
 
     // Validate file size
     if (!validateFileSize(fileSize)) {
-      throw new Error(`Invalid file size: ${fileSize} bytes. Maximum: ${MAX_FILE_SIZE} bytes (10 MB)`);
+      throw new BadRequestError(`Invalid file size: ${fileSize} bytes. Maximum: ${MAX_FILE_SIZE} bytes (10 MB)`);
     }
 
     // Check room exists
@@ -123,7 +124,7 @@ export class AssetService {
       .where(eq(renovationRooms.id, roomId));
 
     if (!room) {
-      throw new Error(`Room not found: ${roomId}`);
+      throw new NotFoundError(`Room not found: ${roomId}`);
     }
 
     // Check asset count limit
@@ -133,7 +134,7 @@ export class AssetService {
       .where(eq(roomAssets.roomId, roomId));
 
     if (countResult && countResult.count >= MAX_ASSETS_PER_ROOM) {
-      throw new Error(`Maximum assets per room reached (${MAX_ASSETS_PER_ROOM})`);
+      throw new BadRequestError(`Maximum assets per room reached (${MAX_ASSETS_PER_ROOM})`);
     }
 
     // Build storage path
@@ -207,11 +208,11 @@ export class AssetService {
       .where(eq(roomAssets.id, assetId));
 
     if (!asset) {
-      throw new Error(`Asset not found: ${assetId}`);
+      throw new NotFoundError(`Asset not found: ${assetId}`);
     }
 
     if (asset.status !== 'pending') {
-      throw new Error(`Asset is not pending upload: ${asset.status}`);
+      throw new ConflictError(`Asset is not pending upload: ${asset.status}`);
     }
 
     // Verify file exists in storage (if storage is configured)
@@ -299,7 +300,7 @@ export class AssetService {
       .where(eq(roomAssets.id, assetId));
 
     if (!asset) {
-      throw new Error(`Asset not found: ${assetId}`);
+      throw new NotFoundError(`Asset not found: ${assetId}`);
     }
 
     // Remove from storage

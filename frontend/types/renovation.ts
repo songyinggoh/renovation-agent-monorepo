@@ -17,6 +17,18 @@ export interface RoomSummary {
   budget: string | null;
 }
 
+export interface SessionStylePreferences {
+  preferredStyle?: string;
+  colorPreferences?: string[];
+  materialPreferences?: string[];
+  inspiration?: string;
+}
+
+export interface SessionDetail extends SessionSummary {
+  stylePreferences: SessionStylePreferences | null;
+  rooms?: RoomSummary[];
+}
+
 export type AssetType = 'photo' | 'floorplan' | 'render' | 'document';
 export type AssetStatus = 'pending' | 'uploaded' | 'processing' | 'ready' | 'failed';
 export type AssetSource = 'user_upload' | 'pinterest' | 'ai_generated';

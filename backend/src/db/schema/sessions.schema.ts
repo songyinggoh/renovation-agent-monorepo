@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, numeric, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { profiles } from './users.schema.js';
 
 /**
@@ -17,6 +17,7 @@ export const renovationSessions = pgTable('renovation_sessions', {
   phase: text('phase').notNull().default('INTAKE'), // INTAKE | CHECKLIST | PLAN | RENDER | PAYMENT | COMPLETE | ITERATE
   totalBudget: numeric('total_budget', { precision: 10, scale: 2 }),
   currency: text('currency').default('USD'),
+  stylePreferences: jsonb('style_preferences'),
 
   // Payment fields (for Phase 9)
   isPaid: boolean('is_paid').default(false),
@@ -31,3 +32,13 @@ export const renovationSessions = pgTable('renovation_sessions', {
  */
 export type RenovationSession = typeof renovationSessions.$inferSelect;
 export type NewRenovationSession = typeof renovationSessions.$inferInsert;
+
+/**
+ * Shape of the style_preferences JSONB column
+ */
+export interface SessionStylePreferences {
+  preferredStyle?: string;
+  colorPreferences?: string[];
+  materialPreferences?: string[];
+  inspiration?: string;
+}

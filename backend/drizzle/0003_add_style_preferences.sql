@@ -1,0 +1,1 @@
+ALTER TABLE "renovation_sessions" ADD COLUMN IF NOT EXISTS "style_preferences" jsonb;

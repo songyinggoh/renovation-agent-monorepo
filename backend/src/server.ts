@@ -189,6 +189,9 @@ async function startServer(): Promise<void> {
       return false;
     }
 
+    // Create ChatService once (stateless — uses sessionId per call)
+    const chatService = new ChatService();
+
     // Socket.io connection handler
     io.on('connection', (socket: Socket) => {
       const user = (socket as AuthenticatedSocket).user;
@@ -274,8 +277,6 @@ async function startServer(): Promise<void> {
 
         // Process message with ChatService (Phase 1.2: LangChain + Gemini integration)
         try {
-          const chatService = new ChatService();
-
           const streamCallback: StreamCallback = {
             onToken: (token: string) => {
               socket.to(roomName).emit('chat:assistant_token', {

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { RoomService } from '../services/room.service.js';
 import { Logger } from '../utils/logger.js';
+import { NotFoundError } from '../utils/errors.js';
+import { asyncHandler } from '../utils/async.js';
 
 const logger = new Logger({ serviceName: 'RoomController' });
 const roomService = new RoomService();
@@ -9,122 +11,76 @@ const roomService = new RoomService();
  * List all rooms for a session
  * GET /api/sessions/:sessionId/rooms
  */
-export const listRooms = async (req: Request, res: Response) => {
-  const sessionId = req.params.sessionId;
-  if (!sessionId) {
-    res.status(400).json({ error: 'sessionId is required' });
-    return;
-  }
+export const listRooms = asyncHandler(async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
   logger.info('Listing rooms for session', { sessionId });
 
-  try {
-    const rooms = await roomService.getRoomsBySession(sessionId);
-    res.json({ rooms });
-  } catch (error) {
-    logger.error('Failed to list rooms', error as Error, { sessionId });
-    res.status(500).json({ error: 'Failed to retrieve rooms' });
-  }
-};
+  const rooms = await roomService.getRoomsBySession(sessionId);
+  res.json({ rooms });
+});
 
 /**
  * Create a room in a session
  * POST /api/sessions/:sessionId/rooms
  */
-export const createRoom = async (req: Request, res: Response) => {
-  const sessionId = req.params.sessionId;
-  if (!sessionId) {
-    res.status(400).json({ error: 'sessionId is required' });
-    return;
-  }
+export const createRoom = asyncHandler(async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
   const { name, type, budget, requirements } = req.body;
 
   logger.info('Creating room', { sessionId, name, type });
 
-  try {
-    const room = await roomService.createRoom({
-      sessionId,
-      name,
-      type,
-      budget: budget ? String(budget) : null,
-      requirements: requirements ?? null,
-    });
-    res.status(201).json(room);
-  } catch (error) {
-    logger.error('Failed to create room', error as Error, { sessionId });
-    res.status(500).json({ error: 'Failed to create room' });
-  }
-};
+  const room = await roomService.createRoom({
+    sessionId,
+    name,
+    type,
+    budget: budget ? String(budget) : null,
+    requirements: requirements ?? null,
+  });
+  res.status(201).json(room);
+});
 
 /**
  * Get a single room by ID
  * GET /api/rooms/:roomId
  */
-export const getRoom = async (req: Request, res: Response) => {
-  const roomId = req.params.roomId;
-  if (!roomId) {
-    res.status(400).json({ error: 'roomId is required' });
-    return;
-  }
+export const getRoom = asyncHandler(async (req: Request, res: Response) => {
+  const { roomId } = req.params;
   logger.info('Getting room', { roomId });
 
-  try {
-    const room = await roomService.getRoomById(roomId);
-    if (!room) {
-      res.status(404).json({ error: 'Room not found' });
-      return;
-    }
-    res.json(room);
-  } catch (error) {
-    logger.error('Failed to get room', error as Error, { roomId });
-    res.status(500).json({ error: 'Failed to retrieve room' });
+  const room = await roomService.getRoomById(roomId);
+  if (!room) {
+    throw new NotFoundError('Room not found');
   }
-};
+  res.json(room);
+});
 
 /**
  * Update a room
  * PATCH /api/rooms/:roomId
  */
-export const updateRoom = async (req: Request, res: Response) => {
-  const roomId = req.params.roomId;
-  if (!roomId) {
-    res.status(400).json({ error: 'roomId is required' });
-    return;
-  }
+export const updateRoom = asyncHandler(async (req: Request, res: Response) => {
+  const { roomId } = req.params;
   const { name, type, budget, requirements } = req.body;
 
   logger.info('Updating room', { roomId });
 
-  try {
-    const updated = await roomService.updateRoom(roomId, {
-      name,
-      type,
-      budget: budget !== undefined ? String(budget) : undefined,
-      requirements,
-    });
-    res.json(updated);
-  } catch (error) {
-    logger.error('Failed to update room', error as Error, { roomId });
-    res.status(500).json({ error: 'Failed to update room' });
-  }
-};
+  const updated = await roomService.updateRoom(roomId, {
+    name,
+    type,
+    budget: budget !== undefined ? String(budget) : undefined,
+    requirements,
+  });
+  res.json(updated);
+});
 
 /**
  * Delete a room
  * DELETE /api/rooms/:roomId
  */
-export const deleteRoom = async (req: Request, res: Response) => {
-  const roomId = req.params.roomId;
-  if (!roomId) {
-    res.status(400).json({ error: 'roomId is required' });
-    return;
-  }
+export const deleteRoom = asyncHandler(async (req: Request, res: Response) => {
+  const { roomId } = req.params;
   logger.info('Deleting room', { roomId });
 
-  try {
-    await roomService.deleteRoom(roomId);
-    res.status(204).send();
-  } catch (error) {
-    logger.error('Failed to delete room', error as Error, { roomId });
-    res.status(500).json({ error: 'Failed to delete room' });
-  }
-};
+  await roomService.deleteRoom(roomId);
+  res.status(204).send();
+});

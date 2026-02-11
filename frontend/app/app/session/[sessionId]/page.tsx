@@ -1,10 +1,10 @@
-import { ChatView } from '@/components/chat/chat-view';
+import { SessionPageClient } from '@/components/session/session-page-client';
 
-interface ChatPageProps {
+interface SessionPageProps {
   params: Promise<{ sessionId: string }>;
 }
 
-export default async function ChatPage({ params }: ChatPageProps) {
+export default async function SessionPage({ params }: SessionPageProps) {
   const { sessionId } = await params;
-  return <ChatView sessionId={sessionId} />;
+  return <SessionPageClient sessionId={sessionId} />;
 }

@@ -42,21 +42,27 @@ export const saveIntakeStateTool = tool(
     });
 
     try {
-      // Update session with budget and style
-      if (totalBudget || stylePreference) {
-        const updateData: Record<string, unknown> = { updatedAt: new Date() };
-        if (totalBudget) {
-          updateData['totalBudget'] = String(totalBudget);
-        }
-        if (currency) {
-          updateData['currency'] = currency;
-        }
-
-        await db
-          .update(renovationSessions)
-          .set(updateData)
-          .where(eq(renovationSessions.id, sessionId));
+      // Update session with budget, style, and phase transition
+      const updateData: Record<string, unknown> = {
+        updatedAt: new Date(),
+        phase: 'CHECKLIST',
+      };
+      if (totalBudget) {
+        updateData['totalBudget'] = String(totalBudget);
       }
+      if (currency) {
+        updateData['currency'] = currency;
+      }
+      if (stylePreference) {
+        updateData['stylePreferences'] = {
+          preferredStyle: stylePreference,
+        };
+      }
+
+      await db
+        .update(renovationSessions)
+        .set(updateData)
+        .where(eq(renovationSessions.id, sessionId));
 
       // Create rooms (batch insert)
       const roomValues = rooms.map((room) => {
@@ -80,18 +86,37 @@ export const saveIntakeStateTool = tool(
         .values(roomValues)
         .returning();
 
+      const roomSummaries = createdRooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        budget: r.budget,
+      }));
+
       const result = {
         success: true,
-        message: `Saved ${createdRooms.length} room(s)${totalBudget ? ` with total budget of $${totalBudget}` : ''}${stylePreference ? `, style: ${stylePreference}` : ''}`,
-        rooms: createdRooms.map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: r.type,
-          budget: r.budget,
-        })),
+        message: `Saved ${createdRooms.length} room(s)${totalBudget ? ` with total budget of $${totalBudget}` : ''}${stylePreference ? `, style: ${stylePreference}` : ''}. Transitioning to CHECKLIST phase.`,
+        rooms: roomSummaries,
+        phase: 'CHECKLIST' as const,
       };
 
-      logger.info('Intake state saved', {
+      // Emit Socket.io events for real-time UI updates
+      const io = (global as Record<string, unknown>).io as
+        | { to: (room: string) => { emit: (event: string, data: unknown) => void } }
+        | undefined;
+
+      if (io) {
+        io.to(`session:${sessionId}`).emit('session:rooms_updated', {
+          sessionId,
+          rooms: roomSummaries,
+        });
+        io.to(`session:${sessionId}`).emit('session:phase_changed', {
+          sessionId,
+          phase: 'CHECKLIST',
+        });
+      }
+
+      logger.info('Intake state saved, transitioning to CHECKLIST', {
         sessionId,
         roomCount: createdRooms.length,
       });

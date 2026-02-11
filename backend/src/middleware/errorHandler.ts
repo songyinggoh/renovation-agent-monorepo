@@ -15,17 +15,42 @@ export const errorHandler = (
   const errorId = randomUUID();
 
   if (err instanceof AppError) {
-    const appError = err as AppError;
-    logger.warn('Application error', appError, {
+    logger.warn('Application error', err, {
       errorId,
-      statusCode: appError.statusCode,
+      statusCode: err.statusCode,
       path: req.path,
       method: req.method,
     });
 
-    return res.status(appError.statusCode).json({
+    return res.status(err.statusCode).json({
       success: false,
-      error: appError.message,
+      error: err.message,
+      errorId,
+    });
+  }
+
+  // Surface database connection errors in development for faster debugging
+  const isDev = process.env.NODE_ENV === 'development';
+  const dbErr = err as Error & { code?: string };
+  const isDbConnectionError =
+    dbErr.code === '28P01' ||
+    dbErr.code === 'ECONNREFUSED' ||
+    dbErr.message?.includes('ECONNREFUSED') ||
+    dbErr.message?.includes('password authentication failed');
+
+  if (isDev && isDbConnectionError) {
+    logger.error('Database connection error', err, {
+      errorId,
+      errorCode: dbErr.code,
+      path: req.path,
+      method: req.method,
+    });
+
+    return res.status(503).json({
+      success: false,
+      error: 'Database Connection Failed',
+      message: 'Cannot connect to PostgreSQL. Check DATABASE_URL in backend/.env — the password may be incorrect or the database may be unreachable.',
+      hint: 'Get the correct connection string from Supabase Dashboard > Settings > Database > Connection String',
       errorId,
     });
   }
