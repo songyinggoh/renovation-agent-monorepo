@@ -82,7 +82,7 @@ describe('Style Endpoints', () => {
         .set('Authorization', 'Bearer test-token');
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toBe('Failed to retrieve styles');
+      expect(res.body.error).toBe('Internal Server Error');
     });
   });
 
