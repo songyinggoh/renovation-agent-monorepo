@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { pool } from '../db/index.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { renovationSessions } from '../db/schema/sessions.schema.js';
+import { renovationRooms } from '../db/schema/rooms.schema.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'OwnershipMiddleware' });
@@ -23,12 +26,11 @@ export const verifySessionOwnership = async (
   }
 
   try {
-    const result = await pool.query(
-      'SELECT id, user_id FROM renovation_sessions WHERE id = $1 LIMIT 1',
-      [sessionId]
-    );
-
-    const session = result.rows[0] as { id: string; user_id: string | null } | undefined;
+    const [session] = await db
+      .select({ id: renovationSessions.id, userId: renovationSessions.userId })
+      .from(renovationSessions)
+      .where(eq(renovationSessions.id, sessionId))
+      .limit(1);
 
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
@@ -36,10 +38,10 @@ export const verifySessionOwnership = async (
     }
 
     // If session is owned by a user, verify the requester matches
-    if (session.user_id && req.user?.id && session.user_id !== req.user.id) {
+    if (session.userId && req.user?.id && session.userId !== req.user.id) {
       logger.warn('Unauthorized session access attempt', undefined, {
         sessionId,
-        ownerId: session.user_id,
+        ownerId: session.userId,
         requesterId: req.user.id,
       });
       res.status(404).json({ error: 'Session not found' });
@@ -71,26 +73,22 @@ export const verifyRoomOwnership = async (
   }
 
   try {
-    const result = await pool.query(
-      `SELECT r.id, s.user_id
-       FROM renovation_rooms r
-       JOIN renovation_sessions s ON r.session_id = s.id
-       WHERE r.id = $1
-       LIMIT 1`,
-      [roomId]
-    );
-
-    const row = result.rows[0] as { id: string; user_id: string | null } | undefined;
+    const [row] = await db
+      .select({ id: renovationRooms.id, userId: renovationSessions.userId })
+      .from(renovationRooms)
+      .innerJoin(renovationSessions, eq(renovationRooms.sessionId, renovationSessions.id))
+      .where(eq(renovationRooms.id, roomId))
+      .limit(1);
 
     if (!row) {
       res.status(404).json({ error: 'Room not found' });
       return;
     }
 
-    if (row.user_id && req.user?.id && row.user_id !== req.user.id) {
+    if (row.userId && req.user?.id && row.userId !== req.user.id) {
       logger.warn('Unauthorized room access attempt', undefined, {
         roomId,
-        ownerId: row.user_id,
+        ownerId: row.userId,
         requesterId: req.user.id,
       });
       res.status(404).json({ error: 'Room not found' });

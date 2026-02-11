@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { getMessages } from '../../../src/controllers/message.controller.js';
 
-// Mock the database pool
+// Mock the database module (Drizzle ORM)
 vi.mock('../../../src/db/index.js', () => ({
-  pool: {
-    query: vi.fn(),
+  db: {
+    select: vi.fn(),
   },
 }));
 
@@ -18,8 +18,19 @@ vi.mock('../../../src/utils/logger.js', () => ({
   })),
 }));
 
-// Import mocked pool after vi.mock
-import { pool } from '../../../src/db/index.js';
+import { db } from '../../../src/db/index.js';
+
+// Helper to set up the Drizzle chain mock: db.select().from().where().orderBy().limit()
+function mockDrizzleSelect(result: unknown[]) {
+  const chain = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(result),
+  };
+  (db.select as ReturnType<typeof vi.fn>).mockReturnValue(chain);
+  return chain;
+}
 
 describe('MessageController', () => {
   let mockReq: Partial<Request>;
@@ -37,8 +48,8 @@ describe('MessageController', () => {
   describe('getMessages', () => {
     it('should return messages for a valid session', async () => {
       const mockMessages = [
-        { id: '1', session_id: 'session-1', role: 'user', content: 'Hello', created_at: '2026-01-01T00:00:00Z' },
-        { id: '2', session_id: 'session-1', role: 'assistant', content: 'Hi!', created_at: '2026-01-01T00:01:00Z' },
+        { id: '1', sessionId: 'session-1', role: 'user', content: 'Hello', createdAt: new Date('2026-01-01T00:00:00Z') },
+        { id: '2', sessionId: 'session-1', role: 'assistant', content: 'Hi!', createdAt: new Date('2026-01-01T00:01:00Z') },
       ];
 
       mockReq = {
@@ -47,14 +58,14 @@ describe('MessageController', () => {
         user: { id: 'user-1', email: 'test@test.com' } as Request['user'],
       };
 
-      (pool.query as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: mockMessages });
+      const chain = mockDrizzleSelect(mockMessages);
 
       await getMessages(mockReq as Request, mockRes as Response);
 
-      expect(pool.query).toHaveBeenCalledWith(
-        'SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2',
-        ['session-1', 50]
-      );
+      expect(db.select).toHaveBeenCalled();
+      expect(chain.from).toHaveBeenCalled();
+      expect(chain.where).toHaveBeenCalled();
+      expect(chain.limit).toHaveBeenCalledWith(50);
       expect(mockRes.json).toHaveBeenCalledWith({ messages: mockMessages });
     });
 
@@ -65,7 +76,7 @@ describe('MessageController', () => {
         user: { id: 'user-1', email: 'test@test.com' } as Request['user'],
       };
 
-      (pool.query as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [] });
+      mockDrizzleSelect([]);
 
       await getMessages(mockReq as Request, mockRes as Response);
 
@@ -79,14 +90,11 @@ describe('MessageController', () => {
         user: { id: 'user-1', email: 'test@test.com' } as Request['user'],
       };
 
-      (pool.query as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [] });
+      const chain = mockDrizzleSelect([]);
 
       await getMessages(mockReq as Request, mockRes as Response);
 
-      expect(pool.query).toHaveBeenCalledWith(
-        expect.any(String),
-        ['session-1', 10]
-      );
+      expect(chain.limit).toHaveBeenCalledWith(10);
     });
 
     it('should cap limit at 200', async () => {
@@ -96,14 +104,11 @@ describe('MessageController', () => {
         user: { id: 'user-1', email: 'test@test.com' } as Request['user'],
       };
 
-      (pool.query as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [] });
+      const chain = mockDrizzleSelect([]);
 
       await getMessages(mockReq as Request, mockRes as Response);
 
-      expect(pool.query).toHaveBeenCalledWith(
-        expect.any(String),
-        ['session-1', 200]
-      );
+      expect(chain.limit).toHaveBeenCalledWith(200);
     });
 
     it('should forward database errors to Express error handler via next()', async () => {
@@ -114,7 +119,13 @@ describe('MessageController', () => {
       };
 
       const dbError = new Error('DB connection lost');
-      (pool.query as ReturnType<typeof vi.fn>).mockRejectedValue(dbError);
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockRejectedValue(dbError),
+      };
+      (db.select as ReturnType<typeof vi.fn>).mockReturnValue(chain);
 
       const mockNext = vi.fn() as unknown as NextFunction;
 

@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { pool } from '../db/index.js';
+import { eq, asc } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { chatMessages } from '../db/schema/messages.schema.js';
 import { Logger } from '../utils/logger.js';
 import { asyncHandler } from '../utils/async.js';
 
@@ -20,10 +22,12 @@ export const getMessages = asyncHandler(async (req: Request, res: Response) => {
         userId: req.user?.id,
     });
 
-    const result = await pool.query(
-        'SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2',
-        [sessionId, limit]
-    );
+    const messages = await db
+        .select()
+        .from(chatMessages)
+        .where(eq(chatMessages.sessionId, sessionId))
+        .orderBy(asc(chatMessages.createdAt))
+        .limit(limit);
 
-    res.json({ messages: result.rows });
+    res.json({ messages });
 });
