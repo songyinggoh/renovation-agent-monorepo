@@ -4,6 +4,8 @@ import { EmptyState } from '@/components/chat/empty-state';
 
 vi.mock('lucide-react', () => ({
   Home: () => <div data-testid="home-icon" />,
+  Camera: () => <div data-testid="camera-icon" />,
+  Map: () => <div data-testid="map-icon" />,
 }));
 
 describe('EmptyState', () => {
@@ -21,7 +23,7 @@ describe('EmptyState', () => {
 
     expect(
       screen.getByText(
-        'Describe your renovation vision and our AI will help you plan every detail.',
+        'Describe your renovation vision or upload photos of your space \u2014 our AI will help you plan every detail.',
       ),
     ).toBeDefined();
 
