@@ -19,6 +19,24 @@ export interface RoomSummary {
 
 export type AssetType = 'photo' | 'floorplan' | 'render' | 'document';
 export type AssetStatus = 'pending' | 'uploaded' | 'processing' | 'ready' | 'failed';
+export type AssetSource = 'user_upload' | 'pinterest' | 'ai_generated';
+
+export interface AssetMetadata {
+  width?: number;
+  height?: number;
+  orientation?: 'landscape' | 'portrait' | 'square';
+  roomAngle?: 'overview' | 'detail' | 'closeup' | 'corner';
+  lighting?: 'natural' | 'artificial' | 'mixed';
+  scale?: string;
+  dimensions?: { length: number; width: number; unit: 'ft' | 'm' };
+  style?: string;
+  prompt?: string;
+  modelVersion?: string;
+  thumbnailGenerated?: boolean;
+  compressionApplied?: boolean;
+  originalSize?: number;
+  [key: string]: unknown;
+}
 
 export interface RoomAsset {
   id: string;
@@ -26,7 +44,7 @@ export interface RoomAsset {
   roomId: string;
   assetType: AssetType;
   storagePath: string;
-  source: string;
+  source: AssetSource;
   status: AssetStatus;
   originalFilename: string;
   contentType: string;
@@ -35,7 +53,7 @@ export interface RoomAsset {
   caption: string | null;
   altText: string | null;
   uploadedBy: string | null;
-  metadata: Record<string, unknown> | null;
+  metadata: AssetMetadata | null;
   createdAt: string;
   updatedAt: string;
 }
