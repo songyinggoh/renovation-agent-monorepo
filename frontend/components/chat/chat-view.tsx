@@ -20,9 +20,11 @@ export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
   const { messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory } = useChat(sessionId);
 
   const upload = useFileUpload({
-    roomId: roomId ?? sessionId,
+    roomId: roomId ?? '',
     sessionId,
   });
+
+  const canUpload = Boolean(roomId);
 
   return (
     <div className="flex h-[calc(100vh-10rem)] flex-col rounded-lg border border-border surface-chat shadow-sm">
@@ -74,11 +76,13 @@ export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
         onSend={sendMessage}
         disabled={!isConnected}
         phase={phase}
-        uploadFiles={upload.files}
-        onAddFiles={upload.addFiles}
-        onRemoveFile={upload.removeFile}
-        onRetryFile={upload.retryFile}
-        onClearCompleted={upload.clearCompleted}
+        {...(canUpload ? {
+          uploadFiles: upload.files,
+          onAddFiles: upload.addFiles,
+          onRemoveFile: upload.removeFile,
+          onRetryFile: upload.retryFile,
+          onClearCompleted: upload.clearCompleted,
+        } : {})}
       />
     </div>
   );
