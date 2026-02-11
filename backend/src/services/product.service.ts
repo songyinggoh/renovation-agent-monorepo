@@ -23,10 +23,6 @@ export interface ProductSearchFilters {
  * Handles seed product search (in-memory) and DB-backed room product CRUD
  */
 export class ProductService {
-  /**
-   * Search seed products by filters (in-memory)
-   * Used by the LangChain search_products tool
-   */
   searchSeedProducts(filters: ProductSearchFilters): SeedProduct[] {
     logger.info('Searching seed products', { filters });
 
@@ -70,29 +66,18 @@ export class ProductService {
     return results;
   }
 
-  /**
-   * Get products recommended for a specific room (from DB)
-   */
   async getProductsByRoom(roomId: string): Promise<ProductRecommendation[]> {
     logger.info('Fetching products for room', { roomId });
 
-    try {
-      const products = await db
-        .select()
-        .from(productRecommendations)
-        .where(eq(productRecommendations.roomId, roomId));
+    const products = await db
+      .select()
+      .from(productRecommendations)
+      .where(eq(productRecommendations.roomId, roomId));
 
-      logger.info('Products fetched', { roomId, count: products.length });
-      return products;
-    } catch (error) {
-      logger.error('Failed to fetch products', error as Error, { roomId });
-      throw error;
-    }
+    logger.info('Products fetched', { roomId, count: products.length });
+    return products;
   }
 
-  /**
-   * Add a product recommendation to a room
-   */
   async addProductToRoom(
     product: NewProductRecommendation
   ): Promise<ProductRecommendation> {
@@ -101,26 +86,19 @@ export class ProductService {
       name: product.name,
     });
 
-    try {
-      const [created] = await db
-        .insert(productRecommendations)
-        .values(product)
-        .returning();
+    const [created] = await db
+      .insert(productRecommendations)
+      .values(product)
+      .returning();
 
-      if (!created) {
-        throw new Error('Failed to add product: No record returned');
-      }
-
-      logger.info('Product added', {
-        productId: created.id,
-        roomId: created.roomId,
-      });
-      return created;
-    } catch (error) {
-      logger.error('Failed to add product', error as Error, {
-        roomId: product.roomId,
-      });
-      throw error;
+    if (!created) {
+      throw new Error('Failed to add product: No record returned');
     }
+
+    logger.info('Product added', {
+      productId: created.id,
+      roomId: created.roomId,
+    });
+    return created;
   }
 }

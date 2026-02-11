@@ -21,25 +21,18 @@ export class RoomService {
       type: room.type,
     });
 
-    try {
-      const [created] = await db.insert(renovationRooms).values(room).returning();
+    const [created] = await db.insert(renovationRooms).values(room).returning();
 
-      if (!created) {
-        throw new Error('Failed to create room: No record returned');
-      }
-
-      logger.info('Room created successfully', {
-        roomId: created.id,
-        sessionId: created.sessionId,
-      });
-
-      return created;
-    } catch (error) {
-      logger.error('Failed to create room', error as Error, {
-        sessionId: room.sessionId,
-      });
-      throw error;
+    if (!created) {
+      throw new Error('Failed to create room: No record returned');
     }
+
+    logger.info('Room created successfully', {
+      roomId: created.id,
+      sessionId: created.sessionId,
+    });
+
+    return created;
   }
 
   /**
@@ -48,37 +41,25 @@ export class RoomService {
   async getRoomsBySession(sessionId: string): Promise<RenovationRoom[]> {
     logger.info('Fetching rooms for session', { sessionId });
 
-    try {
-      const rooms = await db
-        .select()
-        .from(renovationRooms)
-        .where(eq(renovationRooms.sessionId, sessionId));
+    const rooms = await db
+      .select()
+      .from(renovationRooms)
+      .where(eq(renovationRooms.sessionId, sessionId));
 
-      logger.info('Rooms fetched', { sessionId, count: rooms.length });
-      return rooms;
-    } catch (error) {
-      logger.error('Failed to fetch rooms', error as Error, { sessionId });
-      throw error;
-    }
+    logger.info('Rooms fetched', { sessionId, count: rooms.length });
+    return rooms;
   }
 
   /**
    * Get a single room by ID
    */
   async getRoomById(roomId: string): Promise<RenovationRoom | null> {
-    logger.info('Fetching room', { roomId });
+    const [room] = await db
+      .select()
+      .from(renovationRooms)
+      .where(eq(renovationRooms.id, roomId));
 
-    try {
-      const [room] = await db
-        .select()
-        .from(renovationRooms)
-        .where(eq(renovationRooms.id, roomId));
-
-      return room ?? null;
-    } catch (error) {
-      logger.error('Failed to fetch room', error as Error, { roomId });
-      throw error;
-    }
+    return room ?? null;
   }
 
   /**
@@ -90,23 +71,18 @@ export class RoomService {
   ): Promise<RenovationRoom> {
     logger.info('Updating room', { roomId });
 
-    try {
-      const [updated] = await db
-        .update(renovationRooms)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(renovationRooms.id, roomId))
-        .returning();
+    const [updated] = await db
+      .update(renovationRooms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(renovationRooms.id, roomId))
+      .returning();
 
-      if (!updated) {
-        throw new Error(`Room not found: ${roomId}`);
-      }
-
-      logger.info('Room updated', { roomId });
-      return updated;
-    } catch (error) {
-      logger.error('Failed to update room', error as Error, { roomId });
-      throw error;
+    if (!updated) {
+      throw new Error(`Room not found: ${roomId}`);
     }
+
+    logger.info('Room updated', { roomId });
+    return updated;
   }
 
   /**
@@ -114,14 +90,8 @@ export class RoomService {
    */
   async deleteRoom(roomId: string): Promise<void> {
     logger.info('Deleting room', { roomId });
-
-    try {
-      await db.delete(renovationRooms).where(eq(renovationRooms.id, roomId));
-      logger.info('Room deleted', { roomId });
-    } catch (error) {
-      logger.error('Failed to delete room', error as Error, { roomId });
-      throw error;
-    }
+    await db.delete(renovationRooms).where(eq(renovationRooms.id, roomId));
+    logger.info('Room deleted', { roomId });
   }
 
   /**
@@ -130,22 +100,17 @@ export class RoomService {
   async updateRoomChecklist(roomId: string, checklist: Checklist): Promise<RenovationRoom> {
     logger.info('Updating room checklist', { roomId });
 
-    try {
-      const [updated] = await db
-        .update(renovationRooms)
-        .set({ checklist, updatedAt: new Date() })
-        .where(eq(renovationRooms.id, roomId))
-        .returning();
+    const [updated] = await db
+      .update(renovationRooms)
+      .set({ checklist, updatedAt: new Date() })
+      .where(eq(renovationRooms.id, roomId))
+      .returning();
 
-      if (!updated) {
-        throw new Error(`Room not found: ${roomId}`);
-      }
-
-      logger.info('Room checklist updated', { roomId });
-      return updated;
-    } catch (error) {
-      logger.error('Failed to update room checklist', error as Error, { roomId });
-      throw error;
+    if (!updated) {
+      throw new Error(`Room not found: ${roomId}`);
     }
+
+    logger.info('Room checklist updated', { roomId });
+    return updated;
   }
 }

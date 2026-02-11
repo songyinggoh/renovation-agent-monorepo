@@ -29,10 +29,9 @@ const SIGNED_URL_EXPIRY = 900; // 15 minutes
  * Sanitize a filename for safe storage path usage
  */
 export function sanitizeFilename(filename: string): string {
-  const ext = filename.lastIndexOf('.') >= 0
-    ? filename.slice(filename.lastIndexOf('.'))
-    : '';
-  const name = filename.slice(0, filename.lastIndexOf('.') >= 0 ? filename.lastIndexOf('.') : undefined);
+  const dotIndex = filename.lastIndexOf('.');
+  const ext = dotIndex >= 0 ? filename.slice(dotIndex) : '';
+  const name = filename.slice(0, dotIndex >= 0 ? dotIndex : undefined);
 
   const safeName = name
     .replace(/[^a-zA-Z0-9._-]/g, '_')

@@ -20,43 +20,27 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
     refetch: refetchRooms,
   } = useSessionRooms(sessionId);
 
-  // Listen for session:phase_changed and session:rooms_updated via the existing socket
-  // We poll-check by watching for custom events dispatched from the socket layer
-  // For now, use a MutationObserver-like approach: watch messages for tool results
   const lastRefetchRef = useRef<number>(0);
 
-  // Expose a global callback the socket can invoke to trigger refetch
   useEffect(() => {
     const handler = (event: CustomEvent<{ type: string }>) => {
       const now = Date.now();
-      // Debounce to avoid rapid-fire refetches
       if (now - lastRefetchRef.current < 2000) return;
       lastRefetchRef.current = now;
 
-      if (event.detail.type === 'rooms_updated') {
-        refetchRooms();
-      }
-      if (event.detail.type === 'phase_changed' || event.detail.type === 'rooms_updated') {
-        refetchSession();
+      switch (event.detail.type) {
+        case 'rooms_updated':
+          refetchRooms();
+          refetchSession();
+          break;
+        case 'phase_changed':
+          refetchSession();
+          break;
       }
     };
 
     window.addEventListener('session:update', handler as EventListener);
     return () => window.removeEventListener('session:update', handler as EventListener);
-  }, [refetchSession, refetchRooms]);
-
-  // Also refetch when tool_result for save_intake_state appears in messages
-  // We do this by polling the chat messages via a simpler approach:
-  // Expose refetch functions on window for the socket hook to call
-  useEffect(() => {
-    const win = window as unknown as Record<string, unknown>;
-    win.__sessionRefetch = () => {
-      refetchSession();
-      refetchRooms();
-    };
-    return () => {
-      delete win.__sessionRefetch;
-    };
   }, [refetchSession, refetchRooms]);
 
   const phase = session?.phase ?? 'INTAKE';

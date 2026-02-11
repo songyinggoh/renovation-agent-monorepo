@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { createClient } from '@/lib/supabase/client';
 import { fetchWithAuth } from '@/lib/api';
+import { mapMessagesResponse } from '@/lib/api-mappers';
 import { Message } from '@/types/chat';
 import { Logger } from '@/lib/logger';
 
 const logger = new Logger({ serviceName: 'useChat' });
 
-export const useChat = (sessionId: string) => {
+export function useChat(sessionId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,16 +26,7 @@ export const useChat = (sessionId: string) => {
       setIsLoadingHistory(true);
       try {
         const data = await fetchWithAuth(`/api/sessions/${sessionId}/messages`);
-        const history: Message[] = (data.messages || []).map(
-          (msg: Record<string, unknown>) => ({
-            id: msg.id as string,
-            role: msg.role as Message['role'],
-            content: msg.content as string,
-            created_at: msg.created_at as string,
-            session_id: msg.session_id as string,
-          })
-        );
-        setMessages(history);
+        setMessages(mapMessagesResponse(data));
       } catch (err) {
         logger.error('Failed to load message history', err as Error);
       } finally {
@@ -259,4 +251,4 @@ export const useChat = (sessionId: string) => {
     isAssistantTyping,
     isLoadingHistory,
   };
-};
+}

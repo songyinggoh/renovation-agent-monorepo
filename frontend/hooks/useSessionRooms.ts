@@ -1,53 +1,40 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
 import { fetchWithAuth } from '@/lib/api';
+import { mapRoomsResponse } from '@/lib/api-mappers';
 import type { RoomSummary } from '@/types/renovation';
 
+export function sessionRoomsQueryKey(sessionId: string) {
+  return ['session', sessionId, 'rooms'] as const;
+}
+
 export function useSessionRooms(sessionId: string) {
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [userSelection, setUserSelection] = useState<string | null>(null);
 
-  const fetchRooms = useCallback(async () => {
-    if (!sessionId) return;
+  const { data: rooms = [] as RoomSummary[], isLoading, error } = useQuery({
+    queryKey: sessionRoomsQueryKey(sessionId),
+    queryFn: () => fetchWithAuth(`/api/sessions/${sessionId}/rooms`).then(mapRoomsResponse),
+    enabled: !!sessionId,
+  });
 
-    try {
-      setError(null);
-      const data = await fetchWithAuth(`/api/sessions/${sessionId}/rooms`);
+  // Use explicit user selection if it still exists in the room list, otherwise default to first
+  const selectedRoomId = userSelection && rooms.some((r) => r.id === userSelection)
+    ? userSelection
+    : rooms[0]?.id ?? null;
 
-      // Map snake_case DB response to camelCase
-      const mapped: RoomSummary[] = (data.rooms ?? []).map(
-        (r: Record<string, unknown>) => ({
-          id: r.id as string,
-          name: r.name as string,
-          type: r.type as string,
-          budget: (r.budget as string | null) ?? null,
-        })
-      );
+  const refetch = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: sessionRoomsQueryKey(sessionId) });
+  }, [queryClient, sessionId]);
 
-      setRooms(mapped);
-
-      // Auto-select first room if none selected
-      if (!selectedRoomId && mapped.length > 0) {
-        setSelectedRoomId(mapped[0].id);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch rooms';
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [sessionId, selectedRoomId]);
-
-  useEffect(() => {
-    fetchRooms();
-  }, [fetchRooms]);
-
-  const selectRoom = useCallback((roomId: string) => {
-    setSelectedRoomId(roomId);
-  }, []);
-
-  return { rooms, isLoading, error, selectedRoomId, selectRoom, refetch: fetchRooms };
+  return {
+    rooms,
+    isLoading,
+    error: error?.message ?? null,
+    selectedRoomId,
+    selectRoom: setUserSelection,
+    refetch,
+  };
 }

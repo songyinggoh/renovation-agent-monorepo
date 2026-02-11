@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { renovationRooms } from '../db/schema/rooms.schema.js';
 import { Logger } from '../utils/logger.js';
+import { emitToSession } from '../utils/socket-emitter.js';
 
 const logger = new Logger({ serviceName: 'SaveIntakeStateTool' });
 
@@ -43,21 +44,13 @@ export const saveIntakeStateTool = tool(
 
     try {
       // Update session with budget, style, and phase transition
-      const updateData: Record<string, unknown> = {
+      const updateData = {
         updatedAt: new Date(),
-        phase: 'CHECKLIST',
+        phase: 'CHECKLIST' as const,
+        ...(totalBudget && { totalBudget: String(totalBudget) }),
+        ...(currency && { currency }),
+        ...(stylePreference && { stylePreferences: { preferredStyle: stylePreference } }),
       };
-      if (totalBudget) {
-        updateData['totalBudget'] = String(totalBudget);
-      }
-      if (currency) {
-        updateData['currency'] = currency;
-      }
-      if (stylePreference) {
-        updateData['stylePreferences'] = {
-          preferredStyle: stylePreference,
-        };
-      }
 
       await db
         .update(renovationSessions)
@@ -66,11 +59,12 @@ export const saveIntakeStateTool = tool(
 
       // Create rooms (batch insert)
       const roomValues = rooms.map((room) => {
-        const requirements = room.requirements
-          ? { ...room.requirements, stylePreference }
-          : stylePreference
-            ? { stylePreference }
-            : null;
+        let requirements: Record<string, unknown> | null = null;
+        if (room.requirements) {
+          requirements = { ...room.requirements, stylePreference };
+        } else if (stylePreference) {
+          requirements = { stylePreference };
+        }
 
         return {
           sessionId,
@@ -101,20 +95,8 @@ export const saveIntakeStateTool = tool(
       };
 
       // Emit Socket.io events for real-time UI updates
-      const io = (global as Record<string, unknown>).io as
-        | { to: (room: string) => { emit: (event: string, data: unknown) => void } }
-        | undefined;
-
-      if (io) {
-        io.to(`session:${sessionId}`).emit('session:rooms_updated', {
-          sessionId,
-          rooms: roomSummaries,
-        });
-        io.to(`session:${sessionId}`).emit('session:phase_changed', {
-          sessionId,
-          phase: 'CHECKLIST',
-        });
-      }
+      emitToSession(sessionId, 'session:rooms_updated', { sessionId, rooms: roomSummaries });
+      emitToSession(sessionId, 'session:phase_changed', { sessionId, phase: 'CHECKLIST' });
 
       logger.info('Intake state saved, transitioning to CHECKLIST', {
         sessionId,

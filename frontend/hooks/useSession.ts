@@ -1,43 +1,31 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { fetchWithAuth } from '@/lib/api';
-import type { SessionDetail } from '@/types/renovation';
+import { mapSessionResponse } from '@/lib/api-mappers';
+
+export function sessionQueryKey(sessionId: string) {
+  return ['session', sessionId] as const;
+}
 
 export function useSession(sessionId: string) {
-  const [session, setSession] = useState<SessionDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchSession = useCallback(async () => {
-    if (!sessionId) return;
+  const { data: session = null, isLoading, error } = useQuery({
+    queryKey: sessionQueryKey(sessionId),
+    queryFn: () => fetchWithAuth(`/api/sessions/${sessionId}`).then(mapSessionResponse),
+    enabled: !!sessionId,
+  });
 
-    try {
-      setError(null);
-      const data = await fetchWithAuth(`/api/sessions/${sessionId}`);
+  const refetch = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: sessionQueryKey(sessionId) });
+  }, [queryClient, sessionId]);
 
-      // Map snake_case DB response to camelCase
-      setSession({
-        id: data.id,
-        title: data.title,
-        phase: data.phase,
-        totalBudget: data.total_budget,
-        currency: data.currency ?? 'USD',
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        stylePreferences: data.style_preferences ?? null,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch session';
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [sessionId]);
-
-  useEffect(() => {
-    fetchSession();
-  }, [fetchSession]);
-
-  return { session, isLoading, error, refetch: fetchSession };
+  return {
+    session,
+    isLoading,
+    error: error?.message ?? null,
+    refetch,
+  };
 }
