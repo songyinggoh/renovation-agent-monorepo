@@ -2,11 +2,16 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip } from 'lucide-react';
+import { Send, Paperclip, Camera, Map } from 'lucide-react';
 import { FileUploadZone } from '@/components/chat/file-upload-zone';
 import type { UploadFile } from '@/hooks/useFileUpload';
 import type { RenovationPhase } from '@/lib/design-tokens';
 import type { AssetType } from '@/types/renovation';
+
+const UPLOAD_ASSET_TYPES: { value: AssetType; label: string; icon: typeof Camera }[] = [
+  { value: 'photo', label: 'Photos', icon: Camera },
+  { value: 'floorplan', label: 'Floor Plans', icon: Map },
+];
 
 const PHASE_PLACEHOLDERS: Record<RenovationPhase, string> = {
   INTAKE: 'Describe your renovation vision...',
@@ -41,6 +46,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadAssetType, setUploadAssetType] = useState<AssetType>('photo');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = () => {
@@ -76,9 +82,26 @@ export function ChatInput({
       {/* Upload zone */}
       {showUpload && hasUploadSupport && uploadFiles && (
         <div className="border-b border-border px-4 py-3">
+          <div className="mb-2 flex gap-1">
+            {UPLOAD_ASSET_TYPES.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setUploadAssetType(value)}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  uploadAssetType === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
           <FileUploadZone
             files={uploadFiles}
-            assetType="photo"
+            assetType={uploadAssetType}
             onAddFiles={onAddFiles}
             onRemoveFile={onRemoveFile}
             onRetryFile={onRetryFile}

@@ -36,6 +36,8 @@ export function useFileUpload({
   maxConcurrent = 3,
 }: UseFileUploadOptions) {
   const [files, setFiles] = useState<UploadFile[]>([]);
+  const filesRef = useRef<UploadFile[]>([]);
+  filesRef.current = files;
   const activeUploads = useRef(0);
   const queueRef = useRef<string[]>([]);
 
@@ -60,8 +62,7 @@ export function useFileUpload({
       if (!fileId) break;
 
       activeUploads.current++;
-      // Find the file in current state
-      const uploadFile = files.find((f) => f.id === fileId);
+      const uploadFile = filesRef.current.find((f) => f.id === fileId);
       if (!uploadFile || uploadFile.status !== 'pending') {
         activeUploads.current--;
         continue;
@@ -73,7 +74,7 @@ export function useFileUpload({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxConcurrent, files]);
+  }, [maxConcurrent]);
 
   const uploadSingleFile = async (id: string, file: File, type: AssetType) => {
     try {
@@ -164,7 +165,7 @@ export function useFileUpload({
 
   const retryFile = useCallback(
     (id: string) => {
-      const file = files.find((f) => f.id === id);
+      const file = filesRef.current.find((f) => f.id === id);
       if (!file || file.status !== 'error') return;
 
       const validation = validateFile(file.file, file.assetType);
@@ -174,7 +175,7 @@ export function useFileUpload({
       queueRef.current.push(id);
       processQueue();
     },
-    [files, updateFile, processQueue]
+    [updateFile, processQueue]
   );
 
   const clearCompleted = useCallback(() => {
