@@ -14,7 +14,7 @@ const UPLOAD_ASSET_TYPES: { value: AssetType; label: string; icon: typeof Camera
 ];
 
 const PHASE_PLACEHOLDERS: Record<RenovationPhase, string> = {
-  INTAKE: 'Describe your renovation vision...',
+  INTAKE: 'Describe your vision or upload room photos...',
   CHECKLIST: 'What requirements should we add?',
   PLAN: 'Ask about the plan details...',
   RENDER: 'Describe what you\'d like to see...',

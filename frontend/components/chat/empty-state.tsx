@@ -1,6 +1,6 @@
 'use client';
 
-import { Home } from 'lucide-react';
+import { Home, Camera, Map } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SuggestionBubbles } from './suggestion-bubbles';
 import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
@@ -8,6 +8,7 @@ import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
 const DEFAULT_SUGGESTIONS = [
   'I want to renovate my kitchen',
   'Help me plan a bathroom remodel',
+  'Upload photos of my space',
   'What does a full renovation cost?',
   'I need help choosing materials',
 ];
@@ -67,8 +68,13 @@ export function EmptyState({
             Let&apos;s plan something beautiful
           </h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Describe your renovation vision and our AI will help you plan every detail.
+            Describe your renovation vision or upload photos of your space &mdash; our AI will help you plan every detail.
           </p>
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Camera className="h-3.5 w-3.5" />
+            <Map className="h-3.5 w-3.5" />
+            <span>Share room photos or floor plans to get started</span>
+          </div>
         </>
       )}
       <SuggestionBubbles
