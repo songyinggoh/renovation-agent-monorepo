@@ -121,7 +121,9 @@ describe('saveIntakeStateTool', () => {
     expect(mockDbInsert).toHaveBeenCalledTimes(1);
   });
 
-  it('should skip session update when no budget or style preference', async () => {
+  it('should skip budget and style fields in session update when not provided', async () => {
+    const { mockSet } = setupDbUpdateChain();
+
     setupDbInsertChain([
       {
         id: 'room-uuid-2',
@@ -146,8 +148,12 @@ describe('saveIntakeStateTool', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.rooms).toHaveLength(1);
 
-    // db.update should NOT have been called
-    expect(mockDbUpdate).not.toHaveBeenCalled();
+    // db.update IS called (phase transition + updatedAt), but without budget/style fields
+    expect(mockDbUpdate).toHaveBeenCalled();
+    const setArg = mockSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg).toHaveProperty('phase', 'CHECKLIST');
+    expect(setArg).not.toHaveProperty('totalBudget');
+    expect(setArg).not.toHaveProperty('stylePreferences');
   });
 
   it('should batch-insert multiple rooms in a single query', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { getMessages } from '../../../src/controllers/message.controller.js';
 
 // Mock the database pool
@@ -106,22 +106,25 @@ describe('MessageController', () => {
       );
     });
 
-    it('should return 500 on database error', async () => {
+    it('should forward database errors to Express error handler via next()', async () => {
       mockReq = {
         params: { sessionId: 'session-1' },
         query: {},
         user: { id: 'user-1', email: 'test@test.com' } as Request['user'],
       };
 
-      (pool.query as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB connection lost'));
+      const dbError = new Error('DB connection lost');
+      (pool.query as ReturnType<typeof vi.fn>).mockRejectedValue(dbError);
 
-      await getMessages(mockReq as Request, mockRes as Response);
+      const mockNext = vi.fn() as unknown as NextFunction;
 
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Internal Server Error',
-        message: 'Failed to retrieve messages',
-      });
+      getMessages(mockReq as Request, mockRes as Response, mockNext);
+
+      // asyncHandler's .catch(next) fires on the microtask queue
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockNext).toHaveBeenCalledWith(dbError);
+      expect(mockRes.status).not.toHaveBeenCalled();
     });
   });
 });
