@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip, Camera, Map } from 'lucide-react';
+import { Send, Paperclip, Camera, Map, ImagePlus } from 'lucide-react';
 import { FileUploadZone } from '@/components/chat/file-upload-zone';
 import type { UploadFile } from '@/hooks/useFileUpload';
 import type { RenovationPhase } from '@/lib/design-tokens';
@@ -45,9 +45,18 @@ export function ChatInput({
   onClearCompleted,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
-  const [showUpload, setShowUpload] = useState(false);
+  const [uploadToggledByUser, setUploadToggledByUser] = useState<boolean | null>(null);
+  const [intakePromptDismissed, setIntakePromptDismissed] = useState(false);
   const [uploadAssetType, setUploadAssetType] = useState<AssetType>('photo');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const hasUploadSupport = onAddFiles && onRemoveFile && onRetryFile && onClearCompleted;
+  const isIntakePhase = phase === 'INTAKE' && hasUploadSupport;
+  const hasUploadedFiles = (uploadFiles?.filter((f) => f.status === 'success').length ?? 0) > 0;
+  const showIntakePrompt = isIntakePhase && !intakePromptDismissed && !hasUploadedFiles;
+
+  // Auto-expand upload zone during INTAKE, but let user override via paperclip toggle
+  const showUpload = uploadToggledByUser ?? (isIntakePhase && !intakePromptDismissed);
 
   const handleSubmit = () => {
     const trimmed = input.trim();
@@ -72,13 +81,33 @@ export function ChatInput({
     target.style.height = Math.min(target.scrollHeight, 128) + 'px';
   };
 
-  const hasUploadSupport = onAddFiles && onRemoveFile && onRetryFile && onClearCompleted;
   const activeUploadCount = uploadFiles?.filter(
     (f) => f.status !== 'success' && f.status !== 'error'
   ).length ?? 0;
 
   return (
     <div className="border-t border-border bg-card">
+      {/* Intake guidance prompt */}
+      {showIntakePrompt && (
+        <div className="flex items-start gap-3 border-b border-border bg-primary/5 px-4 py-3">
+          <ImagePlus className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Upload your room photos or floor plan</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Share photos of the space you want to renovate. This helps us understand your current layout and suggest the best design options.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIntakePromptDismissed(true)}
+            className="flex-shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+            aria-label="Dismiss upload prompt"
+          >
+            <span className="text-xs">Skip</span>
+          </button>
+        </div>
+      )}
+
       {/* Upload zone */}
       {showUpload && hasUploadSupport && uploadFiles && (
         <div className="border-b border-border px-4 py-3">
@@ -125,7 +154,7 @@ export function ChatInput({
             variant="ghost"
             size="icon"
             className="relative h-10 w-10 flex-shrink-0"
-            onClick={() => setShowUpload((prev) => !prev)}
+            onClick={() => setUploadToggledByUser((prev) => !(prev ?? showUpload))}
             disabled={disabled}
             aria-label={showUpload ? 'Hide file upload' : 'Attach files'}
           >
