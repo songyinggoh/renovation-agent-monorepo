@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ProductService } from '../services/product.service.js';
 import { Logger } from '../utils/logger.js';
+import { asyncHandler } from '../utils/async.js';
 
 const logger = new Logger({ serviceName: 'ProductController' });
 const productService = new ProductService();
@@ -27,42 +28,28 @@ export const searchProducts = (req: Request, res: Response) => {
     query: q,
   });
 
-  try {
-    const results = productService.searchSeedProducts({
-      style,
-      category,
-      maxPrice,
-      roomType,
-      query: q,
-    });
+  const results = productService.searchSeedProducts({
+    style,
+    category,
+    maxPrice,
+    roomType,
+    query: q,
+  });
 
-    res.json({
-      products: results,
-      count: results.length,
-    });
-  } catch (error) {
-    logger.error('Failed to search products', error as Error);
-    res.status(500).json({ error: 'Failed to search products' });
-  }
+  res.json({
+    products: results,
+    count: results.length,
+  });
 };
 
 /**
  * Get product recommendations for a room
  * GET /api/rooms/:roomId/products
  */
-export const getRoomProducts = async (req: Request, res: Response) => {
-  const roomId = req.params.roomId;
-  if (!roomId) {
-    res.status(400).json({ error: 'roomId is required' });
-    return;
-  }
+export const getRoomProducts = asyncHandler(async (req: Request, res: Response) => {
+  const { roomId } = req.params;
   logger.info('Getting products for room', { roomId });
 
-  try {
-    const products = await productService.getProductsByRoom(roomId);
-    res.json({ products, count: products.length });
-  } catch (error) {
-    logger.error('Failed to get room products', error as Error, { roomId });
-    res.status(500).json({ error: 'Failed to retrieve room products' });
-  }
-};
+  const products = await productService.getProductsByRoom(roomId);
+  res.json({ products, count: products.length });
+});
