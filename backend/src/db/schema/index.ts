@@ -34,3 +34,6 @@ export * from './styles.schema.js';
 
 // Room assets (file uploads)
 export * from './assets.schema.js';
+
+// Style moodboard images
+export * from './style-images.schema.js';

@@ -4,6 +4,8 @@ import {
   getStyleBySlug,
   searchStyles,
   seedStyles,
+  getStyleImages,
+  seedStyleImages,
 } from '../controllers/style.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { validateQuery } from '../middleware/validate.js';
@@ -31,6 +33,18 @@ router.get('/search', validateQuery(searchStylesQuerySchema), searchStyles);
  * @desc Seed the style catalog (dev only)
  */
 router.post('/seed', seedStyles);
+
+/**
+ * @route POST /api/styles/seed-images
+ * @desc Seed style moodboard images (dev only)
+ */
+router.post('/seed-images', seedStyleImages);
+
+/**
+ * @route GET /api/styles/:slug/images
+ * @desc Get moodboard images for a style
+ */
+router.get('/:slug/images', getStyleImages);
 
 /**
  * @route GET /api/styles/:slug

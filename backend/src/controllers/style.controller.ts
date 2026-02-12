@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { StyleService } from '../services/style.service.js';
+import { StyleImageService } from '../services/style-image.service.js';
+import { SEED_STYLE_IMAGES } from '../data/index.js';
 import { Logger } from '../utils/logger.js';
 import { NotFoundError } from '../utils/errors.js';
 import { asyncHandler } from '../utils/async.js';
 
 const logger = new Logger({ serviceName: 'StyleController' });
 const styleService = new StyleService();
+const styleImageService = new StyleImageService();
 
 /**
  * List all design styles
@@ -60,4 +63,41 @@ export const seedStyles = asyncHandler(async (_req: Request, res: Response) => {
 
   const count = await styleService.seedStyles();
   res.json({ message: `Seeded ${count} styles`, count });
+});
+
+/**
+ * Get images for a style by slug
+ * GET /api/styles/:slug/images
+ */
+export const getStyleImages = asyncHandler(async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  const { roomType } = req.query as { roomType?: string };
+  logger.info('Getting style images', { slug, roomType });
+
+  const style = await styleService.getStyleBySlug(slug);
+  if (!style) {
+    throw new NotFoundError('Style not found');
+  }
+
+  const images = roomType
+    ? await styleImageService.getImagesByStyleAndRoom(style.id, roomType)
+    : await styleImageService.getImagesByStyle(style.id);
+
+  res.json({ images, count: images.length });
+});
+
+/**
+ * Seed style images (development only)
+ * POST /api/styles/seed-images
+ */
+export const seedStyleImages = asyncHandler(async (_req: Request, res: Response) => {
+  if (process.env.NODE_ENV !== 'development') {
+    logger.warn('Seed images endpoint called in non-development environment');
+    throw new NotFoundError('Not found');
+  }
+
+  logger.info('Seeding style images');
+
+  const count = await styleImageService.seedFromManifest(SEED_STYLE_IMAGES);
+  res.json({ message: `Seeded ${count} style images`, count });
 });

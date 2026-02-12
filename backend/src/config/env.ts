@@ -65,6 +65,7 @@ const envSchema = z.object({
   // Supabase Storage (OPTIONAL - Phase 2.1)
   // ============================================
   SUPABASE_STORAGE_BUCKET: z.string().default('room-assets'),
+  SUPABASE_STYLE_BUCKET: z.string().default('style-assets'),
 
   // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
