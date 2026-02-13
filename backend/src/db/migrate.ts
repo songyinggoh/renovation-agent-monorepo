@@ -1,6 +1,6 @@
 /**
  * Database Migration Runner
- * 
+ *
  * Runs SQL migrations from the database/migrations folder
  * This ensures database schema is in sync with the application models
  */
@@ -10,6 +10,9 @@ import { Pool } from "pg";
 import { readFileSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { Logger } from "../utils/logger.js";
+
+const logger = new Logger({ serviceName: 'Migration' });
 
 // Get project root and load .env
 const __filename = fileURLToPath(import.meta.url);
@@ -22,10 +25,10 @@ dotenv.config({ path: join(projectRoot, ".env") });
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-	console.error("❌ Missing DATABASE_URL environment variable");
-	console.error("\n💡 Get your database connection string from:");
-	console.error("   Supabase Dashboard → Project Settings → Database → Connection String");
-	console.error("   You can use either 'Direct connection' or 'Transaction pooler'\n");
+	logger.error('Missing DATABASE_URL environment variable', new Error('DATABASE_URL not set'), {
+		help: 'Get your database connection string from Supabase Dashboard → Project Settings → Database → Connection String',
+		connectionTypes: ['Direct connection', 'Transaction pooler'],
+	});
 	process.exit(1);
 }
 
@@ -36,12 +39,12 @@ interface MigrationResult {
 }
 
 async function runMigrations() {
-	console.log("\n╔════════════════════════════════════════════════════════════╗");
-	console.log("║  AndYou Medical Agent - Database Migration Runner        ║");
-	console.log("╚════════════════════════════════════════════════════════════╝\n");
+	logger.info('Database Migration Runner - Starting', {
+		banner: 'Renovation Agent - Database Migration Runner',
+	});
 
 	if (!connectionString) {
-		console.error("❌ DATABASE_URL is undefined. Cannot proceed.");
+		logger.error('DATABASE_URL is undefined', new Error('DATABASE_URL not set'));
 		process.exit(1);
 	}
 
@@ -54,9 +57,9 @@ async function runMigrations() {
 
 	try {
 		// Test connection
-		console.log("📡 Testing database connection...\n");
+		logger.info('Testing database connection');
 		await pool.query("SELECT NOW()");
-		console.log("✅ Connected to database successfully\n");
+		logger.info('Connected to database successfully');
 
 		// Create migrations tracking table if it doesn't exist
 		await pool.query(`
@@ -70,14 +73,14 @@ async function runMigrations() {
 
 		// Get all migration files from database/migrations
 		const migrationsDir = join(projectRoot, "../database/migrations");
-		console.log(`📁 Reading migrations from: ${migrationsDir}\n`);
+		logger.info('Reading migrations', { migrationsDir });
 
 		const files = readdirSync(migrationsDir)
 			.filter((f) => f.endsWith(".sql"))
 			.filter((f) => !f.startsWith("_")) // Skip meta files
 			.sort(); // Run in order
 
-		console.log(`📋 Found ${files.length} migration files\n`);
+		logger.info('Found migration files', { count: files.length });
 
 		// Get already executed migrations
 		const { rows: executedMigrations } = await pool.query(
@@ -92,11 +95,11 @@ async function runMigrations() {
 		// Run each migration
 		for (const file of files) {
 			if (executedSet.has(file)) {
-				console.log(`⏭️  Skipping ${file} (already executed)`);
+				logger.info('Skipping migration (already executed)', { filename: file });
 				continue;
 			}
 
-			console.log(`\n🔄 Running migration: ${file}`);
+			logger.info('Running migration', { filename: file });
 
 			try {
 				const sqlPath = join(migrationsDir, file);
@@ -116,7 +119,7 @@ async function runMigrations() {
 
 					await pool.query("COMMIT");
 
-					console.log(`   ✅ Success!`);
+					logger.info('Migration completed successfully', { filename: file });
 					results.push({ filename: file, success: true });
 				} catch (error) {
 					await pool.query("ROLLBACK");
@@ -125,7 +128,10 @@ async function runMigrations() {
 			} catch (error) {
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
-				console.log(`   ❌ Failed: ${errorMessage}`);
+				logger.error('Migration failed', error as Error, {
+					filename: file,
+					errorMessage,
+				});
 				results.push({
 					filename: file,
 					success: false,
@@ -140,40 +146,45 @@ async function runMigrations() {
 					);
 				} catch {
 					// Ignore if we can't record the failure
-					console.log("   (Could not record failure in database)");
+					logger.warn('Could not record migration failure in database', undefined, {
+						filename: file,
+					});
 				}
 
-				console.log("\n⚠️  Migration failed. Fix the error and run again.\n");
+				logger.warn('Migration failed - fix the error and run again', undefined, { filename: file });
 				break; // Stop on first error
 			}
 		}
 
 		// Summary
-		console.log("\n═══════════════════════════════════════════════════════════");
-		console.log("📊 Migration Summary:");
-		console.log(`   Total migrations: ${files.length}`);
-		console.log(`   Already executed: ${executedSet.size}`);
-		console.log(`   Newly executed: ${results.filter((r) => r.success).length}`);
-		console.log(`   Failed: ${results.filter((r) => !r.success).length}`);
+		const summary = {
+			totalMigrations: files.length,
+			alreadyExecuted: executedSet.size,
+			newlyExecuted: results.filter((r) => r.success).length,
+			failed: results.filter((r) => !r.success).length,
+		};
+
+		logger.info('Migration Summary', summary);
 
 		const hasFailures = results.some((r) => !r.success);
 
 		if (hasFailures) {
-			console.log("\n❌ Some migrations failed. See errors above.");
+			logger.error('Some migrations failed', new Error('Migration failures detected'), summary);
 			process.exit(1);
 		} else if (results.length === 0) {
-			console.log("\n✅ No new migrations to run. Database is up to date!");
+			logger.info('No new migrations to run - database is up to date', summary);
 		} else {
-			console.log("\n✅ All migrations executed successfully!");
+			logger.info('All migrations executed successfully', summary);
 		}
 
-		console.log("═══════════════════════════════════════════════════════════\n");
-
-		console.log("🚀 Next steps:");
-		console.log("   1. Run: npm run test:db");
-		console.log("   2. Verify all tables are created\n");
+		logger.info('Next steps', {
+			steps: [
+				'Run: npm run test:db',
+				'Verify all tables are created',
+			],
+		});
 	} catch (error) {
-		console.error("\n❌ Migration failed:", error);
+		logger.error('Migration failed', error as Error);
 		process.exit(1);
 	} finally {
 		await pool.end();
