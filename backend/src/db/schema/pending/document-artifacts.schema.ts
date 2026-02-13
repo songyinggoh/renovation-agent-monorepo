@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, timestamp, jsonb, index, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { renovationSessions } from './sessions.schema.js';
-import { renovationRooms } from './rooms.schema.js';
+import { renovationSessions } from '../sessions.schema.js';
+import { renovationRooms } from '../rooms.schema.js';
 
 /**
  * Document types for system-generated artifacts

@@ -57,6 +57,8 @@ export function validateFileSize(fileSize: number): boolean {
   return fileSize > 0 && fileSize <= MAX_FILE_SIZE;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Build storage path for a file
  */
@@ -66,6 +68,9 @@ export function buildStoragePath(
   assetType: AssetType,
   filename: string
 ): string {
+  if (!UUID_REGEX.test(sessionId) || !UUID_REGEX.test(roomId)) {
+    throw new BadRequestError('Invalid session or room ID format');
+  }
   const safeFilename = sanitizeFilename(filename);
   return `session_${sessionId}/room_${roomId}/${assetType}s/${Date.now()}_${safeFilename}`;
 }

@@ -37,3 +37,8 @@ export * from './assets.schema.js';
 
 // Style moodboard images
 export * from './style-images.schema.js';
+
+// NOTE: asset-variants and document-artifacts schemas are in ./pending/
+// Move them back here and re-export when their migrations are applied.
+// See: backend/drizzle/migrations/0007_add_asset_variants.sql
+//      backend/drizzle/migrations/0008_add_document_artifacts.sql

@@ -140,19 +140,32 @@ describe('AssetService – helper functions', () => {
   });
 
   describe('buildStoragePath', () => {
+    const validSession = '11111111-1111-1111-1111-111111111111';
+    const validRoom = '22222222-2222-2222-2222-222222222222';
+
     it('should build correct path structure', () => {
-      const path = buildStoragePath('sess-1', 'room-1', 'photo', 'test.jpg');
-      expect(path).toMatch(/^session_sess-1\/room_room-1\/photos\/\d+_test\.jpg$/);
+      const path = buildStoragePath(validSession, validRoom, 'photo', 'test.jpg');
+      expect(path).toMatch(new RegExp(`^session_${validSession}/room_${validRoom}/photos/\\d+_test\\.jpg$`));
     });
 
     it('should sanitize the filename', () => {
-      const path = buildStoragePath('s1', 'r1', 'document', 'my file (1).pdf');
+      const path = buildStoragePath(validSession, validRoom, 'document', 'my file (1).pdf');
       expect(path).toContain('my_file__1_.pdf');
     });
 
     it('should use plural form of asset type in path', () => {
-      expect(buildStoragePath('s', 'r', 'floorplan', 'f.png')).toContain('/floorplans/');
-      expect(buildStoragePath('s', 'r', 'render', 'f.png')).toContain('/renders/');
+      expect(buildStoragePath(validSession, validRoom, 'floorplan', 'f.png')).toContain('/floorplans/');
+      expect(buildStoragePath(validSession, validRoom, 'render', 'f.png')).toContain('/renders/');
+    });
+
+    it('should reject non-UUID sessionId to prevent path traversal', () => {
+      expect(() => buildStoragePath('../etc', validRoom, 'photo', 'test.jpg'))
+        .toThrow('Invalid session or room ID format');
+    });
+
+    it('should reject non-UUID roomId to prevent path traversal', () => {
+      expect(() => buildStoragePath(validSession, '../../passwd', 'photo', 'test.jpg'))
+        .toThrow('Invalid session or room ID format');
     });
   });
 });
@@ -160,12 +173,15 @@ describe('AssetService – helper functions', () => {
 describe('AssetService', () => {
   let service: AssetService;
 
+  const mockSessionId = '11111111-1111-1111-1111-111111111111';
+  const mockRoomId = '22222222-2222-2222-2222-222222222222';
+
   const mockAsset = {
     id: 'asset-id-1',
-    sessionId: 'session-id-1',
-    roomId: 'room-id-1',
+    sessionId: mockSessionId,
+    roomId: mockRoomId,
     assetType: 'photo',
-    storagePath: 'session_session-id-1/room_room-id-1/photos/12345_test.jpg',
+    storagePath: `session_${mockSessionId}/room_${mockRoomId}/photos/12345_test.jpg`,
     source: 'user_upload',
     status: 'pending',
     originalFilename: 'test.jpg',
@@ -189,8 +205,8 @@ describe('AssetService', () => {
 
   describe('requestUpload', () => {
     const validParams = {
-      roomId: 'room-id-1',
-      sessionId: 'session-id-1',
+      roomId: mockRoomId,
+      sessionId: mockSessionId,
       filename: 'test.jpg',
       contentType: 'image/jpeg',
       fileSize: 1024,

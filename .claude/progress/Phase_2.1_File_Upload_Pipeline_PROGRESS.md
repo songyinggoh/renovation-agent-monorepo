@@ -1,6 +1,6 @@
 # Phase 2.1 File Upload Pipeline - Progress Tracker
 **Status**: 100% Complete
-**Last Updated**: 2026-02-09
+**Last Updated**: 2026-02-13
 
 ## Research
 - [x] Codebase analysis (Supabase setup, DB schemas, backend/frontend patterns)
@@ -19,8 +19,8 @@
 ### Step 1: Database Schema & Migration
 - [x] Create `backend/src/db/schema/assets.schema.ts` with `room_assets` table
 - [x] Export from `backend/src/db/schema/index.ts`
-- [ ] Generate Drizzle migration (requires running DB)
-- [ ] Run migration (requires running DB)
+- [x] Generate Drizzle migration
+- [x] Run migration
 - [x] Verify schema types compile
 
 ### Step 2: Backend Asset Service
@@ -62,13 +62,28 @@
 - [x] Backend lint — 0 errors
 - [x] Frontend type-check — 0 errors
 - [x] Frontend lint — 0 errors/warnings
-- [ ] Backend tests (not yet written - Phase 2 test sprint)
+- [x] Backend tests — 183 total passing (16 test files), including 49 asset service + 14 asset controller
 - [x] No `any` types in new code
+- [x] Test coverage (2026-02-13):
+  - **Overall**: 33.64% stmts / 83.07% branch / 73.68% funcs / 33.64% lines
+  - **src/services/**: 80.44% stmts / 86.31% branch / 93.44% funcs / 80.44% lines (**PASS >= 80%**)
+  - **src/services/asset.service.ts**: 79.03% stmts / 80.35% branch / 100% funcs / 79.03% lines
+  - **src/tools/**: 97.08% stmts / 95.65% branch / 83.33% funcs / 97.08% lines
+  - **src/emails/**: 100% across all metrics
+  - **src/controllers/ (tested)**: 100% for asset + message controllers
+  - Note: Overall % is low because routes, config, middleware, and infra modules lack unit tests (covered by integration tests or require live services)
+
+## Post-Completion Hardening (2026-02-13)
+- [x] Added UUID validation in `buildStoragePath` to prevent path traversal (security fix)
+- [x] Added `verifyRoomOwnership` middleware to all asset routes (authorization hardening)
+- [x] Renumbered `drizzle/migrations/` files from 0005-0007 to 0007-0009 (avoid collision with Drizzle-managed migrations)
+- [x] Updated test fixtures to use valid UUIDs + added 2 path traversal rejection tests
 
 ## Remaining Items
-- Drizzle migration generation (requires DB connection)
-- Unit tests for AssetService validation helpers
-- Integration tests for asset endpoints
+- ~~Drizzle migration generation~~ ✅ Done (2026-02-11)
+- ~~Unit tests for AssetService~~ ✅ 49 tests passing (47 original + 2 path traversal)
+- ~~Controller tests~~ ✅ 14 tests passing
+- Integration tests for asset endpoints (requires live DB)
 - E2E manual testing with Supabase Storage bucket
 
 ## Files Created
