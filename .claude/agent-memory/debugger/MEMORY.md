@@ -42,6 +42,14 @@
 - Renovation tools: `backend/src/tools/index.ts`
 - Prompts config: `backend/src/config/prompts.ts`
 
+### 4. pnpm Lockfile Desync (ERR_PNPM_OUTDATED_LOCKFILE)
+- **Symptom**: `ERR_PNPM_OUTDATED_LOCKFILE Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date`
+- **Root Cause**: Dependency added/removed from a workspace `package.json` without running `pnpm install` to regenerate the root `pnpm-lock.yaml`
+- **Why it happens**: This project uses pnpm workspaces with a single lockfile at the root. `--frozen-lockfile` is the default in CI.
+- **Fix**: Run `pnpm install` from the project root to sync the lockfile
+- **Secondary issue**: A stale `frontend/package-lock.json` (npm lockfile) exists and is untracked. Should be deleted and added to `.gitignore`.
+- **Key config**: Root `.npmrc` has `shamefully-hoist=true`. `pnpm-workspace.yaml` lists `backend` and `frontend`.
+
 ## Quality Gates
 - `npx tsc --noEmit` for type-check
 - `npm run lint` for ESLint
