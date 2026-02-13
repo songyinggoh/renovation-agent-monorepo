@@ -15,6 +15,11 @@ import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpoi
 import { createAdapter } from '@socket.io/redis-adapter';
 import { startEmailWorker } from './workers/email.worker.js';
 import { closeQueues } from './config/queue.js';
+import {
+  chatUserMessageSchema,
+  chatJoinSessionSchema,
+  sanitizeContent,
+} from './validators/socket.validators.js';
 
 const logger = new Logger({ serviceName: 'Server' });
 
@@ -279,12 +284,29 @@ async function startServer(): Promise<void> {
       });
 
       // Join Session Room
-      socket.on('chat:join_session', (sessionId: string) => {
-        if (!sessionId) {
-          logger.warn('Client attempted to join session without ID', undefined, { socketId: socket.id });
+      socket.on('chat:join_session', (data: unknown) => {
+        // Validate session ID with Zod schema
+        const validationResult = chatJoinSessionSchema.safeParse(data);
+
+        if (!validationResult.success) {
+          const errors = validationResult.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }));
+
+          logger.warn('Invalid join session format', undefined, {
+            socketId: socket.id,
+            errors,
+          });
+
+          socket.emit('chat:error', {
+            error: 'Invalid session ID format',
+            details: errors,
+          });
           return;
         }
 
+        const { sessionId } = validationResult.data;
         const roomName = `session:${sessionId}`;
         socket.join(roomName);
         logger.info(`Socket ${socket.id} joined room ${roomName}`);
@@ -294,11 +316,47 @@ async function startServer(): Promise<void> {
       });
 
       // Handle User Message
-      socket.on('chat:user_message', async (data: { sessionId: string; content: string }) => {
-        const { sessionId, content } = data;
-        if (!sessionId || !content) {
-          logger.warn('Invalid message format', undefined, { socketId: socket.id });
+      socket.on('chat:user_message', async (data: unknown) => {
+        // Validate message payload with Zod schema
+        const validationResult = chatUserMessageSchema.safeParse(data);
+
+        if (!validationResult.success) {
+          const errors = validationResult.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }));
+
+          logger.warn('Invalid message format', undefined, {
+            socketId: socket.id,
+            errors,
+          });
+
+          socket.emit('chat:error', {
+            error: 'Invalid message format',
+            details: errors,
+          });
           return;
+        }
+
+        const { sessionId, content } = validationResult.data;
+
+        // Sanitize content for prompt injection attempts
+        const sanitizationResult = sanitizeContent(content);
+
+        if (sanitizationResult.isSuspicious) {
+          logger.warn('Suspicious message content detected', undefined, {
+            socketId: socket.id,
+            sessionId,
+            warning: sanitizationResult.warning,
+            contentPreview: content.substring(0, 100),
+          });
+
+          // Optional: Reject suspicious messages or flag them for review
+          // For now, we'll allow but log them for monitoring
+          socket.emit('chat:warning', {
+            sessionId,
+            warning: sanitizationResult.warning,
+          });
         }
 
         // Rate limit check
@@ -314,7 +372,8 @@ async function startServer(): Promise<void> {
         logger.info('Received user message', {
           socketId: socket.id,
           sessionId,
-          contentLength: content.length
+          contentLength: content.length,
+          isSuspicious: sanitizationResult.isSuspicious,
         });
 
         // Verify user is in the room
