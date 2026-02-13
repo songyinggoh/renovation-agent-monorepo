@@ -82,7 +82,8 @@ const envSchema = z.object({
   // Email / Resend (Phase III: Communication)
   // ============================================
   RESEND_API_KEY: z.string().optional(),
-  FROM_EMAIL: z.string().email().default('Renovation Agent <noreply@renovationagent.com>'),
+  // FROM_EMAIL accepts RFC 5322 format: "Display Name <email@domain.com>" or plain email
+  FROM_EMAIL: z.string().default('Renovation Agent <noreply@renovationagent.com>'),
 
   // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)

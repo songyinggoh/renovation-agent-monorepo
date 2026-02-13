@@ -47,7 +47,7 @@ The backend currently has a basic Express.js + TypeScript setup with the followi
 - Error handling middleware (`src/middleware/errorHandler.ts`)
 - Custom error classes (`src/utils/errors.ts`)
 - Structured logger (`src/utils/logger.ts`)
-- Drizzle ORM configuration (`src/db/index.ts`, `src/config/drizzle.config.ts`)
+- Drizzle ORM configuration (`src/db/index.ts`, `drizzle.config.ts`)
 - Async handler utility (`src/utils/async.ts`)
 - DTO validation middleware (`src/middleware/validation/validate-dto.middleware.ts`)
 - Basic user routes (example/boilerplate)
