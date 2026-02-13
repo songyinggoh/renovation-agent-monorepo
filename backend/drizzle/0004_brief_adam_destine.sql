@@ -1,0 +1,1 @@
+-- No-op: style_preferences already added in 0003_add_style_preferences.sql

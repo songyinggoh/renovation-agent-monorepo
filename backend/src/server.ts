@@ -1,7 +1,7 @@
 import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createApp } from './app.js';
-import { env } from './config/env.js';
+import { env, isEmailEnabled } from './config/env.js';
 import { initSentry } from './config/sentry.js';
 import { connectRedis, closeRedis, testRedisConnection, redis } from './config/redis.js';
 import { testConnection, closeConnection } from './db/index.js';
@@ -13,7 +13,8 @@ import { AuthenticatedSocket } from './types/socket.js';
 import { ChatService, type StreamCallback } from './services/chat.service.js';
 import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpointer.service.js';
 import { createAdapter } from '@socket.io/redis-adapter';
-
+import { startEmailWorker } from './workers/email.worker.js';
+import { closeQueues } from './config/queue.js';
 
 const logger = new Logger({ serviceName: 'Server' });
 
@@ -21,6 +22,7 @@ const logger = new Logger({ serviceName: 'Server' });
 let httpServer: Server;
 let io: SocketIOServer;
 let shutdownManager: ShutdownManager;
+let emailWorker: ReturnType<typeof startEmailWorker> | null = null;
 
 /**
  * Application startup sequence
@@ -65,6 +67,25 @@ async function startServer(): Promise<void> {
       }
     } catch (redisError) {
       logger.warn('Redis connection error — continuing without Redis', redisError as Error);
+    }
+
+    // ============================================
+    // STEP 0.6: Start Email Worker (if Redis + Resend configured)
+    // ============================================
+    if (isEmailEnabled()) {
+      try {
+        const redisOk = await testRedisConnection();
+        if (redisOk) {
+          emailWorker = startEmailWorker();
+          logger.info('Email worker started');
+        } else {
+          logger.warn('Email worker not started — Redis unavailable');
+        }
+      } catch (workerError) {
+        logger.warn('Email worker failed to start', workerError as Error);
+      }
+    } else {
+      logger.info('Email worker not started — RESEND_API_KEY not configured');
     }
 
     // ============================================
@@ -467,6 +488,16 @@ function setupGracefulShutdown(): void {
       await cleanupCheckpointer();
     },
     timeout: 3000, // 3 second timeout for checkpointer cleanup
+  });
+
+  // Email worker + queues cleanup
+  shutdownManager.registerResource({
+    name: 'Email Worker & Queues',
+    cleanup: async () => {
+      if (emailWorker) await emailWorker.close();
+      await closeQueues();
+    },
+    timeout: 3000,
   });
 
   // Redis cleanup (Phase 3: Production Safety)

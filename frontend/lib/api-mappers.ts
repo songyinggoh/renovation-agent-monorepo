@@ -2,7 +2,7 @@ import type { SessionDetail, RoomSummary } from '@/types/renovation';
 import type { Message } from '@/types/chat';
 
 /**
- * Maps snake_case API responses to camelCase TypeScript interfaces.
+ * Maps API responses (camelCase from Drizzle ORM) to TypeScript interfaces.
  * Centralizes the backend→frontend data transformation layer.
  */
 
@@ -11,11 +11,11 @@ export function mapSessionResponse(data: Record<string, unknown>): SessionDetail
     id: data.id as string,
     title: data.title as string,
     phase: data.phase as SessionDetail['phase'],
-    totalBudget: data.total_budget as string | null,
+    totalBudget: data.totalBudget as string | null,
     currency: (data.currency as string | undefined) ?? 'USD',
-    createdAt: data.created_at as string,
-    updatedAt: data.updated_at as string,
-    stylePreferences: (data.style_preferences as SessionDetail['stylePreferences']) ?? null,
+    createdAt: data.createdAt as string,
+    updatedAt: data.updatedAt as string,
+    stylePreferences: (data.stylePreferences as SessionDetail['stylePreferences']) ?? null,
   };
 }
 
@@ -37,8 +37,8 @@ export function mapMessageResponse(data: Record<string, unknown>): Message {
     id: data.id as string,
     role: data.role as Message['role'],
     content: data.content as string,
-    created_at: data.created_at as string,
-    session_id: data.session_id as string,
+    created_at: (data.created_at ?? data.createdAt) as string,
+    session_id: (data.session_id ?? data.sessionId) as string,
   };
 }
 

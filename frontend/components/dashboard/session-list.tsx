@@ -16,7 +16,7 @@ const logger = new Logger({ serviceName: 'SessionList' });
 interface Session {
     id: string;
     title: string;
-    status: string;
+    phase: string;
     createdAt: string;
 }
 
@@ -84,10 +84,10 @@ export function SessionList() {
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                             <Badge
-                                variant={`phase-${session.status.toLowerCase()}` as BadgeProps['variant']}
+                                variant={`phase-${session.phase.toLowerCase()}` as BadgeProps['variant']}
                                 className="hidden sm:inline-flex"
                             >
-                                {PHASE_CONFIG[session.status as RenovationPhase]?.label ?? session.status}
+                                {PHASE_CONFIG[session.phase as RenovationPhase]?.label ?? session.phase}
                             </Badge>
                             <ChevronRight className="h-5 w-5 text-muted-foreground" />
                         </div>

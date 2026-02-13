@@ -79,6 +79,12 @@ const envSchema = z.object({
   SENTRY_ENVIRONMENT: z.string().optional(),
 
   // ============================================
+  // Email / Resend (Phase III: Communication)
+  // ============================================
+  RESEND_API_KEY: z.string().optional(),
+  FROM_EMAIL: z.string().email().default('Renovation Agent <noreply@renovationagent.com>'),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -182,4 +188,11 @@ export function isStorageEnabled(): boolean {
  */
 export function isPostgresCheckpointerEnabled(): boolean {
   return env.LANGGRAPH_CHECKPOINTER === 'postgres';
+}
+
+/**
+ * Helper function to check if email (Resend) is configured
+ */
+export function isEmailEnabled(): boolean {
+  return !!env.RESEND_API_KEY;
 }

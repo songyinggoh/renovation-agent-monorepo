@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Application } from 'express';
-import { getApp, mockPoolQuery } from './setup.js';
+import { getApp, mockDbResolve } from './setup.js';
 import { authMiddleware } from '../../../src/middleware/auth.middleware.js';
 
 let app: Application;
@@ -20,6 +20,8 @@ beforeEach(() => {
     } as typeof _req.user;
     next();
   });
+  // Reset db mock to return empty arrays by default
+  mockDbResolve.mockResolvedValue([]);
 });
 
 describe('Session Endpoints', () => {
@@ -35,11 +37,11 @@ describe('Session Endpoints', () => {
   describe('GET /api/sessions', () => {
     it('should return user sessions', async () => {
       const mockSessions = [
-        { id: 'session-1', title: 'Kitchen Reno', user_id: 'test-user-id', phase: 'INTAKE' },
-        { id: 'session-2', title: 'Bathroom Reno', user_id: 'test-user-id', phase: 'PLAN' },
+        { id: 'session-1', title: 'Kitchen Reno', userId: 'test-user-id', phase: 'INTAKE' },
+        { id: 'session-2', title: 'Bathroom Reno', userId: 'test-user-id', phase: 'PLAN' },
       ];
 
-      mockPoolQuery.mockResolvedValue({ rows: mockSessions });
+      mockDbResolve.mockResolvedValue(mockSessions);
 
       const res = await request(app)
         .get('/api/sessions')
@@ -67,7 +69,7 @@ describe('Session Endpoints', () => {
     });
 
     it('should return 500 on database error', async () => {
-      mockPoolQuery.mockRejectedValue(new Error('DB failure'));
+      mockDbResolve.mockRejectedValue(new Error('DB failure'));
 
       const res = await request(app)
         .get('/api/sessions')
@@ -83,15 +85,15 @@ describe('Session Endpoints', () => {
       const newSession = {
         id: 'new-session-id',
         title: 'Living Room Reno',
-        total_budget: '5000',
-        user_id: null,
+        totalBudget: '5000',
+        userId: null,
         phase: 'INTAKE',
       };
 
-      // First call: profile lookup, second: insert
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [] }) // no profile found
-        .mockResolvedValueOnce({ rows: [newSession] }); // insert
+      // First call: profile lookup (no profile found), second: insert
+      mockDbResolve
+        .mockResolvedValueOnce([])           // profile lookup returns empty
+        .mockResolvedValueOnce([newSession]); // insert returns created session
 
       const res = await request(app)
         .post('/api/sessions')
