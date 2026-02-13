@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, integer, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
-import { roomAssets } from '../assets.schema.js';
+import { roomAssets } from './assets.schema.js';
 
 /**
  * Variant types for processed images
