@@ -1,7 +1,10 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import * as Sentry from '@sentry/node';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requestIdMiddleware } from './middleware/request-id.middleware.js';
 import { apiLimiter, chatLimiter } from './middleware/rate-limit.middleware.js';
 import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
@@ -35,6 +38,26 @@ export function createApp(): Application {
   });
 
   // ============================================
+  // Sentry Request Handler (must be first middleware)
+  // ============================================
+  if (env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
+
+  // ============================================
+  // Security Headers (Helmet)
+  // ============================================
+  app.use(helmet({
+    contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
+    crossOriginEmbedderPolicy: false, // Allow cross-origin resources (images, fonts)
+  }));
+
+  // ============================================
+  // Request ID Middleware (generates/propagates X-Request-ID)
+  // ============================================
+  app.use(requestIdMiddleware);
+
+  // ============================================
   // CORS Configuration
   // ============================================
   app.use(
@@ -42,7 +65,7 @@ export function createApp(): Application {
       origin: env.FRONTEND_URL,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
     })
   );
 

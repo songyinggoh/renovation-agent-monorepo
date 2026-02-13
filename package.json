@@ -1,24 +1,31 @@
 {
-    "name": "renovation-agent-monorepo",
-    "private": true,
-    "packageManager": "pnpm@10.29.1",
-    "scripts": {
-        "dev:frontend": "pnpm --filter frontend dev",
-        "dev:backend": "pnpm --filter renovation-agent-backend dev",
-        "dev": "concurrently \"pnpm dev:frontend\" \"pnpm dev:backend\"",
-        "build:frontend": "pnpm --filter frontend build",
-        "build:backend": "pnpm --filter renovation-agent-backend build",
-        "lint": "pnpm -r lint",
-        "db:generate": "pnpm --filter renovation-agent-backend db:generate",
-        "db:migrate": "pnpm --filter renovation-agent-backend db:migrate",
-        "db:seed": "pnpm --filter renovation-agent-backend db:seed"
-    },
-    "devDependencies": {
-        "concurrently": "^8.2.2"
-    },
-    "pnpm": {
-        "overrides": {
-            "esbuild": ">=0.25.0"
-        }
+  "name": "renovation-agent-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.29.1",
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter renovation-agent-backend dev",
+    "dev": "concurrently \"pnpm dev:frontend\" \"pnpm dev:backend\"",
+    "build:frontend": "pnpm --filter frontend build",
+    "build:backend": "pnpm --filter renovation-agent-backend build",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter renovation-agent-backend db:generate",
+    "db:migrate": "pnpm --filter renovation-agent-backend db:migrate",
+    "db:seed": "pnpm --filter renovation-agent-backend db:seed",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
+  },
+  "lint-staged": {
+    "backend/src/**/*.ts": "pnpm --filter renovation-agent-backend lint",
+    "frontend/**/*.{ts,tsx}": "pnpm --filter frontend lint"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.25.0"
     }
+  }
 }

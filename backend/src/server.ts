@@ -2,6 +2,8 @@ import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { initSentry } from './config/sentry.js';
+import { connectRedis, closeRedis, testRedisConnection, redis } from './config/redis.js';
 import { testConnection, closeConnection } from './db/index.js';
 import { createChatModel } from './config/gemini.js';
 import { Logger } from './utils/logger.js';
@@ -10,6 +12,7 @@ import { verifyToken } from './middleware/auth.middleware.js';
 import { AuthenticatedSocket } from './types/socket.js';
 import { ChatService, type StreamCallback } from './services/chat.service.js';
 import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpointer.service.js';
+import { createAdapter } from '@socket.io/redis-adapter';
 
 
 const logger = new Logger({ serviceName: 'Server' });
@@ -42,6 +45,27 @@ async function startServer(): Promise<void> {
       pid: process.pid,
       port: env.PORT,
     });
+
+    // ============================================
+    // STEP 0: Initialize Sentry (must be before all other code)
+    // ============================================
+    initSentry();
+
+    // ============================================
+    // STEP 0.5: Connect Redis
+    // ============================================
+    logger.info('Connecting to Redis...');
+    try {
+      await connectRedis();
+      const redisOk = await testRedisConnection();
+      if (redisOk) {
+        logger.info('Redis connection validated');
+      } else {
+        logger.warn('Redis connection failed — continuing without Redis');
+      }
+    } catch (redisError) {
+      logger.warn('Redis connection error — continuing without Redis', redisError as Error);
+    }
 
     // ============================================
     // STEP 1: Validate Database Connection
@@ -139,6 +163,21 @@ async function startServer(): Promise<void> {
       // Max payload size for images
       maxHttpBufferSize: 10e6, // 10 MB
     });
+
+    // Attach Redis adapter for cross-instance Socket.io events
+    try {
+      const redisOk = await testRedisConnection();
+      if (redisOk) {
+        const pubClient = redis.duplicate();
+        const subClient = redis.duplicate();
+        io.adapter(createAdapter(pubClient, subClient));
+        logger.info('Socket.io Redis adapter attached');
+      } else {
+        logger.warn('Socket.io using in-memory adapter (Redis unavailable)');
+      }
+    } catch (adapterError) {
+      logger.warn('Socket.io Redis adapter failed — using in-memory adapter', adapterError as Error);
+    }
 
     // Socket.io Middleware for Authentication
     io.use(async (socket: Socket, next) => {
@@ -428,6 +467,15 @@ function setupGracefulShutdown(): void {
       await cleanupCheckpointer();
     },
     timeout: 3000, // 3 second timeout for checkpointer cleanup
+  });
+
+  // Redis cleanup (Phase 3: Production Safety)
+  shutdownManager.registerResource({
+    name: 'Redis',
+    cleanup: async () => {
+      await closeRedis();
+    },
+    timeout: 3000,
   });
 
   // Register signal handlers for graceful shutdown

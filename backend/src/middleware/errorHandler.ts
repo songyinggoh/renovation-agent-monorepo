@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
+import * as Sentry from '@sentry/node';
 import { AppError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
+import { getRequestId } from './request-id.middleware.js';
 
 const logger = new Logger({ serviceName: 'ErrorHandler' });
 
@@ -13,6 +15,7 @@ export const errorHandler = (
   _next: NextFunction
 ) => {
   const errorId = randomUUID();
+  const requestId = getRequestId();
 
   if (err instanceof AppError) {
     logger.warn('Application error', err, {
@@ -55,9 +58,16 @@ export const errorHandler = (
     });
   }
 
+  // Capture unexpected errors with Sentry
+  Sentry.captureException(err, {
+    tags: { errorId, ...(requestId && { requestId }) },
+    extra: { path: req.path, method: req.method },
+  });
+
   // Log unexpected errors with tracking ID
   logger.error('Unhandled error', err, {
     errorId,
+    ...(requestId && { requestId }),
     path: req.path,
     method: req.method,
   });

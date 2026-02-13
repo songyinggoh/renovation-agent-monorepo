@@ -1,5 +1,7 @@
 // A simple structured logger to be used across the application.
 
+import { getRequestId } from '../middleware/request-id.middleware.js';
+
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 interface LogMetadata {
@@ -11,6 +13,7 @@ interface LogObject extends LogMetadata {
   level: LogLevel;
   service: string;
   message: string;
+  requestId?: string;
   error?: {
     name: string;
     message: string;
@@ -26,11 +29,14 @@ export class Logger {
   }
 
   private log(level: LogLevel, message: string, error?: Error, metadata?: LogMetadata) {
+    const requestId = getRequestId();
+
     const logObject: LogObject = {
       timestamp: new Date().toISOString(),
       level,
       service: this.serviceName,
       message,
+      ...(requestId && { requestId }),
       ...metadata,
     };
 
@@ -41,7 +47,7 @@ export class Logger {
         stack: error.stack,
       };
     }
-    
+
     const output = JSON.stringify(logObject, null, 2);
 
     switch (level) {

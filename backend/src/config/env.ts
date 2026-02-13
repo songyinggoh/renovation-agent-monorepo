@@ -68,6 +68,17 @@ const envSchema = z.object({
   SUPABASE_STYLE_BUCKET: z.string().default('style-assets'),
 
   // ============================================
+  // Redis Configuration (Phase 3: Production Safety)
+  // ============================================
+  REDIS_URL: z.string().default('redis://localhost:6379'),
+
+  // ============================================
+  // Sentry Error Tracking (Phase 3: Production Safety)
+  // ============================================
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),

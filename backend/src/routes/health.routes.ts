@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { testConnection, getPoolStats } from '../db/index.js';
+import { testRedisConnection } from '../config/redis.js';
+import { isSentryEnabled } from '../config/sentry.js';
 import { env, isAuthEnabled, isPaymentsEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
 
@@ -71,18 +73,27 @@ router.get('/health/ready', async (_req: Request, res: Response) => {
     };
   }
 
+  // Check Redis connection
+  try {
+    const redisOk = await testRedisConnection();
+    checks.redis = {
+      status: redisOk ? 'ok' : 'error',
+      ...(redisOk ? {} : { message: 'Redis not reachable' }),
+    };
+  } catch (error) {
+    checks.redis = {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
   // Check feature availability
   checks.features = {
     status: 'ok',
     auth: isAuthEnabled() ? 'enabled' : 'disabled',
     payments: isPaymentsEnabled() ? 'enabled' : 'disabled',
+    errorTracking: isSentryEnabled() ? 'enabled' : 'disabled',
   };
-
-  // TODO Phase 4: Check LangChain agent readiness
-  // checks.agent = {
-  //   status: 'ok',
-  //   initialized: true,
-  // };
 
   // Determine overall readiness
   const allHealthy = Object.values(checks)
