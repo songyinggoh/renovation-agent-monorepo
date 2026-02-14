@@ -210,89 +210,100 @@ export class ChatService {
           );
 
           let firstTokenEmitted = false;
+          let tokenUsageRecorded = false;
+          let streamError: Error | undefined;
 
-          for await (const chunk of stream) {
-            const [message, metadata] = chunk as [
-              BaseMessage,
-              Record<string, unknown>,
-            ];
-            const nodeId = metadata?.langgraph_node as string | undefined;
+          try {
+            for await (const chunk of stream) {
+              const [message, metadata] = chunk as [
+                BaseMessage,
+                Record<string, unknown>,
+              ];
+              const nodeId = metadata?.langgraph_node as string | undefined;
 
-            // Tool execution results (from 'tools' node)
-            if (nodeId === 'tools' && message) {
-              const toolMsg = message as unknown as ToolMessage;
-              const toolName = toolMsg.name ?? 'unknown';
-              const toolResult =
-                typeof toolMsg.content === 'string'
-                  ? toolMsg.content
-                  : JSON.stringify(toolMsg.content);
+              // Tool execution results (from 'tools' node)
+              if (nodeId === 'tools' && message) {
+                const toolMsg = message as unknown as ToolMessage;
+                const toolName = toolMsg.name ?? 'unknown';
+                const toolResult =
+                  typeof toolMsg.content === 'string'
+                    ? toolMsg.content
+                    : JSON.stringify(toolMsg.content);
 
-              callback.onToolResult?.(toolName, toolResult);
+                callback.onToolResult?.(toolName, toolResult);
 
-              await this.messageService.saveMessage({
-                sessionId,
-                userId: null,
-                role: 'assistant',
-                content: toolResult,
-                type: 'tool_result',
-                toolName,
-                toolOutput: this.safeJsonParse(toolResult),
-              });
-              continue;
-            }
-
-            // Model output (from 'call_model' node)
-            if (nodeId === 'call_model' && message) {
-              const aiChunk = message as unknown as AIMessageChunk;
-
-              // Track token usage from response metadata (IA doc 1.4)
-              const tokenUsage = extractTokenUsage(
-                aiChunk.response_metadata as Record<string, unknown> | undefined,
-              );
-              if (tokenUsage) {
-                recordTokenUsage(streamTrace.span, tokenUsage, modelAttrs['ai.model'] as string);
-              }
-
-              // Detect tool call chunks (model is requesting tool execution)
-              if (
-                aiChunk.tool_call_chunks &&
-                aiChunk.tool_call_chunks.length > 0
-              ) {
-                reactIterations++;
-                for (const tc of aiChunk.tool_call_chunks) {
-                  if (tc.name && !emittedToolCalls.has(tc.name)) {
-                    emittedToolCalls.add(tc.name);
-                    callback.onToolCall?.(tc.name, '');
-
-                    await this.messageService.saveMessage({
-                      sessionId,
-                      userId: null,
-                      role: 'assistant',
-                      content: `Calling tool: ${tc.name}`,
-                      type: 'tool_call',
-                      toolName: tc.name,
-                    });
-                  }
-                }
+                await this.messageService.saveMessage({
+                  sessionId,
+                  userId: null,
+                  role: 'assistant',
+                  content: toolResult,
+                  type: 'tool_result',
+                  toolName,
+                  toolOutput: this.safeJsonParse(toolResult),
+                });
                 continue;
               }
 
-              // Regular text content - stream to user
-              if (typeof aiChunk.content === 'string' && aiChunk.content) {
-                if (!firstTokenEmitted) {
-                  streamTrace.onFirstToken();
-                  firstTokenEmitted = true;
+              // Model output (from 'call_model' node)
+              if (nodeId === 'call_model' && message) {
+                const aiChunk = message as unknown as AIMessageChunk;
+
+                // Track token usage from response metadata (IA doc 1.4)
+                // Only extract once - LangChain includes usage in the final chunk
+                if (!tokenUsageRecorded) {
+                  const tokenUsage = extractTokenUsage(
+                    aiChunk.response_metadata as Record<string, unknown> | undefined,
+                  );
+                  if (tokenUsage) {
+                    recordTokenUsage(streamTrace.span, tokenUsage, modelAttrs['ai.model'] as string);
+                    tokenUsageRecorded = true;
+                  }
                 }
-                fullResponse += aiChunk.content;
-                callback.onToken(aiChunk.content);
+
+                // Detect tool call chunks (model is requesting tool execution)
+                if (
+                  aiChunk.tool_call_chunks &&
+                  aiChunk.tool_call_chunks.length > 0
+                ) {
+                  reactIterations++;
+                  for (const tc of aiChunk.tool_call_chunks) {
+                    if (tc.name && !emittedToolCalls.has(tc.name)) {
+                      emittedToolCalls.add(tc.name);
+                      callback.onToolCall?.(tc.name, '');
+
+                      await this.messageService.saveMessage({
+                        sessionId,
+                        userId: null,
+                        role: 'assistant',
+                        content: `Calling tool: ${tc.name}`,
+                        type: 'tool_call',
+                        toolName: tc.name,
+                      });
+                    }
+                  }
+                  continue;
+                }
+
+                // Regular text content - stream to user
+                if (typeof aiChunk.content === 'string' && aiChunk.content) {
+                  if (!firstTokenEmitted) {
+                    streamTrace.onFirstToken();
+                    firstTokenEmitted = true;
+                  }
+                  fullResponse += aiChunk.content;
+                  callback.onToken(aiChunk.content);
+                }
               }
             }
+          } catch (err) {
+            streamError = err as Error;
+            throw err;
+          } finally {
+            // Always close the stream span to prevent memory leaks
+            streamTrace.span.setAttribute('ai.react_loop.iterations', reactIterations);
+            streamTrace.span.setAttribute('ai.tool.calls_count', emittedToolCalls.size);
+            streamTrace.endStream(streamError);
           }
-
-          // Record ReAct loop metrics on both parent and stream spans
-          streamTrace.span.setAttribute('ai.react_loop.iterations', reactIterations);
-          streamTrace.span.setAttribute('ai.tool.calls_count', emittedToolCalls.size);
-          streamTrace.endStream();
 
           parentSpan.setAttribute('ai.react_loop.iterations', reactIterations);
           parentSpan.setAttribute('ai.tool.calls_count', emittedToolCalls.size);

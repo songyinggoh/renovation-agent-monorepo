@@ -1,23 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SpanStatusCode } from '@opentelemetry/api';
 
+/** Properly typed mock span to avoid `as never` casts */
+interface MockSpan {
+  setAttribute: ReturnType<typeof vi.fn>;
+  setStatus: ReturnType<typeof vi.fn>;
+  recordException: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+}
+
 // Use vi.hoisted to ensure mocks are available when vi.mock is hoisted
 const { mockSpan, mockTracer } = vi.hoisted(() => {
-  const mockSpan = {
+  const span: MockSpan = {
     setAttribute: vi.fn(),
     setStatus: vi.fn(),
     recordException: vi.fn(),
     end: vi.fn(),
   };
 
-  const mockTracer = {
-    startActiveSpan: vi.fn((name: string, fn: (span: typeof mockSpan) => unknown) => {
-      return fn(mockSpan);
-    }),
-    startSpan: vi.fn(() => mockSpan),
+  const tracer = {
+    startActiveSpan: vi.fn((_name: string, fn: (s: MockSpan) => unknown) => fn(span)),
+    startSpan: vi.fn(() => span),
   };
 
-  return { mockSpan, mockTracer };
+  return { mockSpan: span, mockTracer: tracer };
 });
 
 vi.mock('@opentelemetry/api', async () => {
@@ -30,7 +36,6 @@ vi.mock('@opentelemetry/api', async () => {
   };
 });
 
-// Import after mock setup
 import {
   estimateCost,
   extractTokenUsage,
@@ -38,6 +43,11 @@ import {
   traceAICall,
   startAIStreamSpan,
 } from '../../../src/utils/ai-tracing.js';
+
+/** Helper to filter mock.calls by attribute name */
+function getAttrCalls(spy: ReturnType<typeof vi.fn>, attrName: string): unknown[][] {
+  return spy.mock.calls.filter((call: unknown[]) => call[0] === attrName);
+}
 
 describe('ai-tracing', () => {
   beforeEach(() => {
@@ -63,19 +73,20 @@ describe('ai-tracing', () => {
     it('should return 0 for zero tokens', () => {
       expect(estimateCost('gemini-2.5-flash', 0, 0)).toBe(0);
     });
+
+    it('should calculate exact cost using pricing formula', () => {
+      // gemini-2.5-flash: input $0.075, output $0.30 per 1M tokens
+      const cost = estimateCost('gemini-2.5-flash', 1_000_000, 1_000_000);
+      expect(cost).toBe(0.375); // (1M * 0.075 + 1M * 0.30) / 1M
+    });
   });
 
   describe('extractTokenUsage', () => {
     it('should extract token usage from response_metadata', () => {
       const metadata = {
-        tokenUsage: {
-          promptTokens: 100,
-          completionTokens: 50,
-          totalTokens: 150,
-        },
+        tokenUsage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
       };
-      const result = extractTokenUsage(metadata);
-      expect(result).toEqual({
+      expect(extractTokenUsage(metadata)).toEqual({
         promptTokens: 100,
         completionTokens: 50,
         totalTokens: 150,
@@ -91,13 +102,8 @@ describe('ai-tracing', () => {
     });
 
     it('should handle partial token usage', () => {
-      const metadata = {
-        tokenUsage: {
-          promptTokens: 100,
-        },
-      };
-      const result = extractTokenUsage(metadata);
-      expect(result).toEqual({
+      const metadata = { tokenUsage: { promptTokens: 100 } };
+      expect(extractTokenUsage(metadata)).toEqual({
         promptTokens: 100,
         completionTokens: undefined,
         totalTokens: undefined,
@@ -107,11 +113,7 @@ describe('ai-tracing', () => {
 
   describe('recordTokenUsage', () => {
     it('should set token usage attributes on span', () => {
-      recordTokenUsage(mockSpan as never, {
-        promptTokens: 100,
-        completionTokens: 50,
-        totalTokens: 150,
-      });
+      recordTokenUsage(mockSpan, { promptTokens: 100, completionTokens: 50, totalTokens: 150 });
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.usage.prompt_tokens', 100);
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.usage.completion_tokens', 50);
@@ -119,16 +121,12 @@ describe('ai-tracing', () => {
     });
 
     it('should calculate total tokens when not provided', () => {
-      recordTokenUsage(mockSpan as never, {
-        promptTokens: 100,
-        completionTokens: 50,
-      });
-
+      recordTokenUsage(mockSpan, { promptTokens: 100, completionTokens: 50 });
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.usage.total_tokens', 150);
     });
 
     it('should default to 0 for missing token counts', () => {
-      recordTokenUsage(mockSpan as never, {});
+      recordTokenUsage(mockSpan, {});
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.usage.prompt_tokens', 0);
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.usage.completion_tokens', 0);
@@ -136,25 +134,13 @@ describe('ai-tracing', () => {
     });
 
     it('should add cost estimate when model is provided', () => {
-      recordTokenUsage(
-        mockSpan as never,
-        { promptTokens: 1000, completionTokens: 500 },
-        'gemini-2.5-flash',
-      );
-
-      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
-        'ai.cost.estimated_usd',
-        expect.any(Number),
-      );
+      recordTokenUsage(mockSpan, { promptTokens: 1000, completionTokens: 500 }, 'gemini-2.5-flash');
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.cost.estimated_usd', expect.any(Number));
     });
 
     it('should not add cost when tokens are zero', () => {
-      recordTokenUsage(mockSpan as never, { promptTokens: 0, completionTokens: 0 }, 'gemini-2.5-flash');
-
-      const costCalls = (mockSpan.setAttribute as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (call: unknown[]) => call[0] === 'ai.cost.estimated_usd',
-      );
-      expect(costCalls).toHaveLength(0);
+      recordTokenUsage(mockSpan, { promptTokens: 0, completionTokens: 0 }, 'gemini-2.5-flash');
+      expect(getAttrCalls(mockSpan.setAttribute, 'ai.cost.estimated_usd')).toHaveLength(0);
     });
   });
 
@@ -167,38 +153,21 @@ describe('ai-tracing', () => {
       );
 
       expect(result).toBe('test-result');
-      expect(mockTracer.startActiveSpan).toHaveBeenCalledWith(
-        'ai.test.operation',
-        expect.any(Function),
-      );
+      expect(mockTracer.startActiveSpan).toHaveBeenCalledWith('ai.test.operation', expect.any(Function));
     });
 
     it('should set attributes on the span', async () => {
-      await traceAICall(
-        'ai.test',
-        { 'ai.system': 'gemini', 'ai.temperature': 0.7 },
-        async () => 'ok',
-      );
+      await traceAICall('ai.test', { 'ai.system': 'gemini', 'ai.temperature': 0.7 }, async () => 'ok');
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.system', 'gemini');
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('ai.temperature', 0.7);
     });
 
     it('should skip undefined attributes', async () => {
-      await traceAICall(
-        'ai.test',
-        { 'ai.system': 'gemini', 'ai.model': undefined },
-        async () => 'ok',
-      );
+      await traceAICall('ai.test', { 'ai.system': 'gemini', 'ai.model': undefined }, async () => 'ok');
 
-      const systemCall = (mockSpan.setAttribute as ReturnType<typeof vi.fn>).mock.calls.find(
-        (call: unknown[]) => call[0] === 'ai.system',
-      );
-      const modelCall = (mockSpan.setAttribute as ReturnType<typeof vi.fn>).mock.calls.find(
-        (call: unknown[]) => call[0] === 'ai.model',
-      );
-      expect(systemCall).toBeDefined();
-      expect(modelCall).toBeUndefined();
+      expect(getAttrCalls(mockSpan.setAttribute, 'ai.system')).toHaveLength(1);
+      expect(getAttrCalls(mockSpan.setAttribute, 'ai.model')).toHaveLength(0);
     });
 
     it('should set OK status on success', async () => {
@@ -212,9 +181,7 @@ describe('ai-tracing', () => {
       const error = new Error('AI call failed');
 
       await expect(
-        traceAICall('ai.test', {}, async () => {
-          throw error;
-        }),
+        traceAICall('ai.test', {}, async () => { throw error; }),
       ).rejects.toThrow('AI call failed');
 
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
@@ -236,16 +203,16 @@ describe('ai-tracing', () => {
   });
 
   describe('startAIStreamSpan', () => {
-    let dateNowSpy: ReturnType<typeof vi.spyOn>;
+    let perfNowSpy: ReturnType<typeof vi.spyOn>;
     let currentTime: number;
 
     beforeEach(() => {
       currentTime = 1000;
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
+      perfNowSpy = vi.spyOn(performance, 'now').mockImplementation(() => currentTime);
     });
 
     afterEach(() => {
-      dateNowSpy.mockRestore();
+      perfNowSpy.mockRestore();
     });
 
     it('should create a span with attributes', () => {
@@ -277,9 +244,7 @@ describe('ai-tracing', () => {
       currentTime = 1200;
       onFirstToken(); // Should be ignored
 
-      const firstTokenCalls = (mockSpan.setAttribute as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (call: unknown[]) => call[0] === 'ai.stream.first_token_ms',
-      );
+      const firstTokenCalls = getAttrCalls(mockSpan.setAttribute, 'ai.stream.first_token_ms');
       expect(firstTokenCalls).toHaveLength(1);
       expect(firstTokenCalls[0][1]).toBe(100);
     });

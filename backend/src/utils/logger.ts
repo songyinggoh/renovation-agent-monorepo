@@ -1,6 +1,8 @@
 // A simple structured logger to be used across the application.
+// Phase IV: Injects trace_id and span_id for log-trace correlation.
 
 import { getRequestId } from '../middleware/request-id.middleware.js';
+import { trace, isSpanContextValid } from '@opentelemetry/api';
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
@@ -30,6 +32,7 @@ export class Logger {
 
   private log(level: LogLevel, message: string, error?: Error, metadata?: LogMetadata) {
     const requestId = getRequestId();
+    const traceContext = getTraceContext();
 
     const logObject: LogObject = {
       timestamp: new Date().toISOString(),
@@ -37,6 +40,7 @@ export class Logger {
       service: this.serviceName,
       message,
       ...(requestId && { requestId }),
+      ...traceContext,
       ...metadata,
     };
 
@@ -80,5 +84,26 @@ export class Logger {
 
   error(message: string, error: Error, metadata?: LogMetadata) {
     this.log('ERROR', message, error, metadata);
+  }
+}
+
+/**
+ * Extract trace_id and span_id from the active OpenTelemetry span.
+ * Returns empty object when no valid span is active (graceful no-op).
+ */
+function getTraceContext(): { trace_id?: string; span_id?: string } {
+  try {
+    const activeSpan = trace.getActiveSpan();
+    if (!activeSpan) return {};
+
+    const spanContext = activeSpan.spanContext();
+    if (!isSpanContextValid(spanContext)) return {};
+
+    return {
+      trace_id: spanContext.traceId,
+      span_id: spanContext.spanId,
+    };
+  } catch {
+    return {};
   }
 }

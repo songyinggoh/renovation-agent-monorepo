@@ -9,7 +9,10 @@
 
 import { trace, SpanStatusCode, type Span } from '@opentelemetry/api';
 
-const tracer = trace.getTracer('renovation-agent-ai', '1.0.0');
+const tracer = trace.getTracer(
+  'renovation-agent-ai',
+  process.env.npm_package_version ?? '1.0.0',
+);
 
 /** Token usage from LangChain response_metadata */
 export interface TokenUsage {
@@ -41,6 +44,7 @@ const GEMINI_PRICING: Record<string, { input: number; output: number }> = {
 };
 
 const DEFAULT_PRICING = { input: 0.075, output: 0.30 };
+const TOKENS_PER_MILLION = 1_000_000;
 
 /**
  * Estimate cost in USD for a Gemini API call
@@ -52,7 +56,7 @@ export function estimateCost(
 ): number {
   if (promptTokens === 0 && completionTokens === 0) return 0;
   const pricing = GEMINI_PRICING[model] ?? DEFAULT_PRICING;
-  return (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
+  return (promptTokens * pricing.input + completionTokens * pricing.output) / TOKENS_PER_MILLION;
 }
 
 /**
@@ -153,7 +157,7 @@ export function startAIStreamSpan(
   endStream: (error?: Error) => void;
 } {
   const span = tracer.startSpan(spanName);
-  const startTime = Date.now();
+  const startTime = performance.now();
   let firstTokenRecorded = false;
 
   for (const [key, value] of Object.entries(attributes)) {
@@ -167,11 +171,11 @@ export function startAIStreamSpan(
     onFirstToken: () => {
       if (!firstTokenRecorded) {
         firstTokenRecorded = true;
-        span.setAttribute('ai.stream.first_token_ms', Date.now() - startTime);
+        span.setAttribute('ai.stream.first_token_ms', Math.round(performance.now() - startTime));
       }
     },
     endStream: (error?: Error) => {
-      span.setAttribute('ai.stream.total_ms', Date.now() - startTime);
+      span.setAttribute('ai.stream.total_ms', Math.round(performance.now() - startTime));
       if (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         span.recordException(error);
@@ -183,5 +187,3 @@ export function startAIStreamSpan(
   };
 }
 
-/** Export tracer for direct use in advanced instrumentation */
-export { tracer as aiTracer };
