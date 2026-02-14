@@ -19,6 +19,13 @@ vi.mock('../../../src/middleware/auth.middleware.js', () => ({
     } as Request['user'];
     next();
   }),
+  optionalAuthMiddleware: vi.fn((_req: Request, _res: Response, next: NextFunction) => {
+    _req.user = {
+      id: 'test-user-id',
+      email: 'test@example.com',
+    } as Request['user'];
+    next();
+  }),
 }));
 
 // ── Logger: suppress output during tests ──
@@ -44,6 +51,16 @@ vi.mock('../../../src/middleware/rate-limit.middleware.js', () => ({
 const mockPoolQuery = vi.fn();
 const mockDbResolve = vi.fn().mockResolvedValue([]);
 
+// Mock client returned by pool.connect()
+const mockClientQuery = vi.fn().mockResolvedValue({ rows: [{ current_time: new Date() }] });
+const mockClientRelease = vi.fn();
+const mockClient = {
+  query: mockClientQuery,
+  release: mockClientRelease,
+};
+
+const mockPoolConnect = vi.fn().mockResolvedValue(mockClient);
+
 function createDrizzleChain() {
   const chain: Record<string, unknown> = {};
   const methods = ['select', 'from', 'where', 'orderBy', 'limit', 'insert', 'values', 'returning'];
@@ -60,7 +77,7 @@ vi.mock('../../../src/db/index.js', () => ({
   db: createDrizzleChain(),
   pool: {
     query: mockPoolQuery,
-    connect: vi.fn(),
+    connect: mockPoolConnect,
     totalCount: 5,
     idleCount: 3,
     waitingCount: 0,
@@ -97,7 +114,7 @@ vi.mock('../../../src/config/supabase.js', () => ({
   supabaseAdmin: null,
 }));
 
-export { mockPoolQuery, mockDbResolve };
+export { mockPoolQuery, mockDbResolve, mockPoolConnect, mockClientQuery };
 
 /**
  * Helper: import createApp lazily (after mocks are set up)

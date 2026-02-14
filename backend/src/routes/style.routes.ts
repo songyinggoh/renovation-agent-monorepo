@@ -7,14 +7,14 @@ import {
   getStyleImages,
   seedStyleImages,
 } from '../controllers/style.controller.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { validateQuery } from '../middleware/validate.js';
 import { searchStylesQuerySchema } from '../validators/style.validators.js';
 
 const router = Router();
 
-// All style routes require authentication
-router.use(authMiddleware);
+// All style routes support optional authentication (Phases 1-7)
+router.use(optionalAuthMiddleware);
 
 /**
  * @route GET /api/styles

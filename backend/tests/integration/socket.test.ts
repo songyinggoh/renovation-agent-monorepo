@@ -10,6 +10,7 @@ import { AuthenticatedSocket } from '../../src/types/socket.js';
 vi.mock('../../src/middleware/auth.middleware.js', () => ({
   verifyToken: vi.fn(),
   authMiddleware: vi.fn((req, res, next) => next()),
+  optionalAuthMiddleware: vi.fn((req, res, next) => next()),
 }));
 
 vi.mock('../../src/services/chat.service.js', () => ({

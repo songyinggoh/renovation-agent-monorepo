@@ -53,19 +53,15 @@ describe('Session Endpoints', () => {
       expect(res.body.user.id).toBe('test-user-id');
     });
 
-    it('should return 401 without auth header', async () => {
-      // Override mock to reject unauthenticated requests
-      vi.mocked(authMiddleware).mockImplementation((_req, res) => {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Missing or invalid authorization header',
-        });
-      });
+    it('should return 200 without auth header when auth is disabled (Phases 1-7)', async () => {
+      // With optionalAuthMiddleware and isAuthEnabled() = false,
+      // requests without auth headers should succeed
+      mockDbResolve.mockResolvedValue([]);
 
       const res = await request(app).get('/api/sessions');
 
-      expect(res.status).toBe(401);
-      expect(res.body.error).toBe('Unauthorized');
+      expect(res.status).toBe(200);
+      expect(res.body.sessions).toEqual([]);
     });
 
     it('should return 500 on database error', async () => {

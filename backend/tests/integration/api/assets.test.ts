@@ -97,16 +97,24 @@ describe('Asset Endpoints', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should return 401 without auth', async () => {
-      vi.mocked(authMiddleware).mockImplementation((_req, res) => {
-        res.status(401).json({ error: 'Unauthorized' });
-      });
+    it('should return 201 without auth when auth is disabled (Phases 1-7)', async () => {
+      // With optionalAuthMiddleware and isAuthEnabled() = false,
+      // requests without auth headers should succeed
+      const uploadResult = {
+        assetId: 'asset-2',
+        signedUrl: 'mock://upload-url',
+        token: 'mock-token',
+        storagePath: 'session_1/room_1/photos/kitchen.jpg',
+        expiresAt: '2024-01-01T01:00:00.000Z',
+      };
+      mockRequestUpload.mockResolvedValue(uploadResult);
 
       const res = await request(app)
         .post('/api/rooms/room-1/assets/request-upload')
         .send(validBody);
 
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(201);
+      expect(res.body.assetId).toBe('asset-2');
     });
 
     it('should return 500 on service error', async () => {

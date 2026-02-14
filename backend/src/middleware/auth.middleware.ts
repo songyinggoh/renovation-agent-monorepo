@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { User } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { isAuthEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'AuthMiddleware' });
@@ -28,6 +29,11 @@ export const verifyToken = async (token: string): Promise<User> => {
     return user;
 };
 
+/**
+ * Required authentication middleware
+ * Always requires a valid Bearer token regardless of environment configuration
+ * Use this for endpoints that MUST have authentication
+ */
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
 
@@ -60,4 +66,23 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
             message: 'Invalid or expired token',
         });
     }
+};
+
+/**
+ * Optional authentication middleware (Phases 1-7 compatible)
+ * Only enforces authentication when Supabase is fully configured
+ * When auth is disabled, allows unauthenticated access (req.user will be undefined)
+ * When auth is enabled, behaves identically to authMiddleware
+ *
+ * Use this for endpoints that support both authenticated and anonymous users
+ */
+export const optionalAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    // If auth is not configured, skip authentication entirely
+    if (!isAuthEnabled()) {
+        logger.info('Authentication skipped - Supabase not configured (Phases 1-7)');
+        return next();
+    }
+
+    // Auth is enabled - enforce authentication
+    return authMiddleware(req, res, next);
 };

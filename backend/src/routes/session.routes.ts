@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { listSessions, getSession, createSession, healthCheck } from '../controllers/session.controller.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { verifySessionOwnership } from '../middleware/ownership.middleware.js';
 import { validate } from '../middleware/validate.js';
 import { createSessionSchema } from '../validators/session.validators.js';
@@ -13,8 +13,9 @@ const router = Router();
  */
 router.get('/health', healthCheck);
 
-// All session routes require authentication
-router.use(authMiddleware);
+// All session routes support optional authentication (Phases 1-7)
+// When Supabase is not configured, sessions can be created anonymously
+router.use(optionalAuthMiddleware);
 
 /**
  * @route GET /api/sessions

@@ -6,15 +6,15 @@ import {
   updateRoom,
   deleteRoom,
 } from '../controllers/room.controller.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { verifySessionOwnership, verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 import { validate } from '../middleware/validate.js';
 import { createRoomSchema, updateRoomSchema } from '../validators/room.validators.js';
 
 const router = Router();
 
-// All room routes require authentication
-router.use(authMiddleware);
+// All room routes support optional authentication (Phases 1-7)
+router.use(optionalAuthMiddleware);
 
 /**
  * @route GET /api/sessions/:sessionId/rooms

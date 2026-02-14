@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { searchProducts, getRoomProducts } from '../controllers/product.controller.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { validateQuery } from '../middleware/validate.js';
 import { verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 import { searchProductsQuerySchema } from '../validators/product.validators.js';
 
 const router = Router();
 
-// All product routes require authentication
-router.use(authMiddleware);
+// All product routes support optional authentication (Phases 1-7)
+router.use(optionalAuthMiddleware);
 
 /**
  * @route GET /api/products/search?style=&category=&maxPrice=&roomType=&q=

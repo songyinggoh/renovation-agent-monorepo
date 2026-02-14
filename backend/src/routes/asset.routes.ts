@@ -7,13 +7,14 @@ import {
   deleteAsset,
   getAssetUrl,
 } from '../controllers/asset.controller.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 
 const router = Router();
 
-// All asset routes require authentication
-router.use(authMiddleware);
+// All asset routes support optional authentication (Phases 1-7)
+// When Supabase is not configured, assets can be uploaded anonymously
+router.use(optionalAuthMiddleware);
 
 /**
  * @route POST /api/rooms/:roomId/assets/request-upload
