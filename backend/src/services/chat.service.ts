@@ -1,4 +1,3 @@
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import {
   HumanMessage,
   AIMessage,
@@ -10,10 +9,16 @@ import {
 import { StateGraph, START, END, MessagesAnnotation } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { eq } from 'drizzle-orm';
-import { createStreamingModel } from '../config/gemini.js';
+import { createStreamingModel, type TracedModel } from '../config/gemini.js';
 import { getSystemPrompt } from '../config/prompts.js';
 import { renovationTools } from '../tools/index.js';
 import { Logger } from '../utils/logger.js';
+import {
+  traceAICall,
+  startAIStreamSpan,
+  extractTokenUsage,
+  recordTokenUsage,
+} from '../utils/ai-tracing.js';
 import { MessageService } from './message.service.js';
 import { getCheckpointer } from './checkpointer.service.js';
 import { db } from '../db/index.js';
@@ -39,9 +44,11 @@ export interface StreamCallback {
  *
  * Uses LangGraph StateGraph with Gemini 2.5 Flash and tool calling
  * for intelligent, tool-augmented conversation with phase-aware prompts.
+ *
+ * Phase IV: Instrumented with OpenTelemetry spans for AI call tracing (IA doc 1.4).
  */
 export class ChatService {
-  private model: ChatGoogleGenerativeAI;
+  private model: TracedModel;
   private messageService: MessageService;
   private graph;
 
@@ -127,8 +134,7 @@ export class ChatService {
   /**
    * Process a user message through the ReAct agent and stream the response
    *
-   * Handles tool calls and results, saving all interactions to the database
-   * and firing appropriate callbacks for real-time Socket.io events.
+   * Phase IV: Wrapped in OTel spans tracking AI attributes from IA doc section 1.4.
    *
    * @param sessionId - The session ID for context and thread_id
    * @param userMessage - The user's message content
@@ -144,138 +150,182 @@ export class ChatService {
       messageLength: userMessage.length,
     });
 
-    try {
-      // Step 1: Load message history BEFORE saving the new message
-      // to avoid duplicating the user message in context
-      const [phase, history] = await Promise.all([
-        this.getSessionPhase(sessionId),
-        this.messageService.getRecentMessages(sessionId, 20),
-      ]);
+    const modelAttrs = this.model.traceAttributes;
 
-      // Step 2: Save user message to database
-      await this.messageService.saveMessage({
-        sessionId,
-        userId: null,
-        role: 'user',
-        content: userMessage,
-        type: 'text',
-      });
+    await traceAICall(
+      'ai.chat.processMessage',
+      {
+        ...modelAttrs,
+        'ai.prompt.history_size': 0, // Updated after history load
+      },
+      async (parentSpan) => {
+        try {
+          // Step 1: Load message history BEFORE saving the new message
+          // to avoid duplicating the user message in context
+          const [phase, history] = await Promise.all([
+            this.getSessionPhase(sessionId),
+            this.messageService.getRecentMessages(sessionId, 20),
+          ]);
 
-      // Step 3: Build phase-aware system prompt and input messages
-      const systemPrompt = getSystemPrompt(phase, sessionId);
-      const historicalMessages = this.convertHistoryToMessages(history);
+          parentSpan.setAttribute('ai.prompt.phase', phase);
+          parentSpan.setAttribute('ai.prompt.history_size', history.length);
 
-      const inputMessages: BaseMessage[] = [
-        new SystemMessage(systemPrompt),
-        ...historicalMessages,
-        new HumanMessage(userMessage),
-      ];
-
-      // Step 5: Stream response from ReAct agent
-      let fullResponse = '';
-      const emittedToolCalls = new Set<string>();
-
-      const config = {
-        configurable: { thread_id: sessionId },
-        streamMode: 'messages' as const,
-      };
-
-      const stream = await this.graph.stream(
-        { messages: inputMessages as BaseMessage[] },
-        config
-      );
-
-      for await (const chunk of stream) {
-        const [message, metadata] = chunk as [
-          BaseMessage,
-          Record<string, unknown>,
-        ];
-        const nodeId = metadata?.langgraph_node as string | undefined;
-
-        // Tool execution results (from 'tools' node)
-        if (nodeId === 'tools' && message) {
-          const toolMsg = message as unknown as ToolMessage;
-          const toolName = toolMsg.name ?? 'unknown';
-          const toolResult =
-            typeof toolMsg.content === 'string'
-              ? toolMsg.content
-              : JSON.stringify(toolMsg.content);
-
-          callback.onToolResult?.(toolName, toolResult);
-
+          // Step 2: Save user message to database
           await this.messageService.saveMessage({
             sessionId,
             userId: null,
-            role: 'assistant',
-            content: toolResult,
-            type: 'tool_result',
-            toolName,
-            toolOutput: this.safeJsonParse(toolResult),
+            role: 'user',
+            content: userMessage,
+            type: 'text',
           });
-          continue;
-        }
 
-        // Model output (from 'call_model' node)
-        if (nodeId === 'call_model' && message) {
-          const aiChunk = message as unknown as AIMessageChunk;
+          // Step 3: Build phase-aware system prompt and input messages
+          const systemPrompt = getSystemPrompt(phase, sessionId);
+          const historicalMessages = this.convertHistoryToMessages(history);
 
-          // Detect tool call chunks (model is requesting tool execution)
-          if (
-            aiChunk.tool_call_chunks &&
-            aiChunk.tool_call_chunks.length > 0
-          ) {
-            for (const tc of aiChunk.tool_call_chunks) {
-              if (tc.name && !emittedToolCalls.has(tc.name)) {
-                emittedToolCalls.add(tc.name);
-                callback.onToolCall?.(tc.name, '');
+          const inputMessages: BaseMessage[] = [
+            new SystemMessage(systemPrompt),
+            ...historicalMessages,
+            new HumanMessage(userMessage),
+          ];
 
-                await this.messageService.saveMessage({
-                  sessionId,
-                  userId: null,
-                  role: 'assistant',
-                  content: `Calling tool: ${tc.name}`,
-                  type: 'tool_call',
-                  toolName: tc.name,
-                });
+          // Step 5: Stream response from ReAct agent with AI tracing
+          let fullResponse = '';
+          const emittedToolCalls = new Set<string>();
+          let reactIterations = 0;
+
+          const config = {
+            configurable: { thread_id: sessionId },
+            streamMode: 'messages' as const,
+          };
+
+          const streamTrace = startAIStreamSpan('ai.langgraph.stream', {
+            ...modelAttrs,
+            'ai.prompt.phase': phase,
+          });
+
+          const stream = await this.graph.stream(
+            { messages: inputMessages as BaseMessage[] },
+            config
+          );
+
+          let firstTokenEmitted = false;
+
+          for await (const chunk of stream) {
+            const [message, metadata] = chunk as [
+              BaseMessage,
+              Record<string, unknown>,
+            ];
+            const nodeId = metadata?.langgraph_node as string | undefined;
+
+            // Tool execution results (from 'tools' node)
+            if (nodeId === 'tools' && message) {
+              const toolMsg = message as unknown as ToolMessage;
+              const toolName = toolMsg.name ?? 'unknown';
+              const toolResult =
+                typeof toolMsg.content === 'string'
+                  ? toolMsg.content
+                  : JSON.stringify(toolMsg.content);
+
+              callback.onToolResult?.(toolName, toolResult);
+
+              await this.messageService.saveMessage({
+                sessionId,
+                userId: null,
+                role: 'assistant',
+                content: toolResult,
+                type: 'tool_result',
+                toolName,
+                toolOutput: this.safeJsonParse(toolResult),
+              });
+              continue;
+            }
+
+            // Model output (from 'call_model' node)
+            if (nodeId === 'call_model' && message) {
+              const aiChunk = message as unknown as AIMessageChunk;
+
+              // Track token usage from response metadata (IA doc 1.4)
+              const tokenUsage = extractTokenUsage(
+                aiChunk.response_metadata as Record<string, unknown> | undefined,
+              );
+              if (tokenUsage) {
+                recordTokenUsage(streamTrace.span, tokenUsage, modelAttrs['ai.model'] as string);
+              }
+
+              // Detect tool call chunks (model is requesting tool execution)
+              if (
+                aiChunk.tool_call_chunks &&
+                aiChunk.tool_call_chunks.length > 0
+              ) {
+                reactIterations++;
+                for (const tc of aiChunk.tool_call_chunks) {
+                  if (tc.name && !emittedToolCalls.has(tc.name)) {
+                    emittedToolCalls.add(tc.name);
+                    callback.onToolCall?.(tc.name, '');
+
+                    await this.messageService.saveMessage({
+                      sessionId,
+                      userId: null,
+                      role: 'assistant',
+                      content: `Calling tool: ${tc.name}`,
+                      type: 'tool_call',
+                      toolName: tc.name,
+                    });
+                  }
+                }
+                continue;
+              }
+
+              // Regular text content - stream to user
+              if (typeof aiChunk.content === 'string' && aiChunk.content) {
+                if (!firstTokenEmitted) {
+                  streamTrace.onFirstToken();
+                  firstTokenEmitted = true;
+                }
+                fullResponse += aiChunk.content;
+                callback.onToken(aiChunk.content);
               }
             }
-            continue;
           }
 
-          // Regular text content - stream to user
-          if (typeof aiChunk.content === 'string' && aiChunk.content) {
-            fullResponse += aiChunk.content;
-            callback.onToken(aiChunk.content);
+          // Record ReAct loop metrics on both parent and stream spans
+          streamTrace.span.setAttribute('ai.react_loop.iterations', reactIterations);
+          streamTrace.span.setAttribute('ai.tool.calls_count', emittedToolCalls.size);
+          streamTrace.endStream();
+
+          parentSpan.setAttribute('ai.react_loop.iterations', reactIterations);
+          parentSpan.setAttribute('ai.tool.calls_count', emittedToolCalls.size);
+
+          logger.info('ReAct agent response completed', {
+            sessionId,
+            responseLength: fullResponse.length,
+            toolCallCount: emittedToolCalls.size,
+            reactIterations,
+          });
+
+          // Step 6: Save final assistant text response to database
+          if (fullResponse) {
+            await this.messageService.saveMessage({
+              sessionId,
+              userId: null,
+              role: 'assistant',
+              content: fullResponse,
+              type: 'text',
+            });
           }
+
+          // Step 7: Notify completion
+          callback.onComplete(fullResponse);
+        } catch (error) {
+          logger.error('Error processing message with ReAct agent', error as Error, {
+            sessionId,
+          });
+          callback.onError(error as Error);
+          throw error;
         }
-      }
-
-      logger.info('ReAct agent response completed', {
-        sessionId,
-        responseLength: fullResponse.length,
-        toolCallCount: emittedToolCalls.size,
-      });
-
-      // Step 6: Save final assistant text response to database
-      if (fullResponse) {
-        await this.messageService.saveMessage({
-          sessionId,
-          userId: null,
-          role: 'assistant',
-          content: fullResponse,
-          type: 'text',
-        });
-      }
-
-      // Step 7: Notify completion
-      callback.onComplete(fullResponse);
-    } catch (error) {
-      logger.error('Error processing message with ReAct agent', error as Error, {
-        sessionId,
-      });
-      callback.onError(error as Error);
-      throw error;
-    }
+      },
+    );
   }
 
   /**

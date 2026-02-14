@@ -1,6 +1,7 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { env } from './env.js';
 import { Logger } from '../utils/logger.js';
+import type { AISpanAttributes } from '../utils/ai-tracing.js';
 
 const logger = new Logger({ serviceName: 'GeminiConfig' });
 
@@ -9,6 +10,8 @@ const logger = new Logger({ serviceName: 'GeminiConfig' });
  *
  * This file provides factory functions for creating Gemini models
  * optimized for different use cases in the renovation planning system.
+ *
+ * Phase IV: Each factory attaches traceAttributes for OTel instrumentation (IA doc 1.4).
  */
 
 /**
@@ -23,17 +26,34 @@ const DEFAULT_MODEL_CONFIG = {
   topK: 40,
 };
 
+/** Model with attached trace attributes for OTel instrumentation */
+export type TracedModel = ChatGoogleGenerativeAI & { traceAttributes: AISpanAttributes };
+
+/**
+ * Build IA doc section 1.4 tracing attributes for an AI model config
+ */
+export function getModelTraceAttributes(
+  model: string,
+  temperature: number,
+): AISpanAttributes {
+  return {
+    'ai.system': 'gemini',
+    'ai.model': model,
+    'ai.temperature': temperature,
+  };
+}
+
 /**
  * Create a Gemini model instance for chat/conversation
  *
  * @param options - Optional model configuration overrides
- * @returns Configured ChatGoogleGenerativeAI instance
+ * @returns Configured ChatGoogleGenerativeAI instance with traceAttributes
  */
 export function createChatModel(options?: {
   temperature?: number;
   maxOutputTokens?: number;
   model?: string;
-}): ChatGoogleGenerativeAI {
+}): TracedModel {
   const config = {
     ...DEFAULT_MODEL_CONFIG,
     ...options,
@@ -46,7 +66,10 @@ export function createChatModel(options?: {
     maxOutputTokens: config.maxOutputTokens,
   });
 
-  return new ChatGoogleGenerativeAI(config);
+  const model = new ChatGoogleGenerativeAI(config);
+  return Object.assign(model, {
+    traceAttributes: getModelTraceAttributes(config.model, config.temperature),
+  });
 }
 
 /**
@@ -57,14 +80,17 @@ export function createChatModel(options?: {
  *
  * @returns Configured ChatGoogleGenerativeAI instance with vision support
  */
-export function createVisionModel(): ChatGoogleGenerativeAI {
+export function createVisionModel(): TracedModel {
   logger.info('Creating Gemini vision model');
 
-  return new ChatGoogleGenerativeAI({
+  const model = new ChatGoogleGenerativeAI({
     model: 'gemini-2.5-flash', // Supports vision
     temperature: 0.5, // Lower temperature for more precise image analysis
     maxOutputTokens: 4096,
     apiKey: env.GOOGLE_API_KEY,
+  });
+  return Object.assign(model, {
+    traceAttributes: getModelTraceAttributes('gemini-2.5-flash', 0.5),
   });
 }
 
@@ -76,15 +102,18 @@ export function createVisionModel(): ChatGoogleGenerativeAI {
  *
  * @returns Configured ChatGoogleGenerativeAI instance
  */
-export function createStructuredModel(): ChatGoogleGenerativeAI {
+export function createStructuredModel(): TracedModel {
   logger.info('Creating Gemini structured output model');
 
-  return new ChatGoogleGenerativeAI({
+  const model = new ChatGoogleGenerativeAI({
     model: 'gemini-2.5-flash',
     temperature: 0.3, // Lower temperature for more consistent structure
     maxOutputTokens: 8192,
     topP: 0.9,
     apiKey: env.GOOGLE_API_KEY,
+  });
+  return Object.assign(model, {
+    traceAttributes: getModelTraceAttributes('gemini-2.5-flash', 0.3),
   });
 }
 
@@ -96,15 +125,18 @@ export function createStructuredModel(): ChatGoogleGenerativeAI {
  *
  * @returns Configured ChatGoogleGenerativeAI instance
  */
-export function createStreamingModel(): ChatGoogleGenerativeAI {
+export function createStreamingModel(): TracedModel {
   logger.info('Creating Gemini streaming model');
 
-  return new ChatGoogleGenerativeAI({
+  const model = new ChatGoogleGenerativeAI({
     model: 'gemini-2.5-flash',
     temperature: 0.7,
     maxOutputTokens: 8192,
     streaming: true, // Enable streaming
     apiKey: env.GOOGLE_API_KEY,
+  });
+  return Object.assign(model, {
+    traceAttributes: getModelTraceAttributes('gemini-2.5-flash', 0.7),
   });
 }
 
