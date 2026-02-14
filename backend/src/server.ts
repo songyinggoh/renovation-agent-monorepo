@@ -575,14 +575,15 @@ function setupGracefulShutdown(): void {
 
   // OpenTelemetry cleanup (Phase IV: Observability)
   // TODO: Phase IV - Enable when OpenTelemetry setup is complete
-  // Registered last to ensure all other resources flush their spans first
-  // shutdownManager.registerResource({
-  //   name: 'OpenTelemetry',
-  //   cleanup: async () => {
-  //     await shutdownTelemetry();
-  //   },
-  //   timeout: 5000,
-  // });
+  /* Registered last to ensure all other resources flush their spans first
+  shutdownManager.registerResource({
+    name: 'OpenTelemetry',
+    cleanup: async () => {
+      await shutdownTelemetry();
+    },
+    timeout: 5000,
+  });
+  */
 
   // Register signal handlers for graceful shutdown
   shutdownManager.registerSignalHandlers();

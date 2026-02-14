@@ -49,6 +49,9 @@ export function createQueue<T extends JobName>(name: T): Queue<JobTypes[T]> {
 
 /**
  * Create a typed worker for a specific job type
+ *
+ * Registers event handlers for completed, failed, error, and stalled jobs
+ * to ensure comprehensive logging and monitoring
  */
 export function createWorker<T extends JobName>(
   name: T,
@@ -66,6 +69,16 @@ export function createWorker<T extends JobName>(
 
   worker.on('failed', (job, err) => {
     logger.error(`Job failed`, err, { queue: name, jobId: job?.id });
+  });
+
+  // Issue #5 fix: Add error handler (consistent with createQueue)
+  worker.on('error', (err: Error) => {
+    logger.error(`Worker "${name}" error`, err, { queue: name });
+  });
+
+  // Issue #5 fix: Add stalled handler for jobs that stop processing
+  worker.on('stalled', (jobId: string) => {
+    logger.warn(`Job stalled`, undefined, { queue: name, jobId });
   });
 
   logger.info(`Worker "${name}" started`, { concurrency });

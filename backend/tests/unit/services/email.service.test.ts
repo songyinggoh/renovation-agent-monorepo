@@ -42,13 +42,13 @@ describe('EmailService', () => {
     service = new EmailService();
   });
 
-  describe('sendEmail', () => {
-    it('should send email via Resend and return email ID', async () => {
+  describe('sendEmail (new return type)', () => {
+    it('should return success result with email ID', async () => {
       mockSend.mockResolvedValue({ data: { id: 'email-123' }, error: null });
 
       const result = await service.sendEmail('user@test.com', 'Test Subject', '<p>Hello</p>');
 
-      expect(result).toBe('email-123');
+      expect(result).toEqual({ success: true, emailId: 'email-123' });
       expect(mockSend).toHaveBeenCalledWith({
         from: 'test@example.com',
         to: ['user@test.com'],
@@ -57,34 +57,60 @@ describe('EmailService', () => {
       });
     });
 
-    it('should return null when Resend returns an error', async () => {
+    it('should return api_error when Resend returns an error', async () => {
       mockSend.mockResolvedValue({ data: null, error: { message: 'Invalid API key' } });
 
       const result = await service.sendEmail('user@test.com', 'Subject', '<p>Hi</p>');
 
-      expect(result).toBeNull();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.reason).toBe('api_error');
+        expect(result.error?.message).toBe('Invalid API key');
+      }
     });
 
-    it('should return null when Resend throws', async () => {
-      mockSend.mockRejectedValue(new Error('Network error'));
+    it('should return network_error when Resend throws', async () => {
+      mockSend.mockRejectedValue(new Error('Network timeout'));
 
       const result = await service.sendEmail('user@test.com', 'Subject', '<p>Hi</p>');
 
-      expect(result).toBeNull();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.reason).toBe('network_error');
+        expect(result.error?.message).toBe('Network timeout');
+      }
     });
 
-    it('should skip sending when email is disabled', async () => {
+    it('should return disabled reason when email is disabled', async () => {
       mockEmailEnabled = false;
 
       const result = await service.sendEmail('user@test.com', 'Subject', '<p>Hi</p>');
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ success: false, reason: 'disabled' });
       expect(mockSend).not.toHaveBeenCalled();
     });
   });
 
-  describe('sendTemplated', () => {
-    it('should render template and send email', async () => {
+  describe('sendEmailLegacy (backward compatibility)', () => {
+    it('should return email ID on success', async () => {
+      mockSend.mockResolvedValue({ data: { id: 'email-456' }, error: null });
+
+      const result = await service.sendEmailLegacy('user@test.com', 'Subject', '<p>Hi</p>');
+
+      expect(result).toBe('email-456');
+    });
+
+    it('should return null on failure', async () => {
+      mockSend.mockResolvedValue({ data: null, error: { message: 'Error' } });
+
+      const result = await service.sendEmailLegacy('user@test.com', 'Subject', '<p>Hi</p>');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('sendTemplated (new return type)', () => {
+    it('should render template and send email with success result', async () => {
       mockSend.mockResolvedValue({ data: { id: 'email-456' }, error: null });
 
       const result = await service.sendTemplated('user@test.com', 'welcome', {
@@ -92,7 +118,7 @@ describe('EmailService', () => {
         dashboardUrl: 'https://app.example.com',
       });
 
-      expect(result).toBe('email-456');
+      expect(result).toEqual({ success: true, emailId: 'email-456' });
       expect(mockSend).toHaveBeenCalledTimes(1);
       const call = mockSend.mock.calls[0][0];
       expect(call.subject).toBe('Welcome to Renovation Agent');
@@ -111,11 +137,35 @@ describe('EmailService', () => {
         sessionUrl: 'https://app.example.com/session/123',
       });
 
-      expect(result).toBe('email-789');
+      expect(result).toEqual({ success: true, emailId: 'email-789' });
       const call = mockSend.mock.calls[0][0];
       expect(call.subject).toContain('Kitchen Reno');
       expect(call.subject).toContain('Checklist');
       expect(call.html).toContain('Bob');
+    });
+  });
+
+  describe('sendTemplatedLegacy (backward compatibility)', () => {
+    it('should return email ID on success', async () => {
+      mockSend.mockResolvedValue({ data: { id: 'email-999' }, error: null });
+
+      const result = await service.sendTemplatedLegacy('user@test.com', 'welcome', {
+        userName: 'Test',
+        dashboardUrl: 'https://example.com',
+      });
+
+      expect(result).toBe('email-999');
+    });
+
+    it('should return null on failure', async () => {
+      mockEmailEnabled = false;
+
+      const result = await service.sendTemplatedLegacy('user@test.com', 'welcome', {
+        userName: 'Test',
+        dashboardUrl: 'https://example.com',
+      });
+
+      expect(result).toBeNull();
     });
   });
 
