@@ -1,7 +1,6 @@
 // OpenTelemetry MUST initialize before all other imports
-// TODO: Phase IV - Enable when OpenTelemetry setup is complete
-// import { initTelemetry, shutdownTelemetry } from './config/telemetry.js';
-// initTelemetry();
+import { initTelemetry, shutdownTelemetry } from './config/telemetry.js';
+initTelemetry();
 
 import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -573,9 +572,7 @@ function setupGracefulShutdown(): void {
     timeout: 3000,
   });
 
-  // OpenTelemetry cleanup (Phase IV: Observability)
-  // TODO: Phase IV - Enable when OpenTelemetry setup is complete
-  /* Registered last to ensure all other resources flush their spans first
+  // OpenTelemetry cleanup - registered last to ensure all other resources flush their spans first
   shutdownManager.registerResource({
     name: 'OpenTelemetry',
     cleanup: async () => {
@@ -583,7 +580,6 @@ function setupGracefulShutdown(): void {
     },
     timeout: 5000,
   });
-  */
 
   // Register signal handlers for graceful shutdown
   shutdownManager.registerSignalHandlers();
