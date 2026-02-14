@@ -24,6 +24,15 @@ import {
   chatJoinSessionSchema,
   sanitizeContent,
 } from './validators/socket.validators.js';
+import {
+  traceSocketEvent,
+  traceConnection,
+  traceDisconnect,
+  addMessageAttributes,
+  addJoinAttributes,
+  addRateLimitAttributes,
+  addSecurityAttributes,
+} from './middleware/socketio-tracing.middleware.js';
 
 const logger = new Logger({ serviceName: 'Server' });
 
@@ -270,6 +279,9 @@ async function startServer(): Promise<void> {
         transport: socket.conn.transport.name,
       });
 
+      // Trace the connection event
+      traceConnection(socket);
+
       // Track transport upgrades
       socket.conn.on('upgrade', () => {
         logger.info('Client transport upgraded', {
@@ -280,6 +292,7 @@ async function startServer(): Promise<void> {
 
       // Handle disconnection
       socket.on('disconnect', (reason) => {
+        traceDisconnect(socket, reason);
         logger.info('Client disconnected', {
           socketId: socket.id,
           reason,
@@ -288,7 +301,7 @@ async function startServer(): Promise<void> {
       });
 
       // Join Session Room
-      socket.on('chat:join_session', (data: unknown) => {
+      socket.on('chat:join_session', traceSocketEvent(socket, 'chat:join_session', (data: unknown) => {
         // Validate session ID with Zod schema
         const validationResult = chatJoinSessionSchema.safeParse(data);
 
@@ -311,16 +324,17 @@ async function startServer(): Promise<void> {
         }
 
         const { sessionId } = validationResult.data;
+        addJoinAttributes(sessionId);
         const roomName = `session:${sessionId}`;
         socket.join(roomName);
         logger.info(`Socket ${socket.id} joined room ${roomName}`);
 
         // Notify client they have joined
         socket.emit('chat:session_joined', { sessionId });
-      });
+      }));
 
       // Handle User Message
-      socket.on('chat:user_message', async (data: unknown) => {
+      socket.on('chat:user_message', traceSocketEvent(socket, 'chat:user_message', async (data: unknown) => {
         // Validate message payload with Zod schema
         const validationResult = chatUserMessageSchema.safeParse(data);
 
@@ -339,10 +353,14 @@ async function startServer(): Promise<void> {
             error: 'Invalid message format',
             details: errors,
           });
+          addSecurityAttributes(false, false);
           return;
         }
 
         const { sessionId, content } = validationResult.data;
+
+        // Add message tracing attributes (content length only, never content)
+        addMessageAttributes(sessionId, content.length);
 
         // Sanitize content for prompt injection attempts
         const sanitizationResult = sanitizeContent(content);
@@ -363,8 +381,12 @@ async function startServer(): Promise<void> {
           });
         }
 
+        // Record security validation on trace
+        addSecurityAttributes(sanitizationResult.isSuspicious, true);
+
         // Rate limit check
         if (!checkRateLimit(socket.id)) {
+          addRateLimitAttributes(true, 0);
           logger.warn('Rate limit exceeded', undefined, { socketId: socket.id, sessionId });
           socket.emit('chat:error', {
             sessionId,
@@ -457,7 +479,7 @@ async function startServer(): Promise<void> {
             error: 'Failed to process message. Please try again.',
           });
         }
-      });
+      }));
     });
 
     // Store io instance globally for access in other modules
