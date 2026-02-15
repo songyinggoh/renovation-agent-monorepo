@@ -74,11 +74,11 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
 
     // Setup event handlers (mirrors production server.ts)
     io.on('connection', (socket) => {
-      socket.on('chat:join_session', (sessionId: string) => {
-        if (!sessionId) return;
-        const roomName = `session:${sessionId}`;
+      socket.on('chat:join_session', (data: { sessionId: string }) => {
+        if (!data?.sessionId) return;
+        const roomName = `session:${data.sessionId}`;
         socket.join(roomName);
-        socket.emit('chat:session_joined', { sessionId });
+        socket.emit('chat:session_joined', { sessionId: data.sessionId });
       });
 
       socket.on('chat:user_message', async (data: { sessionId: string; content: string }) => {
@@ -273,7 +273,7 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
         }, 3000);
 
         clientSocket.on('connect', () => {
-          clientSocket.emit('chat:join_session', 'session-123');
+          clientSocket.emit('chat:join_session', { sessionId: 'session-123' });
         });
 
         clientSocket.on('chat:session_joined', (data) => {
@@ -324,11 +324,11 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
         };
 
         client1.on('connect', () => {
-          client1.emit('chat:join_session', 'session-456');
+          client1.emit('chat:join_session', { sessionId: 'session-456' });
         });
 
         client2.on('connect', () => {
-          client2.emit('chat:join_session', 'session-456');
+          client2.emit('chat:join_session', { sessionId: 'session-456' });
         });
 
         client1.on('chat:session_joined', (data) => {
@@ -392,7 +392,7 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
         }, 3000);
 
         clientSocket.on('connect', () => {
-          clientSocket.emit('chat:join_session', 'session-789');
+          clientSocket.emit('chat:join_session', { sessionId: 'session-789' });
         });
 
         clientSocket.on('chat:session_joined', () => {
@@ -478,7 +478,7 @@ describe('Socket.io Infrastructure - Phase 1.1', () => {
         let doneReceived = false;
 
         clientSocket.on('connect', () => {
-          clientSocket.emit('chat:join_session', 'session-stream');
+          clientSocket.emit('chat:join_session', { sessionId: 'session-stream' });
         });
 
         clientSocket.on('chat:session_joined', () => {

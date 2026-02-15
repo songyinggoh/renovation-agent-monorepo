@@ -66,7 +66,7 @@ export function useChat(sessionId: string) {
           logger.info('Connected to server');
           setIsConnected(true);
           setError(null);
-          socket.emit('chat:join_session', sessionId);
+          socket.emit('chat:join_session', { sessionId });
         });
 
         socket.on('disconnect', (reason) => {
