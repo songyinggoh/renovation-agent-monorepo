@@ -19,6 +19,8 @@
     "db:migrate:manual": "tsx scripts/apply-manual-migrations.ts",
     "db:apply-style-images": "tsx scripts/apply-style-images.ts",
     "db:apply-migration-0009": "tsx scripts/apply-migration-0009.ts",
+    "db:apply-products-catalog": "tsx scripts/apply-products-catalog.ts",
+    "db:seed-products": "tsx scripts/seed-products-catalog.ts",
     "db:check-tables": "tsx scripts/check-db-tables.ts",
     "db:check-migrations": "tsx scripts/check-migrations.ts",
     "db:studio": "tsx node_modules/drizzle-kit/bin.cjs studio"

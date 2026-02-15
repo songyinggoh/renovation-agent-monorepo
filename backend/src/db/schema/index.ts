@@ -43,3 +43,6 @@ export * from './asset-variants.schema.js';
 
 // Document artifacts (system-generated PDFs)
 export * from './document-artifacts.schema.js';
+
+// Products catalog (global search/discovery)
+export * from './products-catalog.schema.js';

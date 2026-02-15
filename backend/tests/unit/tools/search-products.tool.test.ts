@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SeedProduct } from '../../../src/data/seed-products.js';
+import type { ProductCatalogEntry } from '../../../src/db/schema/products-catalog.schema.js';
 
 // Use vi.hoisted so mock is available inside hoisted vi.mock factory
-const { mockSearchSeedProducts } = vi.hoisted(() => ({
-  mockSearchSeedProducts: vi.fn(),
+const { mockSearchCatalogProducts } = vi.hoisted(() => ({
+  mockSearchCatalogProducts: vi.fn(),
 }));
 
 // Mock logger to suppress logs during tests
@@ -18,13 +18,14 @@ vi.mock('../../../src/utils/logger.js', () => ({
 // Mock ProductService module with stable hoisted reference
 vi.mock('../../../src/services/product.service.js', () => ({
   ProductService: vi.fn().mockImplementation(() => ({
-    searchSeedProducts: mockSearchSeedProducts,
+    searchCatalogProducts: mockSearchCatalogProducts,
   })),
 }));
 
 import { searchProductsTool } from '../../../src/tools/search-products.tool.js';
 
-const makeSeedProduct = (overrides: Partial<SeedProduct> = {}): SeedProduct => ({
+const makeCatalogProduct = (overrides: Partial<ProductCatalogEntry> = {}): ProductCatalogEntry => ({
+  id: 'cat-1',
   name: 'White Oak Engineered Hardwood',
   category: 'flooring',
   description: 'Wide-plank engineered white oak with matte finish.',
@@ -40,17 +41,19 @@ const makeSeedProduct = (overrides: Partial<SeedProduct> = {}): SeedProduct => (
     material: 'engineered oak',
     dimensions: '7" x 48"',
   },
+  createdAt: new Date('2024-01-01'),
+  updatedAt: new Date('2024-01-01'),
   ...overrides,
 });
 
 describe('searchProductsTool', () => {
   beforeEach(() => {
-    mockSearchSeedProducts.mockReset();
+    mockSearchCatalogProducts.mockReset();
   });
 
   it('should return mapped products when results are found', async () => {
-    const seedProducts = [makeSeedProduct()];
-    mockSearchSeedProducts.mockReturnValue(seedProducts);
+    const products = [makeCatalogProduct()];
+    mockSearchCatalogProducts.mockResolvedValue(products);
 
     const result = await searchProductsTool.invoke({ query: 'oak' });
     const parsed = JSON.parse(result) as {
@@ -72,7 +75,7 @@ describe('searchProductsTool', () => {
       name: 'White Oak Engineered Hardwood',
       category: 'flooring',
       description: 'Wide-plank engineered white oak with matte finish.',
-      price: '$8.50',
+      price: 'USD 8.50',
       brand: 'Artisan Floors',
       material: 'engineered oak',
       compatibleStyles: ['modern-minimalist', 'warm-scandinavian'],
@@ -82,10 +85,10 @@ describe('searchProductsTool', () => {
   });
 
   it('should limit results to top 5', async () => {
-    const seedProducts = Array.from({ length: 8 }, (_, i) =>
-      makeSeedProduct({ name: `Product ${i + 1}` })
+    const products = Array.from({ length: 8 }, (_, i) =>
+      makeCatalogProduct({ id: `cat-${i}`, name: `Product ${i + 1}` })
     );
-    mockSearchSeedProducts.mockReturnValue(seedProducts);
+    mockSearchCatalogProducts.mockResolvedValue(products);
 
     const result = await searchProductsTool.invoke({ category: 'flooring' });
     const parsed = JSON.parse(result) as {
@@ -99,8 +102,8 @@ describe('searchProductsTool', () => {
     expect(parsed.showing).toBe(5);
   });
 
-  it('should pass all filter parameters to searchSeedProducts', async () => {
-    mockSearchSeedProducts.mockReturnValue([makeSeedProduct()]);
+  it('should pass all filter parameters to searchCatalogProducts', async () => {
+    mockSearchCatalogProducts.mockResolvedValue([makeCatalogProduct()]);
 
     await searchProductsTool.invoke({
       query: 'oak',
@@ -110,7 +113,7 @@ describe('searchProductsTool', () => {
       roomType: 'living',
     });
 
-    expect(mockSearchSeedProducts).toHaveBeenCalledWith({
+    expect(mockSearchCatalogProducts).toHaveBeenCalledWith({
       query: 'oak',
       style: 'modern-minimalist',
       category: 'flooring',
@@ -120,7 +123,7 @@ describe('searchProductsTool', () => {
   });
 
   it('should return no-match message when results are empty', async () => {
-    mockSearchSeedProducts.mockReturnValue([]);
+    mockSearchCatalogProducts.mockResolvedValue([]);
 
     const result = await searchProductsTool.invoke({ query: 'nonexistent' });
     const parsed = JSON.parse(result) as {
@@ -135,9 +138,14 @@ describe('searchProductsTool', () => {
   });
 
   it('should handle null material in product metadata', async () => {
-    const product = makeSeedProduct();
-    delete product.metadata.material;
-    mockSearchSeedProducts.mockReturnValue([product]);
+    const product = makeCatalogProduct({
+      metadata: {
+        brand: 'Artisan Floors',
+        style: ['modern-minimalist'],
+        roomTypes: ['living'],
+      },
+    });
+    mockSearchCatalogProducts.mockResolvedValue([product]);
 
     const result = await searchProductsTool.invoke({ query: 'oak' });
     const parsed = JSON.parse(result) as {
@@ -148,9 +156,7 @@ describe('searchProductsTool', () => {
   });
 
   it('should return error JSON when service throws', async () => {
-    mockSearchSeedProducts.mockImplementation(() => {
-      throw new Error('Unexpected failure');
-    });
+    mockSearchCatalogProducts.mockRejectedValue(new Error('Unexpected failure'));
 
     const result = await searchProductsTool.invoke({ query: 'oak' });
     const parsed = JSON.parse(result) as { error: string };

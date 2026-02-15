@@ -18,7 +18,7 @@ export const searchProductsTool = tool(
     });
 
     try {
-      const results = productService.searchSeedProducts({
+      const results = await productService.searchCatalogProducts({
         query,
         style,
         category,
@@ -39,10 +39,10 @@ export const searchProductsTool = tool(
         name: p.name,
         category: p.category,
         description: p.description,
-        price: `$${p.estimatedPrice}`,
-        brand: p.metadata.brand,
-        material: p.metadata.material ?? null,
-        compatibleStyles: p.metadata.style,
+        price: `${p.currency ?? 'USD'} ${p.estimatedPrice}`,
+        brand: p.metadata?.brand ?? null,
+        material: p.metadata?.material ?? null,
+        compatibleStyles: p.metadata?.style ?? [],
       }));
 
       return JSON.stringify({

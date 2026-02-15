@@ -201,6 +201,72 @@ describe('ProductService', () => {
     });
   });
 
+  describe('searchCatalogProducts', () => {
+    const mockCatalogProduct = {
+      id: 'cat-1',
+      name: 'Oak Floor',
+      category: 'flooring',
+      description: 'Hardwood floor',
+      estimatedPrice: '8.50',
+      currency: 'USD',
+      productUrl: null,
+      imageUrl: null,
+      recommendationReason: 'Good',
+      metadata: {
+        brand: 'TestBrand',
+        style: ['modern-minimalist'],
+        roomTypes: ['living'],
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('should return products from DB when catalog is populated', async () => {
+      const mockLimit = vi.fn().mockResolvedValue([mockCatalogProduct]);
+      const mockWhere = vi.fn().mockReturnValue({ limit: mockLimit });
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+      (db.select as Mock).mockReturnValue({ from: mockFrom });
+
+      const result = await productService.searchCatalogProducts({ category: 'flooring' });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.name).toBe('Oak Floor');
+    });
+
+    it('should fall back to in-memory when DB query throws', async () => {
+      const mockFrom = vi.fn().mockImplementation(() => {
+        throw new Error('relation does not exist');
+      });
+      (db.select as Mock).mockReturnValue({ from: mockFrom });
+
+      const result = await productService.searchCatalogProducts({ category: 'flooring' });
+
+      // Falls back to in-memory SEED_PRODUCTS (mocked with 3 items, 1 flooring)
+      expect(result).toHaveLength(1);
+      expect(result[0]!.name).toBe('Oak Floor');
+    });
+
+    it('should fall back to in-memory when catalog table is empty', async () => {
+      // First query returns empty results
+      const mockLimit1 = vi.fn().mockResolvedValue([]);
+      const mockWhere1 = vi.fn().mockReturnValue({ limit: mockLimit1 });
+      const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
+
+      // Second query (count check) also returns empty
+      const mockLimit2 = vi.fn().mockResolvedValue([]);
+      const mockFrom2 = vi.fn().mockReturnValue({ limit: mockLimit2 });
+
+      (db.select as Mock)
+        .mockReturnValueOnce({ from: mockFrom1 })  // main query
+        .mockReturnValueOnce({ from: mockFrom2 });  // empty table check
+
+      const result = await productService.searchCatalogProducts({});
+
+      // Falls back to all in-memory SEED_PRODUCTS (3 items)
+      expect(result).toHaveLength(3);
+    });
+  });
+
   describe('addProductToRoom', () => {
     it('should add a product and return the created record', async () => {
       const newProduct = {

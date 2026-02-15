@@ -31,6 +31,19 @@ export interface StyleImageWithUrl extends StyleImage {
   publicUrl: string;
 }
 
+/**
+ * Resolve the best available public URL for a style image.
+ * Prefers Supabase Storage URL when storage is configured,
+ * falls back to the original sourceUrl (e.g. Unsplash) when not.
+ */
+function resolvePublicUrl(img: StyleImage): string {
+  if (isStorageEnabled()) {
+    return buildPublicUrl(img.storagePath);
+  }
+  // Fall back to source URL when storage is not configured
+  return img.sourceUrl ?? buildPublicUrl(img.storagePath);
+}
+
 export interface SeedImageEntry {
   url: string;
   filename: string;
@@ -63,7 +76,7 @@ export class StyleImageService {
 
     return images.map((img) => ({
       ...img,
-      publicUrl: buildPublicUrl(img.storagePath),
+      publicUrl: resolvePublicUrl(img),
     }));
   }
 
@@ -97,7 +110,7 @@ export class StyleImageService {
 
     return images.map((img) => ({
       ...img,
-      publicUrl: buildPublicUrl(img.storagePath),
+      publicUrl: resolvePublicUrl(img),
     }));
   }
 

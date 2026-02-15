@@ -109,11 +109,39 @@ describe('StyleImageService', () => {
       expect(db.select).toHaveBeenCalled();
       expect(mockFrom).toHaveBeenCalledWith(styleImages);
       expect(result).toHaveLength(2);
+      // isStorageEnabled() is mocked as false, so publicUrl falls back to sourceUrl
+      expect(result[0].publicUrl).toBe('https://images.unsplash.com/photo-123');
+      expect(result[1].publicUrl).toBe('https://images.unsplash.com/photo-123');
+    });
+
+    it('should fall back to sourceUrl when storage is not enabled', async () => {
+      // isStorageEnabled is mocked as false, so resolvePublicUrl should use sourceUrl
+      const imgWithSourceUrl = {
+        ...mockImage,
+        sourceUrl: 'https://images.unsplash.com/photo-custom',
+      };
+      const mockOrderBy = vi.fn().mockResolvedValue([imgWithSourceUrl]);
+      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+      (db.select as Mock).mockReturnValue({ from: mockFrom });
+
+      const result = await service.getImagesByStyle('style-1');
+
+      expect(result[0].publicUrl).toBe('https://images.unsplash.com/photo-custom');
+    });
+
+    it('should fall back to buildPublicUrl when sourceUrl is null and storage disabled', async () => {
+      const imgNoSourceUrl = { ...mockImage, sourceUrl: null };
+      const mockOrderBy = vi.fn().mockResolvedValue([imgNoSourceUrl]);
+      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+      (db.select as Mock).mockReturnValue({ from: mockFrom });
+
+      const result = await service.getImagesByStyle('style-1');
+
+      // No sourceUrl, falls through to buildPublicUrl
       expect(result[0].publicUrl).toBe(
         'https://test.supabase.co/storage/v1/object/public/style-assets/styles/japandi/living-zen.jpg'
-      );
-      expect(result[1].publicUrl).toBe(
-        'https://test.supabase.co/storage/v1/object/public/style-assets/styles/japandi/kitchen-wabi.jpg'
       );
     });
 
