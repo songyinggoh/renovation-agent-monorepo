@@ -20,6 +20,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const checkUser = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
+                // Allow anonymous access when Supabase is not configured (Phases 1-7)
+                if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+                    setLoading(false);
+                    return;
+                }
                 router.push('/');
             } else {
                 setUser(user);
@@ -38,10 +43,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    if (!user) {
-        return null;
-    }
-
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         router.push('/');
@@ -57,19 +58,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                         {/* Right: Desktop nav */}
                         <div className="hidden items-center gap-4 sm:flex">
-                            <span className="text-sm text-muted-foreground">
-                                {user.email}
-                            </span>
+                            {user && (
+                                <span className="text-sm text-muted-foreground">
+                                    {user.email}
+                                </span>
+                            )}
                             <ThemeToggle />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleSignOut}
-                                className="gap-2"
-                            >
-                                <LogOut className="h-4 w-4" />
-                                Sign out
-                            </Button>
+                            {user && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleSignOut}
+                                    className="gap-2"
+                                >
+                                    <LogOut className="h-4 w-4" />
+                                    Sign out
+                                </Button>
+                            )}
                         </div>
 
                         {/* Right: Mobile hamburger */}
@@ -85,17 +90,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 <SheetContent side="right" className="w-72">
                                     <div className="flex flex-col gap-6 pt-6">
                                         <span className="font-display text-base tracking-tight">Renovation Agent</span>
-                                        <p className="text-sm text-muted-foreground">
-                                            {user.email}
-                                        </p>
-                                        <Button
-                                            variant="outline"
-                                            onClick={handleSignOut}
-                                            className="gap-2"
-                                        >
-                                            <LogOut className="h-4 w-4" />
-                                            Sign out
-                                        </Button>
+                                        {user && (
+                                            <p className="text-sm text-muted-foreground">
+                                                {user.email}
+                                            </p>
+                                        )}
+                                        {user && (
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleSignOut}
+                                                className="gap-2"
+                                            >
+                                                <LogOut className="h-4 w-4" />
+                                                Sign out
+                                            </Button>
+                                        )}
                                     </div>
                                 </SheetContent>
                             </Sheet>

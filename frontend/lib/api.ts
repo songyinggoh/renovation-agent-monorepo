@@ -5,12 +5,10 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
 
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
-
     const headers = new Headers(options.headers);
-    headers.set('Authorization', `Bearer ${token}`);
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
     headers.set('Content-Type', 'application/json');
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';

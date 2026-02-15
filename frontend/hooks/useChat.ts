@@ -46,14 +46,8 @@ export function useChat(sessionId: string) {
 
         const token = session?.access_token;
 
-        if (!token) {
-          setError('No authentication token found. Please sign in.');
-          logger.error('No auth token found', new Error('Missing token'));
-          return;
-        }
-
         socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000', {
-          auth: { token },
+          auth: token ? { token } : {},
           transports: ['websocket', 'polling'],
           reconnection: true,
           reconnectionAttempts: 5,

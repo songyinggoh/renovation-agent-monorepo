@@ -5,7 +5,7 @@ initTelemetry();
 import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createApp } from './app.js';
-import { env, isEmailEnabled } from './config/env.js';
+import { env, isEmailEnabled, isAuthEnabled } from './config/env.js';
 import { initSentry } from './config/sentry.js';
 import { connectRedis, closeRedis, testRedisConnection, redis } from './config/redis.js';
 import { testConnection, closeConnection } from './db/index.js';
@@ -220,6 +220,12 @@ async function startServer(): Promise<void> {
 
     // Socket.io Middleware for Authentication
     io.use(async (socket: Socket, next) => {
+      // Phases 1-7: Allow anonymous Socket.io connections when Supabase not configured
+      if (!isAuthEnabled()) {
+        next();
+        return;
+      }
+
       try {
         const token = socket.handshake.auth.token as string | undefined;
         if (!token) {
