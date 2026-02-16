@@ -11,11 +11,12 @@ import {
 } from '../db/schema/products-catalog.schema.js';
 import { SEED_PRODUCTS, type SeedProduct } from '../data/index.js';
 import { Logger } from '../utils/logger.js';
+import { escapeLikePattern } from '../utils/sql.js';
 
 const logger = new Logger({ serviceName: 'ProductService' });
 
 export interface ProductSearchFilters {
-  style?: string;
+  style?: string | string[];
   category?: string;
   maxPrice?: number;
   roomType?: string;
@@ -44,16 +45,18 @@ export class ProductService {
         conditions.push(lte(productsCatalog.estimatedPrice, String(filters.maxPrice)));
       }
       if (filters.query) {
-        const pattern = `%${filters.query}%`;
+        const pattern = `%${escapeLikePattern(filters.query)}%`;
         conditions.push(
           sql`(${productsCatalog.name} ILIKE ${pattern} OR ${productsCatalog.description} ILIKE ${pattern})`
         );
       }
       if (filters.style) {
-        const styleSlug = filters.style.toLowerCase().replace(/\s+/g, '-');
-        conditions.push(
-          sql`${productsCatalog.metadata}->'style' @> ${JSON.stringify([styleSlug])}::jsonb`
-        );
+        const styles = Array.isArray(filters.style) ? filters.style : [filters.style];
+        const styleConditions = styles.map((s) => {
+          const styleSlug = s.toLowerCase().replace(/\s+/g, '-');
+          return sql`${productsCatalog.metadata}->'style' @> ${JSON.stringify([styleSlug])}::jsonb`;
+        });
+        conditions.push(and(...styleConditions));
       }
       if (filters.roomType) {
         const room = filters.roomType.toLowerCase();
@@ -118,11 +121,10 @@ export class ProductService {
       results = results.filter((p) => p.category === filters.category);
     }
     if (filters.style) {
-      const styleSlug = filters.style.toLowerCase().replace(/\s+/g, '-');
+      const styles = Array.isArray(filters.style) ? filters.style : [filters.style];
+      const styleSlugs = styles.map((s) => s.toLowerCase().replace(/\s+/g, '-'));
       results = results.filter((p) =>
-        p.metadata.style.some(
-          (s) => s === styleSlug || s.includes(filters.style!.toLowerCase())
-        )
+        p.metadata.style.some((s) => styleSlugs.includes(s) || styleSlugs.some((ss) => s.includes(ss)))
       );
     }
     if (filters.maxPrice) {
