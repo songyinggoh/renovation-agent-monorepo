@@ -7,10 +7,10 @@ const logger = new Logger({ serviceName: 'ProductController' });
 const productService = new ProductService();
 
 /**
- * Search seed products with optional filters
+ * Search product catalog with optional filters (DB-backed with seed fallback)
  * GET /api/products/search?style=&category=&maxPrice=&roomType=&q=
  */
-export const searchProducts = (req: Request, res: Response) => {
+export const searchProducts = asyncHandler(async (req: Request, res: Response) => {
   // Query params are pre-validated and coerced by validateQuery middleware
   const { style, category, maxPrice, roomType, q } = req.query as {
     style?: string;
@@ -28,7 +28,7 @@ export const searchProducts = (req: Request, res: Response) => {
     query: q,
   });
 
-  const results = productService.searchSeedProducts({
+  const results = await productService.searchCatalogProducts({
     style,
     category,
     maxPrice,
@@ -40,7 +40,7 @@ export const searchProducts = (req: Request, res: Response) => {
     products: results,
     count: results.length,
   });
-};
+});
 
 /**
  * Get product recommendations for a room

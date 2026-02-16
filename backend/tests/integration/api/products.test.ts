@@ -7,14 +7,14 @@ import { ProductService } from '../../../src/services/product.service.js';
 // Mock the product service
 vi.mock('../../../src/services/product.service.js', () => ({
   ProductService: vi.fn().mockImplementation(() => ({
-    searchSeedProducts: vi.fn(),
+    searchCatalogProducts: vi.fn(),
     getProductsByRoom: vi.fn(),
   })),
 }));
 
 let app: Application;
 let mockProductService: {
-  searchSeedProducts: ReturnType<typeof vi.fn>;
+  searchCatalogProducts: ReturnType<typeof vi.fn>;
   getProductsByRoom: ReturnType<typeof vi.fn>;
 };
 
@@ -29,7 +29,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   // Reset individual method mocks without clearing constructor results
-  mockProductService.searchSeedProducts.mockReset();
+  mockProductService.searchCatalogProducts.mockReset();
   mockProductService.getProductsByRoom.mockReset();
 });
 
@@ -53,7 +53,7 @@ const sampleProducts = [
 describe('Product Endpoints', () => {
   describe('GET /api/products/search', () => {
     it('should return products with no filters', async () => {
-      mockProductService.searchSeedProducts.mockReturnValue(sampleProducts);
+      mockProductService.searchCatalogProducts.mockResolvedValue(sampleProducts);
 
       const res = await request(app)
         .get('/api/products/search')
@@ -65,7 +65,7 @@ describe('Product Endpoints', () => {
     });
 
     it('should pass filters to the service', async () => {
-      mockProductService.searchSeedProducts.mockReturnValue([sampleProducts[0]]);
+      mockProductService.searchCatalogProducts.mockResolvedValue([sampleProducts[0]]);
 
       const res = await request(app)
         .get('/api/products/search?style=modern&category=flooring')
@@ -73,7 +73,7 @@ describe('Product Endpoints', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.products).toHaveLength(1);
-      expect(mockProductService.searchSeedProducts).toHaveBeenCalledWith(
+      expect(mockProductService.searchCatalogProducts).toHaveBeenCalledWith(
         expect.objectContaining({
           style: 'modern',
           category: 'flooring',

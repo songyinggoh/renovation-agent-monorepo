@@ -158,6 +158,38 @@ describe('ToolResultRenderer', () => {
     expect(screen.getByText('Checklist Saved')).toBeDefined();
   });
 
+  it('renders product saved confirmation with room name', () => {
+    const message = makeToolMessage({
+      tool_name: 'save_product_recommendation',
+      tool_data: {
+        success: true,
+        productId: 'prod-123',
+        roomName: 'Kitchen',
+        message: 'Saved product "Oak Floor" to Kitchen',
+      },
+    });
+
+    render(<ToolResultRenderer message={message} />);
+
+    expect(screen.getByText('Saved product "Oak Floor" to Kitchen')).toBeDefined();
+    expect(screen.getByText('Kitchen')).toBeDefined();
+    expect(screen.getByText('Product Saved')).toBeDefined();
+  });
+
+  it('renders product save error when success is false', () => {
+    const message = makeToolMessage({
+      tool_name: 'save_product_recommendation',
+      tool_data: {
+        success: false,
+        error: 'Room not found: abc-123',
+      },
+    });
+
+    render(<ToolResultRenderer message={message} />);
+
+    expect(screen.getByText('Room not found: abc-123')).toBeDefined();
+  });
+
   it('renders fallback JSON in a pre tag for unknown tool', () => {
     const message = makeToolMessage({
       tool_name: 'unknown_tool',

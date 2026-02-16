@@ -12,6 +12,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_products: 'Product Results',
   save_intake_state: 'Intake Saved',
   save_checklist_state: 'Checklist Saved',
+  save_product_recommendation: 'Product Saved',
 };
 
 interface ColorSwatch {
@@ -59,6 +60,7 @@ function ToolIcon({ toolName }: { toolName: string }) {
     search_products: '\u{1F50D}',
     save_intake_state: '\u{2705}',
     save_checklist_state: '\u{1F4CB}',
+    save_product_recommendation: '\u{1F4E6}',
   };
   return <span className="text-base">{iconMap[toolName] ?? '\u{1F527}'}</span>;
 }
@@ -73,6 +75,8 @@ function ToolContent({ toolName, data }: { toolName: string; data: Record<string
       return <IntakeSavedResult data={data} />;
     case 'save_checklist_state':
       return <ChecklistSavedResult data={data} />;
+    case 'save_product_recommendation':
+      return <ProductSavedResult data={data} />;
     default:
       return (
         <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
@@ -185,6 +189,50 @@ function IntakeSavedResult({ data }: { data: Record<string, unknown> }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
+  const success = data.success as boolean | undefined;
+  const message = data.message as string | undefined;
+  const roomName = data.roomName as string | undefined;
+  const error = data.error as string | undefined;
+
+  if (success === false || error) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive/10 text-xs text-destructive">
+          !
+        </span>
+        <p className="text-sm text-destructive">{error ?? 'Failed to save product'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs dark:bg-green-900/30">
+          <svg
+            className="h-3 w-3 text-green-700 dark:text-green-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </span>
+        <p className="text-sm font-medium text-green-700 dark:text-green-400">
+          {message ?? 'Product saved'}
+        </p>
+      </div>
+      {roomName && (
+        <p className="text-xs text-muted-foreground">
+          Added to <span className="font-medium">{roomName}</span>
+        </p>
       )}
     </div>
   );
