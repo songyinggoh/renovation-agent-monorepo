@@ -13,6 +13,7 @@
     "test:unit": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
+    "test:load": "k6 run load-tests/health-check.k6.js && k6 run load-tests/chat-flow.k6.js",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx node_modules/drizzle-kit/bin.cjs migrate",
     "db:migrate:drizzle": "tsx scripts/apply-drizzle-migrations.ts",

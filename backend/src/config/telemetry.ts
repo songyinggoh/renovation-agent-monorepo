@@ -1,11 +1,12 @@
 /**
- * OpenTelemetry SDK initialization (Phase 1 + Phase 2)
+ * OpenTelemetry SDK initialization (Phases 1-6)
  *
  * MUST be imported before all other modules in server.ts
  * to ensure auto-instrumentation patches are applied early.
  *
  * Phase 1: Core SDK setup with OTLP exporter and custom sampler
  * Phase 2: HTTP & Database auto-instrumentation with requestHook for custom attributes
+ * Phase 6: Explicit BatchSpanProcessor config, exporter retry/timeout, x-force-sample header
  *
  * Gracefully no-ops when OTEL_ENABLED=false or in test environment.
  */
@@ -21,6 +22,7 @@ import {
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import type { ExpressInstrumentationConfig } from '@opentelemetry/instrumentation-express';
 import {
+  BatchSpanProcessor,
   type Sampler,
   SamplingDecision,
   type SamplingResult,
@@ -44,6 +46,17 @@ const logger = new Logger({ serviceName: 'Telemetry' });
 
 let sdk: NodeSDK | null = null;
 
+/** Exported for testing — production batch processor configuration */
+export const BATCH_PROCESSOR_CONFIG = {
+  scheduledDelayMillis: 5000,
+  maxExportBatchSize: 512,
+  maxQueueSize: 2048,
+  exportTimeoutMillis: 30000,
+} as const;
+
+/** Exported for testing — OTLP exporter timeout */
+export const EXPORTER_TIMEOUT_MILLIS = 10000;
+
 /**
  * Custom sampler implementing the IA doc sampling strategy (Phase 1):
  * - 100% for errors, AI calls, security events, chat messages
@@ -66,6 +79,11 @@ export class RenovationSampler implements Sampler {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _links: Link[],
   ): SamplingResult {
+    // Force-sample when explicitly requested (e.g., payment operations, debugging)
+    if (attributes['http.request.header.x_force_sample'] === 'true') {
+      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
+    }
+
     // Always sample errors (5xx)
     if (attributes['http.status_code'] && Number(attributes['http.status_code']) >= 500) {
       return { decision: SamplingDecision.RECORD_AND_SAMPLED };
@@ -139,6 +157,12 @@ export class RenovationSampler implements Sampler {
 function createExpressRequestHook(): ExpressInstrumentationConfig['requestHook'] {
   return (span, info): void => {
     try {
+      // Phase 6: Propagate x-force-sample header as span attribute for sampler
+      const forceSample = info.request.headers['x-force-sample'];
+      if (forceSample === 'true') {
+        span.setAttribute('http.request.header.x_force_sample', 'true');
+      }
+
       // Phase 2.1: Inject request.id from request headers
       // The request-id.middleware.ts sets X-Request-ID header
       const requestId = info.request.headers['x-request-id'];
@@ -259,11 +283,22 @@ export function initTelemetry(): void {
   diag.setLogger(new DiagConsoleLogger(), diagLevel);
 
   // Configure OTLP exporter (sends traces to Jaeger/Datadog/Honeycomb)
+  // Retry is handled internally by @opentelemetry/otlp-exporter-base (3 attempts, exponential backoff)
   const traceExporter = new OTLPTraceExporter({
     ...(endpoint && { url: `${endpoint}/v1/traces` }),
     headers: process.env.OTEL_EXPORTER_OTLP_HEADERS
       ? parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS)
       : undefined,
+    timeoutMillis: 10000, // 10s per export attempt
+  });
+
+  // Explicit BatchSpanProcessor configuration (Phase 6)
+  // These match OTel defaults but are made explicit for visibility and tuning
+  const batchProcessor = new BatchSpanProcessor(traceExporter, {
+    scheduledDelayMillis: 5000,   // Export every 5s
+    maxExportBatchSize: 512,      // Max spans per batch
+    maxQueueSize: 2048,           // Buffer limit before dropping
+    exportTimeoutMillis: 30000,   // 30s export timeout
   });
 
   sdk = new NodeSDK({
@@ -272,7 +307,7 @@ export function initTelemetry(): void {
       [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
       [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: environment,
     }),
-    traceExporter,
+    spanProcessors: [batchProcessor],
     sampler: new RenovationSampler(samplerArg),
     instrumentations: [
       getNodeAutoInstrumentations({
@@ -312,14 +347,25 @@ export function initTelemetry(): void {
 
   sdk.start();
 
-  logger.info('OpenTelemetry initialized (Phase 1 + Phase 2)', {
+  logger.info('OpenTelemetry initialized', {
     serviceName,
     environment,
     samplerArg,
     hasEndpoint: !!endpoint,
     endpoint: endpoint || 'default (localhost:4318)',
-    phase2Features: {
+    batchProcessor: {
+      scheduledDelayMillis: 5000,
+      maxExportBatchSize: 512,
+      maxQueueSize: 2048,
+      exportTimeoutMillis: 30000,
+    },
+    exporter: {
+      timeoutMillis: 10000,
+      retryPolicy: 'built-in (3 attempts, exponential backoff)',
+    },
+    features: {
       expressRequestHook: true,
+      forceSampleHeader: 'x-force-sample',
       enhancedDatabaseReporting: environment !== 'production',
       customAttributes: ['request.id', 'session.id', 'user.id', 'room.id', 'renovation.phase'],
     },
