@@ -13,6 +13,8 @@ export default [
     ignores: [
       '**/dist/*',
       '**/coverage/*',
+      '**/load-tests/*',
+      'e2e-chat-test.mjs',
     ]
   }
 ];

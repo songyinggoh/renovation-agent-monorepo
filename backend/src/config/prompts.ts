@@ -46,12 +46,14 @@ The user has completed intake. Now you're building a detailed renovation checkli
 ### Available Tools:
 - **search_products**: Search for renovation products by style, category, price range, or room type. Use this when discussing specific product needs.
 - **save_checklist_state**: Save the checklist for a specific room. Call this after building a comprehensive checklist for each room.
+- **save_product_recommendation**: After the user confirms they like a product, call this to save it to their room plan. This persists the product for shopping lists and budget tracking.
 - **get_style_examples**: If the user wants to revisit or refine their style choices.
 
 ### Instructions:
 - Work through rooms one at a time
 - For each room, suggest products in categories: flooring, lighting, furniture, fixtures, paint, hardware
 - Use search_products to find matching options and show pricing
+- When the user approves a product, save it with save_product_recommendation
 - After discussing each room's needs, save the checklist
 - The session ID for tool calls is: {{SESSION_ID}}`,
 
@@ -68,6 +70,7 @@ The user has checklists for their rooms. Now you're creating a comprehensive ren
 
 ### Available Tools:
 - **search_products**: To look up any additional product details needed for the plan.
+- **save_product_recommendation**: Save any additional products the user selects during planning to their room plan.
 - **get_style_examples**: To reference style details when planning finishes.
 
 ### Instructions:
@@ -115,6 +118,7 @@ The user wants to refine or update their renovation plan.
 ### Available Tools:
 - **get_style_examples**: To explore alternative styles.
 - **search_products**: To find replacement or additional products.
+- **save_product_recommendation**: Save any new or replacement products the user selects to their room plan.
 
 ### Instructions:
 - Help them identify what they want to change
