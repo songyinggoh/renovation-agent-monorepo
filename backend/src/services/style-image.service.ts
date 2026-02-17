@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { styleImages, type StyleImage } from '../db/schema/style-images.schema.js';
 import { styleCatalog } from '../db/schema/styles.schema.js';
@@ -290,11 +290,11 @@ export class StyleImageService {
    * Get count of images per style
    */
   async getImageCountByStyle(styleId: string): Promise<number> {
-    const images = await db
-      .select()
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
       .from(styleImages)
       .where(eq(styleImages.styleId, styleId));
 
-    return images.length;
+    return result?.count ?? 0;
   }
 }

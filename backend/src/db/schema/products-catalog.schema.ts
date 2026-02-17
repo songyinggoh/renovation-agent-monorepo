@@ -35,6 +35,7 @@ export const productsCatalog = pgTable('products_catalog', {
 }, (table) => [
   index('idx_products_catalog_category').on(table.category),
   index('idx_products_catalog_price').on(table.estimatedPrice),
+  index('idx_products_catalog_metadata').using('gin', table.metadata),
 ]);
 
 export type ProductCatalogEntry = typeof productsCatalog.$inferSelect;

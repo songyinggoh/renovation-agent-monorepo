@@ -9,7 +9,7 @@ import {
 } from '../controllers/style.controller.js';
 import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { validateQuery } from '../middleware/validate.js';
-import { searchStylesQuerySchema } from '../validators/style.validators.js';
+import { searchStylesQuerySchema, styleImagesQuerySchema } from '../validators/style.validators.js';
 
 const router = Router();
 
@@ -28,23 +28,26 @@ router.get('/', listStyles);
  */
 router.get('/search', validateQuery(searchStylesQuerySchema), searchStyles);
 
-/**
- * @route POST /api/styles/seed
- * @desc Seed the style catalog (dev only)
- */
-router.post('/seed', seedStyles);
+// Only register seed routes in development
+if (process.env.NODE_ENV === 'development') {
+  /**
+   * @route POST /api/styles/seed
+   * @desc Seed the style catalog (dev only)
+   */
+  router.post('/seed', seedStyles);
 
-/**
- * @route POST /api/styles/seed-images
- * @desc Seed style moodboard images (dev only)
- */
-router.post('/seed-images', seedStyleImages);
+  /**
+   * @route POST /api/styles/seed-images
+   * @desc Seed style moodboard images (dev only)
+   */
+  router.post('/seed-images', seedStyleImages);
+}
 
 /**
  * @route GET /api/styles/:slug/images
  * @desc Get moodboard images for a style
  */
-router.get('/:slug/images', getStyleImages);
+router.get('/:slug/images', validateQuery(styleImagesQuerySchema), getStyleImages);
 
 /**
  * @route GET /api/styles/:slug

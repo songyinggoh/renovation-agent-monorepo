@@ -313,7 +313,7 @@ describe('StyleImageService', () => {
 
   describe('getImageCountByStyle', () => {
     it('should return the count of images for a style', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([mockImage, mockImage2]);
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 2 }]);
       const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
       (db.select as Mock).mockReturnValue({ from: mockFrom });
 
@@ -323,7 +323,7 @@ describe('StyleImageService', () => {
     });
 
     it('should return 0 when no images exist', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([]);
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
       const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
       (db.select as Mock).mockReturnValue({ from: mockFrom });
 

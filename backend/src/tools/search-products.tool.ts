@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { ProductService } from '../services/product.service.js';
 import { Logger } from '../utils/logger.js';
+import { PRODUCT_CATEGORIES, ROOM_TYPES, STYLE_SLUG_REGEX } from '../validators/constants.js';
 
 const logger = new Logger({ serviceName: 'SearchProductsTool' });
 
@@ -66,12 +67,15 @@ export const searchProductsTool = tool(
         .describe('Free-text search for product name or description'),
       style: z
         .string()
+        .min(1)
+        .max(100)
+        .regex(STYLE_SLUG_REGEX)
         .optional()
         .describe(
-          'Design style filter, e.g., "modern-minimalist", "warm-scandinavian", "industrial-loft", "japandi", "mediterranean"'
+          'Design style slug filter, e.g., "modern-minimalist", "warm-scandinavian", "industrial-loft", "japandi", "mediterranean"'
         ),
       category: z
-        .string()
+        .enum(PRODUCT_CATEGORIES)
         .optional()
         .describe(
           'Product category: "flooring", "lighting", "furniture", "fixtures", "paint", "hardware"'
@@ -81,10 +85,10 @@ export const searchProductsTool = tool(
         .optional()
         .describe('Maximum price in USD'),
       roomType: z
-        .string()
+        .enum(ROOM_TYPES)
         .optional()
         .describe(
-          'Room type filter: "kitchen", "bathroom", "bedroom", "living", "dining", "office"'
+          'Room type filter: "kitchen", "bathroom", "bedroom", "living", "dining", "office", "living-room", "dining-room", "outdoor", "garage", "laundry", "hallway", "basement"'
         ),
     }),
   }

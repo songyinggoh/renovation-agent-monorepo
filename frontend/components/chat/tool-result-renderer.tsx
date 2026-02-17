@@ -87,13 +87,14 @@ function ToolContent({ toolName, data }: { toolName: string; data: Record<string
 }
 
 function StyleResult({ data }: { data: Record<string, unknown> }) {
-  const name = data.name as string | undefined;
-  const description = data.description as string | undefined;
-  const colorPalette = data.colorPalette as ColorSwatch[] | undefined;
-  const materials = data.materials as string[] | undefined;
+  const name = typeof data.name === 'string' ? data.name : undefined;
+  const description = typeof data.description === 'string' ? data.description : undefined;
+  const colorPalette = Array.isArray(data.colorPalette) ? data.colorPalette as ColorSwatch[] : undefined;
+  const materials = Array.isArray(data.materials) ? data.materials as string[] : undefined;
 
   if (data.error) {
-    return <p className="text-sm text-muted-foreground">{data.error as string}</p>;
+    const errorMsg = typeof data.error === 'string' ? data.error : 'Unknown error';
+    return <p className="text-sm text-muted-foreground">{errorMsg}</p>;
   }
 
   return (
@@ -132,11 +133,12 @@ function StyleResult({ data }: { data: Record<string, unknown> }) {
 }
 
 function ProductResult({ data }: { data: Record<string, unknown> }) {
-  const products = data.products as Product[] | undefined;
-  const totalMatches = data.totalMatches as number | undefined;
+  const products = Array.isArray(data.products) ? data.products as Product[] : undefined;
+  const totalMatches = typeof data.totalMatches === 'number' ? data.totalMatches : undefined;
 
   if (data.message) {
-    return <p className="text-sm text-muted-foreground">{data.message as string}</p>;
+    const msg = typeof data.message === 'string' ? data.message : 'Unknown message';
+    return <p className="text-sm text-muted-foreground">{msg}</p>;
   }
 
   if (!products || products.length === 0) {
@@ -145,8 +147,8 @@ function ProductResult({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="space-y-2">
-      {products.map((product, i) => (
-        <div key={i} className="rounded-lg border border-border/30 p-2">
+      {products.map((product) => (
+        <div key={product.name} className="rounded-lg border border-border/30 p-2">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium">{product.name}</p>
@@ -173,8 +175,8 @@ function ProductResult({ data }: { data: Record<string, unknown> }) {
 }
 
 function IntakeSavedResult({ data }: { data: Record<string, unknown> }) {
-  const message = data.message as string | undefined;
-  const rooms = data.rooms as Array<{ id: string; name: string; type: string; budget?: string }> | undefined;
+  const message = typeof data.message === 'string' ? data.message : undefined;
+  const rooms = Array.isArray(data.rooms) ? data.rooms as Array<{ id: string; name: string; type: string; budget?: string }> : undefined;
 
   return (
     <div className="space-y-2">
@@ -195,10 +197,10 @@ function IntakeSavedResult({ data }: { data: Record<string, unknown> }) {
 }
 
 function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
-  const success = data.success as boolean | undefined;
-  const message = data.message as string | undefined;
-  const roomName = data.roomName as string | undefined;
-  const error = data.error as string | undefined;
+  const success = typeof data.success === 'boolean' ? data.success : undefined;
+  const message = typeof data.message === 'string' ? data.message : undefined;
+  const roomName = typeof data.roomName === 'string' ? data.roomName : undefined;
+  const error = typeof data.error === 'string' ? data.error : undefined;
 
   if (success === false || error) {
     return (
@@ -239,8 +241,10 @@ function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
 }
 
 function ChecklistSavedResult({ data }: { data: Record<string, unknown> }) {
-  const message = data.message as string | undefined;
-  const priorities = data.priorities as { mustHave?: number; niceToHave?: number; optional?: number } | undefined;
+  const message = typeof data.message === 'string' ? data.message : undefined;
+  const priorities = (typeof data.priorities === 'object' && data.priorities !== null && !Array.isArray(data.priorities))
+    ? data.priorities as { mustHave?: number; niceToHave?: number; optional?: number }
+    : undefined;
 
   return (
     <div className="space-y-2">

@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { styleCatalog, type StyleCatalogEntry } from '../db/schema/styles.schema.js';
 import { SEED_STYLES } from '../data/index.js';
 import { Logger } from '../utils/logger.js';
+import { escapeLikePattern } from '../utils/sql.js';
 
 const logger = new Logger({ serviceName: 'StyleService' });
 
@@ -40,7 +41,7 @@ export class StyleService {
   async searchStyles(query: string): Promise<StyleCatalogEntry[]> {
     logger.info('Searching styles', { query });
 
-    const pattern = `%${query}%`;
+    const pattern = `%${escapeLikePattern(query)}%`;
     const styles = await db
       .select()
       .from(styleCatalog)

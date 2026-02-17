@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { RoomService } from '../services/room.service.js';
 import { ProductService } from '../services/product.service.js';
 import { Logger } from '../utils/logger.js';
+import { PRODUCT_CATEGORIES } from '../validators/constants.js';
 
 const logger = new Logger({ serviceName: 'SaveProductRecommendationTool' });
 
@@ -35,7 +36,7 @@ export const saveProductRecommendationTool = tool(
       if (!room) {
         return JSON.stringify({
           success: false,
-          error: `Room not found: ${roomId}`,
+          error: 'Room not found',
         });
       }
       if (room.sessionId !== sessionId) {
@@ -94,7 +95,7 @@ export const saveProductRecommendationTool = tool(
       roomId: z.string().uuid().describe('The room ID to save the product to'),
       name: z.string().describe('Product name'),
       category: z
-        .string()
+        .enum(PRODUCT_CATEGORIES)
         .describe(
           'Product category: "flooring", "lighting", "furniture", "fixtures", "paint", "hardware"'
         ),
@@ -109,7 +110,7 @@ export const saveProductRecommendationTool = tool(
       productUrl: z.string().url().optional().describe('Link to the product page'),
       imageUrl: z.string().url().optional().describe('Link to the product image'),
       metadata: z
-        .record(z.unknown())
+        .record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]))
         .optional()
         .describe('Additional product metadata (brand, specs, alternatives)'),
     }),

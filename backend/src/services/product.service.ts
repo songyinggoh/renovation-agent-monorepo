@@ -1,4 +1,5 @@
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
+import { eq, and, or, lte, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   productRecommendations,
@@ -28,6 +29,8 @@ export interface ProductSearchFilters {
  * Handles DB-backed catalog search and per-room product CRUD
  */
 export class ProductService {
+  private catalogIsSeeded: boolean | null = null;
+
   /**
    * Search the products_catalog table with filtering.
    * Falls back to in-memory seed data if the DB table is empty.
@@ -41,7 +44,7 @@ export class ProductService {
       if (filters.category) {
         conditions.push(eq(productsCatalog.category, filters.category));
       }
-      if (filters.maxPrice) {
+      if (filters.maxPrice != null) {
         conditions.push(lte(productsCatalog.estimatedPrice, String(filters.maxPrice)));
       }
       if (filters.query) {
@@ -51,12 +54,19 @@ export class ProductService {
         );
       }
       if (filters.style) {
-        const styles = Array.isArray(filters.style) ? filters.style : [filters.style];
-        const styleConditions = styles.map((s) => {
-          const styleSlug = s.toLowerCase().replace(/\s+/g, '-');
-          return sql`${productsCatalog.metadata}->'style' @> ${JSON.stringify([styleSlug])}::jsonb`;
-        });
-        conditions.push(and(...styleConditions));
+        const styles = (Array.isArray(filters.style) ? filters.style : [filters.style]).filter(Boolean);
+        if (styles.length > 0) {
+          const styleConditions = styles.map((s) => {
+            const styleSlug = s.toLowerCase().replace(/\s+/g, '-');
+            return sql`${productsCatalog.metadata}->'style' @> ${JSON.stringify([styleSlug])}::jsonb`;
+          });
+          if (styleConditions.length === 1) {
+            conditions.push(styleConditions[0]!);
+          } else {
+            const combined = or(...styleConditions);
+            if (combined) conditions.push(combined);
+          }
+        }
       }
       if (filters.roomType) {
         const room = filters.roomType.toLowerCase();
@@ -71,17 +81,25 @@ export class ProductService {
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .limit(50);
 
-      // Fall back to in-memory search if DB table is empty (not yet seeded)
-      if (results.length === 0) {
-        const totalCount = await db.select().from(productsCatalog).limit(1);
-        if (totalCount.length === 0) {
-          logger.warn('products_catalog table is empty, falling back to in-memory search');
-          return this.searchSeedProductsAsEntries(filters);
-        }
+      if (results.length > 0) {
+        this.catalogIsSeeded = true;
+        logger.info('Catalog search results', { filters, count: results.length });
+        return results;
       }
 
-      logger.info('Catalog search results', { filters, count: results.length });
-      return results;
+      // Only probe the table when we haven't confirmed it has data yet
+      if (this.catalogIsSeeded === null) {
+        const [probe] = await db.select({ id: productsCatalog.id }).from(productsCatalog).limit(1);
+        this.catalogIsSeeded = !!probe;
+      }
+
+      if (!this.catalogIsSeeded) {
+        logger.warn('products_catalog table is empty, falling back to in-memory search');
+        return this.searchSeedProductsAsEntries(filters);
+      }
+
+      logger.info('Catalog search results', { filters, count: 0 });
+      return [];
     } catch (error) {
       // Table might not exist yet — fall back to in-memory
       logger.warn('Catalog query failed, falling back to in-memory search', error as Error);
@@ -96,7 +114,7 @@ export class ProductService {
   private searchSeedProductsAsEntries(filters: ProductSearchFilters): ProductCatalogEntry[] {
     const seedResults = this.searchSeedProducts(filters);
     return seedResults.map((p) => ({
-      id: '', // No DB ID for in-memory results
+      id: randomUUID(),
       name: p.name,
       category: p.category,
       description: p.description,
@@ -114,7 +132,7 @@ export class ProductService {
   /**
    * In-memory seed product search (kept for backward compatibility)
    */
-  searchSeedProducts(filters: ProductSearchFilters): SeedProduct[] {
+  private searchSeedProducts(filters: ProductSearchFilters): SeedProduct[] {
     let results = [...SEED_PRODUCTS];
 
     if (filters.category) {
@@ -124,10 +142,10 @@ export class ProductService {
       const styles = Array.isArray(filters.style) ? filters.style : [filters.style];
       const styleSlugs = styles.map((s) => s.toLowerCase().replace(/\s+/g, '-'));
       results = results.filter((p) =>
-        p.metadata.style.some((s) => styleSlugs.includes(s) || styleSlugs.some((ss) => s.includes(ss)))
+        p.metadata.style.some((s) => styleSlugs.includes(s))
       );
     }
-    if (filters.maxPrice) {
+    if (filters.maxPrice != null) {
       results = results.filter(
         (p) => Number(p.estimatedPrice) <= filters.maxPrice!
       );

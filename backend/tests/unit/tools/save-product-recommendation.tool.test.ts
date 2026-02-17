@@ -71,7 +71,7 @@ describe('saveProductRecommendationTool', () => {
     const parsed = JSON.parse(result) as { success: boolean; error: string };
 
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toBe(`Room not found: ${ROOM_ID}`);
+    expect(parsed.error).toBe('Room not found');
     expect(mockGetRoomById).toHaveBeenCalledWith(ROOM_ID);
     expect(mockAddProductToRoom).not.toHaveBeenCalled();
   });

@@ -42,7 +42,7 @@ export const saveChecklistStateTool = tool(
       if (!room) {
         return JSON.stringify({
           success: false,
-          error: `Room not found: ${roomId}`,
+          error: 'Room not found',
         });
       }
       if (room.sessionId !== sessionId) {
