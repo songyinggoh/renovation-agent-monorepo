@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/node';
 import { AppError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 import { getRequestId } from './request-id.middleware.js';
+import { env } from '../config/env.js';
 
 const logger = new Logger({ serviceName: 'ErrorHandler' });
 
@@ -33,7 +34,7 @@ export const errorHandler = (
   }
 
   // Surface database connection errors in development for faster debugging
-  const isDev = process.env.NODE_ENV === 'development';
+  const isDev = env.NODE_ENV === 'development';
   const dbErr = err as Error & { code?: string };
   const isDbConnectionError =
     dbErr.code === '28P01' ||

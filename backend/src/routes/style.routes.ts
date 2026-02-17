@@ -10,6 +10,7 @@ import {
 import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { validateQuery } from '../middleware/validate.js';
 import { searchStylesQuerySchema, styleImagesQuerySchema } from '../validators/style.validators.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 
@@ -29,7 +30,7 @@ router.get('/', listStyles);
 router.get('/search', validateQuery(searchStylesQuerySchema), searchStyles);
 
 // Only register seed routes in development
-if (process.env.NODE_ENV === 'development') {
+if (env.NODE_ENV === 'development') {
   /**
    * @route POST /api/styles/seed
    * @desc Seed the style catalog (dev only)

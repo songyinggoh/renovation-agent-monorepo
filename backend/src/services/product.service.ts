@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { eq, and, or, lte, sql } from 'drizzle-orm';
+import { eq, and, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   productRecommendations,
@@ -29,7 +29,7 @@ export interface ProductSearchFilters {
  * Handles DB-backed catalog search and per-room product CRUD
  */
 export class ProductService {
-  private catalogIsSeeded: boolean | null = null;
+  private static catalogIsSeeded: boolean | null = null;
 
   /**
    * Search the products_catalog table with filtering.
@@ -45,7 +45,9 @@ export class ProductService {
         conditions.push(eq(productsCatalog.category, filters.category));
       }
       if (filters.maxPrice != null) {
-        conditions.push(lte(productsCatalog.estimatedPrice, String(filters.maxPrice)));
+        conditions.push(
+          sql`CAST(${productsCatalog.estimatedPrice} AS numeric) <= ${filters.maxPrice}`
+        );
       }
       if (filters.query) {
         const pattern = `%${escapeLikePattern(filters.query)}%`;
@@ -82,18 +84,18 @@ export class ProductService {
         .limit(50);
 
       if (results.length > 0) {
-        this.catalogIsSeeded = true;
+        ProductService.catalogIsSeeded = true;
         logger.info('Catalog search results', { filters, count: results.length });
         return results;
       }
 
       // Only probe the table when we haven't confirmed it has data yet
-      if (this.catalogIsSeeded === null) {
+      if (ProductService.catalogIsSeeded === null) {
         const [probe] = await db.select({ id: productsCatalog.id }).from(productsCatalog).limit(1);
-        this.catalogIsSeeded = !!probe;
+        ProductService.catalogIsSeeded = !!probe;
       }
 
-      if (!this.catalogIsSeeded) {
+      if (!ProductService.catalogIsSeeded) {
         logger.warn('products_catalog table is empty, falling back to in-memory search');
         return this.searchSeedProductsAsEntries(filters);
       }

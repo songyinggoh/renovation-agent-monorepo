@@ -5,6 +5,7 @@ import { SEED_STYLE_IMAGES } from '../data/index.js';
 import { Logger } from '../utils/logger.js';
 import { NotFoundError } from '../utils/errors.js';
 import { asyncHandler } from '../utils/async.js';
+import { env } from '../config/env.js';
 
 const logger = new Logger({ serviceName: 'StyleController' });
 const styleService = new StyleService();
@@ -54,7 +55,7 @@ export const searchStyles = asyncHandler(async (req: Request, res: Response) => 
  * POST /api/styles/seed
  */
 export const seedStyles = asyncHandler(async (_req: Request, res: Response) => {
-  if (process.env.NODE_ENV !== 'development') {
+  if (env.NODE_ENV !== 'development') {
     logger.warn('Seed endpoint called in non-development environment');
     throw new NotFoundError('Not found');
   }
@@ -91,7 +92,7 @@ export const getStyleImages = asyncHandler(async (req: Request, res: Response) =
  * POST /api/styles/seed-images
  */
 export const seedStyleImages = asyncHandler(async (_req: Request, res: Response) => {
-  if (process.env.NODE_ENV !== 'development') {
+  if (env.NODE_ENV !== 'development') {
     logger.warn('Seed images endpoint called in non-development environment');
     throw new NotFoundError('Not found');
   }

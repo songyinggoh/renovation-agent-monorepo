@@ -77,6 +77,8 @@ describe('ProductService', () => {
 
   beforeEach(() => {
     productService = new ProductService();
+    // Reset static cache so each test starts with unknown seeded state
+    (ProductService as unknown as Record<string, unknown>)['catalogIsSeeded'] = null;
     vi.clearAllMocks();
   });
 
