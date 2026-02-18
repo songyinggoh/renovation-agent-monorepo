@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/hooks/useChat';
 import { useFileUpload } from '@/hooks/useFileUpload';
@@ -26,6 +27,13 @@ export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
 
   const canUpload = Boolean(roomId);
 
+  const handleSend = useCallback((content: string, attachments?: { assetId: string; fileName?: string }[]) => {
+    sendMessage(content, attachments);
+    if (attachments && attachments.length > 0) {
+      upload.clearCompleted();
+    }
+  }, [sendMessage, upload]);
+
   return (
     <div className="flex h-[calc(100vh-10rem)] flex-col rounded-lg border border-border surface-chat shadow-sm">
       {/* Header */}
@@ -48,6 +56,8 @@ export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
         <div className="flex items-center gap-2">
           <span
             className={`h-2 w-2 rounded-full ${isConnected ? 'bg-success' : 'bg-destructive'}`}
+            data-testid="connection-status"
+            data-connected={isConnected}
           />
           <span className="text-xs text-muted-foreground">
             {isConnected ? 'Connected' : 'Disconnected'}
@@ -68,12 +78,12 @@ export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
         isAssistantTyping={isAssistantTyping}
         isLoadingHistory={isLoadingHistory}
         phase={phase}
-        onSuggestionSelect={sendMessage}
+        onSuggestionSelect={handleSend}
       />
 
       {/* Input with upload support */}
       <ChatInput
-        onSend={sendMessage}
+        onSend={handleSend}
         disabled={!isConnected}
         phase={phase}
         {...(canUpload ? {

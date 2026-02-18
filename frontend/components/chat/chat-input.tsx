@@ -24,7 +24,7 @@ const PHASE_PLACEHOLDERS: Record<RenovationPhase, string> = {
 };
 
 interface ChatInputProps {
-  onSend: (content: string) => void;
+  onSend: (content: string, attachments?: { assetId: string; fileName?: string }[]) => void;
   disabled: boolean;
   phase?: RenovationPhase;
   uploadFiles?: UploadFile[];
@@ -60,8 +60,18 @@ export function ChatInput({
 
   const handleSubmit = () => {
     const trimmed = input.trim();
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
+
+    // Collect completed upload attachments
+    const completedAttachments = uploadFiles
+      ?.filter((f) => f.status === 'success' && f.asset?.id)
+      .map((f) => ({ assetId: f.asset!.id, fileName: f.file.name })) ?? [];
+
+    // Allow image-only messages (no text but attachments present)
+    if (!trimmed && completedAttachments.length === 0) return;
+    if (disabled) return;
+
+    const content = trimmed || '[Attached images]';
+    onSend(content, completedAttachments.length > 0 ? completedAttachments : undefined);
     setInput('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -176,13 +186,15 @@ export function ChatInput({
           disabled={disabled}
           placeholder={disabled ? 'Connecting...' : (phase ? PHASE_PLACEHOLDERS[phase] : 'Describe your renovation vision...')}
           rows={1}
+          data-testid="chat-input"
           className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
         />
         <Button
           type="submit"
-          disabled={disabled || !input.trim()}
+          disabled={disabled || (!input.trim() && !hasUploadedFiles)}
           size="icon"
           className="h-10 w-10"
+          data-testid="send-button"
         >
           <Send className="h-4 w-4" />
         </Button>

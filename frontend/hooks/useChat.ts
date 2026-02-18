@@ -217,7 +217,7 @@ export function useChat(sessionId: string) {
     };
   }, [sessionId, supabase.auth]);
 
-  const sendMessage = useCallback((content: string) => {
+  const sendMessage = useCallback((content: string, attachments?: { assetId: string; fileName?: string }[]) => {
     if (!socketRef.current || !isConnected) return;
 
     // Optimistically add message
@@ -234,6 +234,7 @@ export function useChat(sessionId: string) {
     socketRef.current.emit('chat:user_message', {
       sessionId,
       content,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     });
   }, [sessionId, isConnected]);
 

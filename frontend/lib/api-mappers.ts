@@ -33,12 +33,18 @@ export function mapRoomsResponse(data: Record<string, unknown>): RoomSummary[] {
 }
 
 export function mapMessageResponse(data: Record<string, unknown>): Message {
+  const rawImageUrl = (data.image_url ?? data.imageUrl) as string | null | undefined;
+  const imageUrls = rawImageUrl
+    ? rawImageUrl.split(',').filter(Boolean)
+    : undefined;
+
   return {
     id: data.id as string,
     role: data.role as Message['role'],
     content: data.content as string,
     created_at: (data.created_at ?? data.createdAt) as string,
     session_id: (data.session_id ?? data.sessionId) as string,
+    ...(imageUrls && imageUrls.length > 0 ? { imageUrls } : {}),
   };
 }
 

@@ -6,7 +6,7 @@ import {
   ToolMessage,
   type AIMessageChunk,
 } from '@langchain/core/messages';
-import { StateGraph, START, END, MessagesAnnotation } from '@langchain/langgraph';
+import { StateGraph, START, MessagesAnnotation, GraphRecursionError } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { eq } from 'drizzle-orm';
 import { createStreamingModel, type TracedModel } from '../config/gemini.js';
@@ -19,11 +19,14 @@ import {
   extractTokenUsage,
   recordTokenUsage,
 } from '../utils/ai-tracing.js';
+import { createSafeShouldContinue, MAX_REACT_ITERATIONS } from '../utils/agent-guards.js';
 import { MessageService } from './message.service.js';
+import { AssetService } from './asset.service.js';
 import { getCheckpointer } from './checkpointer.service.js';
 import { db } from '../db/index.js';
 import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { type ChatMessage } from '../db/schema/messages.schema.js';
+import type { MessageAttachment } from '@renovation/shared-types';
 
 const logger = new Logger({ serviceName: 'ChatService' });
 
@@ -50,11 +53,13 @@ export interface StreamCallback {
 export class ChatService {
   private model: TracedModel;
   private messageService: MessageService;
+  private assetService: AssetService;
   private graph;
 
   constructor() {
     this.model = createStreamingModel();
     this.messageService = new MessageService();
+    this.assetService = new AssetService();
     this.graph = this.createReActAgent();
     logger.info('ChatService initialized with ReAct agent');
   }
@@ -72,19 +77,8 @@ export class ChatService {
 
     const toolNode = new ToolNode(renovationTools);
 
-    function shouldContinue(
-      state: typeof MessagesAnnotation.State
-    ): typeof END | 'tools' {
-      const lastMessage = state.messages[state.messages.length - 1];
-      if (
-        lastMessage &&
-        lastMessage._getType() === 'ai' &&
-        (lastMessage as AIMessage).tool_calls?.length
-      ) {
-        return 'tools';
-      }
-      return END;
-    }
+    // Secondary guard: tool whitelist + iteration logging (primary is recursionLimit at stream time)
+    const shouldContinue = createSafeShouldContinue();
 
     const workflow = new StateGraph(MessagesAnnotation)
       .addNode('call_model', async (state) => {
@@ -140,14 +134,39 @@ export class ChatService {
    * @param userMessage - The user's message content
    * @param callback - Callbacks for streaming tokens and tool events
    */
+  /**
+   * Resolve attachment asset IDs to signed download URLs
+   */
+  private async resolveAttachmentUrls(attachments: MessageAttachment[]): Promise<string[]> {
+    const results = await Promise.allSettled(
+      attachments.map((a) => this.assetService.getSignedUrl(a.assetId))
+    );
+
+    const urls: string[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]!;
+      if (result.status === 'fulfilled' && result.value) {
+        urls.push(result.value);
+      } else {
+        logger.warn('Failed to resolve attachment URL', undefined, {
+          assetId: attachments[i]!.assetId,
+          reason: result.status === 'rejected' ? (result.reason as Error).message : 'null URL',
+        });
+      }
+    }
+    return urls;
+  }
+
   async processMessage(
     sessionId: string,
     userMessage: string,
-    callback: StreamCallback
+    callback: StreamCallback,
+    attachments?: MessageAttachment[]
   ): Promise<void> {
     logger.info('Processing user message with ReAct agent', {
       sessionId,
       messageLength: userMessage.length,
+      attachmentCount: attachments?.length ?? 0,
     });
 
     const modelAttrs = this.model.traceAttributes;
@@ -170,23 +189,48 @@ export class ChatService {
           parentSpan.setAttribute('ai.prompt.phase', phase);
           parentSpan.setAttribute('ai.prompt.history_size', history.length);
 
-          // Step 2: Save user message to database
+          // Step 2: Resolve attachment URLs if present
+          let imageUrls: string[] = [];
+          if (attachments && attachments.length > 0) {
+            imageUrls = await this.resolveAttachmentUrls(attachments);
+            parentSpan.setAttribute('ai.attachments.count', attachments.length);
+            parentSpan.setAttribute('ai.attachments.resolved', imageUrls.length);
+          }
+
+          // Step 3: Save user message to database
+          const hasImages = imageUrls.length > 0;
           await this.messageService.saveMessage({
             sessionId,
             userId: null,
             role: 'user',
             content: userMessage,
-            type: 'text',
+            type: hasImages ? 'image' : 'text',
+            ...(hasImages ? { imageUrl: imageUrls.join(',') } : {}),
           });
 
-          // Step 3: Build phase-aware system prompt and input messages
+          // Step 4: Build phase-aware system prompt and input messages
           const systemPrompt = getSystemPrompt(phase, sessionId);
           const historicalMessages = this.convertHistoryToMessages(history);
+
+          // Build multipart HumanMessage when images are attached
+          let currentMessage: HumanMessage;
+          if (imageUrls.length > 0) {
+            const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
+              { type: 'text', text: userMessage },
+              ...imageUrls.map((url) => ({
+                type: 'image_url' as const,
+                image_url: { url },
+              })),
+            ];
+            currentMessage = new HumanMessage({ content });
+          } else {
+            currentMessage = new HumanMessage(userMessage);
+          }
 
           const inputMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
             ...historicalMessages,
-            new HumanMessage(userMessage),
+            currentMessage,
           ];
 
           // Step 5: Stream response from ReAct agent with AI tracing
@@ -197,6 +241,7 @@ export class ChatService {
           const config = {
             configurable: { thread_id: sessionId },
             streamMode: 'messages' as const,
+            recursionLimit: MAX_REACT_ITERATIONS * 2, // Each tool cycle = 2 steps (call_model + tools)
           };
 
           const streamTrace = startAIStreamSpan('ai.langgraph.stream', {
@@ -329,6 +374,30 @@ export class ChatService {
           // Step 7: Notify completion
           callback.onComplete(fullResponse);
         } catch (error) {
+          // Primary defense: catch GraphRecursionError from recursionLimit
+          if (error instanceof GraphRecursionError) {
+            const fallback = "I apologize, but I'm having trouble processing that request. Could you try rephrasing?";
+            callback.onToken(fallback);
+            callback.onComplete(fallback);
+            logger.warn('Agent hit recursion limit (GraphRecursionError)', undefined, {
+              sessionId,
+              limit: MAX_REACT_ITERATIONS * 2,
+            });
+            parentSpan.addEvent('agent.recursion_limit_hit', {
+              'ai.react_loop.max_iterations': MAX_REACT_ITERATIONS,
+            });
+
+            // Save the fallback message
+            await this.messageService.saveMessage({
+              sessionId,
+              userId: null,
+              role: 'assistant',
+              content: fallback,
+              type: 'text',
+            });
+            return;
+          }
+
           logger.error('Error processing message with ReAct agent', error as Error, {
             sessionId,
           });
@@ -352,17 +421,29 @@ export class ChatService {
 
   /**
    * Convert database chat history to LangChain messages
+   *
+   * When a user message has imageUrl stored, reconstruct as multipart HumanMessage
+   * so the model sees image context from previous turns.
    */
   private convertHistoryToMessages(history: ChatMessage[]): BaseMessage[] {
-    const constructors: Record<string, (content: string) => BaseMessage> = {
-      user: (content) => new HumanMessage(content),
-      assistant: (content) => new AIMessage(content),
-      system: (content) => new SystemMessage(content),
-    };
-
     return history
-      .filter((msg) => msg.role in constructors)
-      .map((msg) => constructors[msg.role]!(msg.content));
+      .filter((msg) => msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system')
+      .map((msg) => {
+        if (msg.role === 'user' && msg.imageUrl) {
+          const urls = msg.imageUrl.split(',').filter(Boolean);
+          const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
+            { type: 'text', text: msg.content },
+            ...urls.map((url) => ({
+              type: 'image_url' as const,
+              image_url: { url },
+            })),
+          ];
+          return new HumanMessage({ content });
+        }
+        if (msg.role === 'assistant') return new AIMessage(msg.content);
+        if (msg.role === 'system') return new SystemMessage(msg.content);
+        return new HumanMessage(msg.content);
+      });
   }
 
   /**

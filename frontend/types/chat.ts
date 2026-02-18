@@ -1,7 +1,17 @@
-export type MessageRole = 'user' | 'assistant' | 'system';
+/**
+ * Re-exported from shared-types (single source of truth)
+ */
+export type { MessageRole, MessageType } from '@renovation/shared-types';
+export type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from '@renovation/shared-types';
 
-export type MessageType = 'text' | 'tool_call' | 'tool_result';
+import type { MessageRole, MessageType } from '@renovation/shared-types';
 
+/**
+ * Frontend message shape (snake_case to match API response)
+ */
 export interface Message {
   id: string;
   role: MessageRole;
@@ -11,15 +21,5 @@ export interface Message {
   type?: MessageType;
   tool_name?: string;
   tool_data?: Record<string, unknown>;
-}
-
-export interface SocketEvents {
-  'chat:join_session': (sessionId: string) => void;
-  'chat:session_joined': (data: { sessionId: string }) => void;
-  'chat:user_message': (data: { sessionId: string; content: string }) => void;
-  'chat:message_ack': (data: { sessionId: string; status: string; timestamp: string }) => void;
-  'chat:assistant_token': (data: { sessionId: string; token: string; done?: boolean }) => void;
-  'chat:tool_call': (data: { sessionId: string; toolName: string; input: string }) => void;
-  'chat:tool_result': (data: { sessionId: string; toolName: string; result: string }) => void;
-  'chat:error': (data: { sessionId: string; error: string }) => void;
+  imageUrls?: string[];
 }

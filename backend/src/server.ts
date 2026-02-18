@@ -4,6 +4,7 @@ initTelemetry();
 
 import { Server } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents } from '@renovation/shared-types';
 import { createApp } from './app.js';
 import { env, isEmailEnabled, isAuthEnabled } from './config/env.js';
 import { initSentry } from './config/sentry.js';
@@ -18,6 +19,8 @@ import { ChatService, type StreamCallback } from './services/chat.service.js';
 import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpointer.service.js';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { startEmailWorker } from './workers/email.worker.js';
+import { startImageWorker } from './workers/image.worker.js';
+import { startDocWorker } from './workers/doc.worker.js';
 import { closeQueues } from './config/queue.js';
 import {
   chatUserMessageSchema,
@@ -38,9 +41,11 @@ const logger = new Logger({ serviceName: 'Server' });
 
 // Module-level variables for export and shutdown
 let httpServer: Server;
-let io: SocketIOServer;
+let io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
 let shutdownManager: ShutdownManager;
 let emailWorker: ReturnType<typeof startEmailWorker> | null = null;
+let imageWorker: ReturnType<typeof startImageWorker> | null = null;
+let docWorker: ReturnType<typeof startDocWorker> | null = null;
 
 /**
  * Application startup sequence
@@ -104,6 +109,36 @@ async function startServer(): Promise<void> {
       }
     } else {
       logger.info('Email worker not started — RESEND_API_KEY not configured');
+    }
+
+    // ============================================
+    // STEP 0.7: Start Image Worker (if Redis available)
+    // ============================================
+    try {
+      const redisOk = await testRedisConnection();
+      if (redisOk) {
+        imageWorker = startImageWorker();
+        logger.info('Image worker started');
+      } else {
+        logger.warn('Image worker not started — Redis unavailable');
+      }
+    } catch (workerError) {
+      logger.warn('Image worker failed to start', workerError as Error);
+    }
+
+    // ============================================
+    // STEP 0.8: Start Doc Worker (if Redis available)
+    // ============================================
+    try {
+      const redisOk = await testRedisConnection();
+      if (redisOk) {
+        docWorker = startDocWorker();
+        logger.info('Doc worker started');
+      } else {
+        logger.warn('Doc worker not started — Redis unavailable');
+      }
+    } catch (workerError) {
+      logger.warn('Doc worker failed to start', workerError as Error);
     }
 
     // ============================================
@@ -190,7 +225,7 @@ async function startServer(): Promise<void> {
     // STEP 5: Setup Socket.io Server
     // ============================================
     logger.info('Initializing Socket.io...');
-    io = new SocketIOServer(httpServer, {
+    io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
       cors: {
         origin: env.FRONTEND_URL,
         credentials: true,
@@ -363,24 +398,39 @@ async function startServer(): Promise<void> {
           return;
         }
 
-        const { sessionId, content } = validationResult.data;
+        const { sessionId, content, attachments } = validationResult.data;
 
         // Add message tracing attributes (content length only, never content)
         addMessageAttributes(sessionId, content.length);
 
-        // Sanitize content for prompt injection attempts
+        // Classify content for prompt injection severity
         const sanitizationResult = sanitizeContent(content);
+
+        // Block high-severity injections before they reach the AI
+        if (sanitizationResult.severity === 'high') {
+          logger.warn('High-severity prompt injection blocked', undefined, {
+            socketId: socket.id,
+            sessionId,
+            matchedPatterns: sanitizationResult.matchedPatterns,
+            contentPreview: content.substring(0, 100),
+          });
+          addSecurityAttributes(true, false);
+          socket.emit('chat:error', {
+            sessionId,
+            error: 'Your message could not be processed. Please rephrase your request.',
+          });
+          return;
+        }
 
         if (sanitizationResult.isSuspicious) {
           logger.warn('Suspicious message content detected', undefined, {
             socketId: socket.id,
             sessionId,
-            warning: sanitizationResult.warning,
+            severity: sanitizationResult.severity,
+            matchedPatterns: sanitizationResult.matchedPatterns,
             contentPreview: content.substring(0, 100),
           });
 
-          // Optional: Reject suspicious messages or flag them for review
-          // For now, we'll allow but log them for monitoring
           socket.emit('chat:warning', {
             sessionId,
             warning: sanitizationResult.warning,
@@ -405,6 +455,7 @@ async function startServer(): Promise<void> {
           socketId: socket.id,
           sessionId,
           contentLength: content.length,
+          attachmentCount: attachments?.length ?? 0,
           isSuspicious: sanitizationResult.isSuspicious,
         });
 
@@ -477,7 +528,7 @@ async function startServer(): Promise<void> {
             },
           };
 
-          await chatService.processMessage(sessionId, content, streamCallback);
+          await chatService.processMessage(sessionId, content, streamCallback, attachments);
         } catch (error) {
           logger.error('Error initializing ChatService', error as Error, { socketId: socket.id, sessionId });
           socket.emit('chat:error', {
@@ -581,14 +632,15 @@ function setupGracefulShutdown(): void {
     timeout: 3000, // 3 second timeout for checkpointer cleanup
   });
 
-  // Email worker + queues cleanup
+  // Workers & queues cleanup (workers must finish before browser closes)
   shutdownManager.registerResource({
-    name: 'Email Worker & Queues',
+    name: 'Workers & Queues',
     cleanup: async () => {
-      if (emailWorker) await emailWorker.close();
+      const workers = [emailWorker, imageWorker, docWorker].filter(Boolean);
+      await Promise.allSettled(workers.map(w => w!.close()));
       await closeQueues();
     },
-    timeout: 3000,
+    timeout: 5000,
   });
 
   // Redis cleanup (Phase 3: Production Safety)

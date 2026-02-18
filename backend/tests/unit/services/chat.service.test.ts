@@ -11,6 +11,13 @@ vi.mock('../../../src/services/message.service.js', () => ({
   })),
 }));
 
+// Mock AssetService
+vi.mock('../../../src/services/asset.service.js', () => ({
+  AssetService: vi.fn().mockImplementation(() => ({
+    getSignedUrl: vi.fn().mockResolvedValue('https://storage.example.com/signed-url'),
+  })),
+}));
+
 // Mock checkpointer service
 vi.mock('../../../src/services/checkpointer.service.js', () => ({
   getCheckpointer: vi.fn().mockReturnValue({}),
@@ -35,6 +42,14 @@ vi.mock('../../../src/tools/index.js', () => ({
 // Mock prompts
 vi.mock('../../../src/config/prompts.js', () => ({
   getSystemPrompt: vi.fn().mockReturnValue('You are a helpful renovation assistant.'),
+}));
+
+// Mock agent-guards
+vi.mock('../../../src/utils/agent-guards.js', () => ({
+  createSafeShouldContinue: vi.fn().mockReturnValue(
+    vi.fn().mockReturnValue('END')
+  ),
+  MAX_REACT_ITERATIONS: 10,
 }));
 
 // Mock database
@@ -80,11 +95,18 @@ vi.mock('@langchain/langgraph', () => {
     addConditionalEdges: vi.fn().mockReturnThis(),
     compile: vi.fn().mockReturnValue(mockCompiledGraph),
   };
+  class GraphRecursionError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'GraphRecursionError';
+    }
+  }
   return {
     StateGraph: vi.fn().mockReturnValue(mockWorkflow),
     START: 'START',
     END: 'END',
     MessagesAnnotation: { State: {} },
+    GraphRecursionError,
   };
 });
 
@@ -182,6 +204,37 @@ describe('ChatService', () => {
 
       expect(callback.onError).toHaveBeenCalledWith(mockError);
       expect(callback.onComplete).not.toHaveBeenCalled();
+    });
+
+    it('should handle GraphRecursionError gracefully with fallback message', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Trigger recursion loop';
+
+      // Import the mocked GraphRecursionError class
+      const { GraphRecursionError } = await import('@langchain/langgraph');
+      const recursionError = new GraphRecursionError('Recursion limit reached');
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockRejectedValue(recursionError);
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      };
+
+      // Should NOT throw — it catches GraphRecursionError and sends fallback
+      await chatService.processMessage(sessionId, userMessage, callback);
+
+      // Verify fallback message was sent
+      expect(callback.onToken).toHaveBeenCalledWith(
+        expect.stringContaining('trouble processing')
+      );
+      expect(callback.onComplete).toHaveBeenCalledWith(
+        expect.stringContaining('trouble processing')
+      );
+      // onError should NOT have been called for recursion errors
+      expect(callback.onError).not.toHaveBeenCalled();
     });
   });
 
@@ -417,6 +470,103 @@ describe('ChatService', () => {
 
       // Should still process successfully (invalid role filtered out)
       expect(mockGraph.stream).toHaveBeenCalled();
+    });
+  });
+
+  describe('multipart message with attachments', () => {
+    it('should build multipart HumanMessage when attachments are provided', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Look at this room';
+      const attachments = [
+        { assetId: '660e8400-e29b-41d4-a716-446655440001' },
+      ];
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'I see a kitchen!' }, { langgraph_node: 'call_model' }];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback, attachments);
+
+      // Verify user message was saved with image type and imageUrl
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId,
+          role: 'user',
+          content: userMessage,
+          type: 'image',
+          imageUrl: expect.stringContaining('signed-url'),
+        })
+      );
+
+      // Verify graph received the message (multipart content)
+      expect(mockGraph.stream).toHaveBeenCalled();
+      expect(callback.onComplete).toHaveBeenCalledWith('I see a kitchen!');
+    });
+
+    it('should fall back to text when all attachment URLs fail to resolve', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Look at this room';
+
+      // Override asset service to fail
+      const assetService = (chatService as unknown as { assetService: { getSignedUrl: ReturnType<typeof vi.fn> } }).assetService;
+      assetService.getSignedUrl.mockResolvedValue(null);
+
+      const attachments = [
+        { assetId: '660e8400-e29b-41d4-a716-446655440001' },
+      ];
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback, attachments);
+
+      // Should save as text type since no URLs resolved
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'text',
+          role: 'user',
+        })
+      );
+    });
+
+    it('should process message without attachments as plain text', async () => {
+      const sessionId = 'test-session';
+      const userMessage = 'Just text, no images';
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+      });
+
+      const callback = {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      };
+
+      await chatService.processMessage(sessionId, userMessage, callback);
+
+      expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'text',
+          role: 'user',
+        })
+      );
     });
   });
 

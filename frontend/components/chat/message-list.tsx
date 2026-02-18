@@ -59,12 +59,12 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 surface-chat">
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 surface-chat" data-testid="message-list">
       {messages.map((message) => {
         // Tool call: subtle loading indicator
         if (message.type === 'tool_call') {
           return (
-            <div key={message.id} className="flex animate-slide-up justify-start">
+            <div key={message.id} className="flex animate-slide-up justify-start" data-testid="tool-call">
               <div className="flex items-center gap-2 rounded-full border border-border/50 bg-card px-3 py-1.5 shadow-sm">
                 <span className="h-2 w-2 animate-pulse-subtle rounded-full bg-primary/60" />
                 <span className="text-xs text-muted-foreground">
@@ -91,6 +91,7 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
           <div
             key={message.id}
             className={`flex animate-slide-up ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            data-role={message.role}
           >
             <div
               className={`max-w-[75%] rounded-2xl px-4 py-2 ${
@@ -99,6 +100,28 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
                   : 'rounded-bl-sm bg-muted text-foreground'
               }`}
             >
+              {/* Image thumbnails */}
+              {message.imageUrls && message.imageUrls.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {message.imageUrls.map((url, idx) => (
+                    <a
+                      key={idx}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block overflow-hidden rounded-lg"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt={`Attachment ${idx + 1}`}
+                        className="h-20 w-20 rounded-lg object-cover transition-opacity hover:opacity-80"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
               <p className={`whitespace-pre-wrap text-sm ${
                 message.role === 'assistant' ? 'leading-relaxed' : ''
               }`}>{message.content}</p>
@@ -123,7 +146,7 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
       )}
 
       {isAssistantTyping && messages[messages.length - 1]?.role !== 'assistant' && (
-        <div className="flex justify-start">
+        <div className="flex justify-start" data-testid="typing-indicator">
           <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
             <div className="flex items-center gap-1">
               <span className="text-sm text-muted-foreground">Thinking</span>
