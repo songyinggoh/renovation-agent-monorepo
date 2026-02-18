@@ -33,7 +33,6 @@ export interface DocumentMetadata {
   language?: string;             // 'en' | 'es' | etc.
   templateId?: string;           // Reference to template used
   generatedFrom?: string;        // UUID of source data
-  [key: string]: unknown;
 }
 
 /**

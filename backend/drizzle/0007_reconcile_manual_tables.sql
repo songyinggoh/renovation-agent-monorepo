@@ -1,0 +1,11 @@
+-- No-op: Reconciliation migration to sync Drizzle Kit's journal with tables
+-- created by manual migrations 0007-0012.
+--
+-- Tables already exist in the database:
+--   - asset_variants (manual 0007)
+--   - document_artifacts (manual 0008)
+--   - style_images (manual 0005 + drizzle 0005)
+--   - products_catalog (manual 0010)
+--
+-- The snapshot (meta/0007_snapshot.json) now reflects ALL schema files,
+-- so future `drizzle-kit generate` will diff correctly.

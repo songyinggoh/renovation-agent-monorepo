@@ -36,7 +36,6 @@ export interface VariantProcessingConfig {
   preserveAspectRatio?: boolean;
   stripMetadata?: boolean;    // Remove EXIF data
   sharpen?: boolean;
-  [key: string]: unknown;
 }
 
 /**
