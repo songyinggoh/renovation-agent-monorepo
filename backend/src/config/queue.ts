@@ -29,6 +29,7 @@ export interface JobTypes {
   'ai:process-message': { sessionId: string; content: string; userId?: string };
   'doc:generate-plan': { sessionId: string; roomId: string; format: 'pdf' | 'html' };
   'email:send-notification': { to: string; subject: string; template: string; data: Record<string, unknown> };
+  'render:generate': { sessionId: string; roomId: string; prompt: string; assetId: string };
 }
 
 export type JobName = keyof JobTypes;
@@ -86,13 +87,34 @@ export function createWorker<T extends JobName>(
 }
 
 /**
+ * Default job options for retry behavior
+ */
+const defaultJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 2000 },
+  removeOnComplete: 100,
+  removeOnFail: 50,
+};
+
+/**
  * Pre-configured queues (lazy-initialized on first access)
  */
 let _imageQueue: Queue<JobTypes['image:optimize']> | null = null;
 let _emailQueue: Queue<JobTypes['email:send-notification']> | null = null;
+let _docQueue: Queue<JobTypes['doc:generate-plan']> | null = null;
+let _renderQueue: Queue<JobTypes['render:generate']> | null = null;
 
 export function getImageQueue(): Queue<JobTypes['image:optimize']> {
-  if (!_imageQueue) _imageQueue = createQueue('image:optimize');
+  if (!_imageQueue) {
+    _imageQueue = new Queue<JobTypes['image:optimize']>('image:optimize', {
+      connection,
+      defaultJobOptions,
+    });
+    _imageQueue.on('error', (err: Error) => {
+      logger.error('Queue "image:optimize" error', err);
+    });
+    logger.info('Queue "image:optimize" created');
+  }
   return _imageQueue;
 }
 
@@ -101,11 +123,39 @@ export function getEmailQueue(): Queue<JobTypes['email:send-notification']> {
   return _emailQueue;
 }
 
+export function getDocQueue(): Queue<JobTypes['doc:generate-plan']> {
+  if (!_docQueue) {
+    _docQueue = new Queue<JobTypes['doc:generate-plan']>('doc:generate-plan', {
+      connection,
+      defaultJobOptions,
+    });
+    _docQueue.on('error', (err: Error) => {
+      logger.error('Queue "doc:generate-plan" error', err);
+    });
+    logger.info('Queue "doc:generate-plan" created');
+  }
+  return _docQueue;
+}
+
+export function getRenderQueue(): Queue<JobTypes['render:generate']> {
+  if (!_renderQueue) {
+    _renderQueue = new Queue<JobTypes['render:generate']>('render:generate', {
+      connection,
+      defaultJobOptions,
+    });
+    _renderQueue.on('error', (err: Error) => {
+      logger.error('Queue "render:generate" error', err);
+    });
+    logger.info('Queue "render:generate" created');
+  }
+  return _renderQueue;
+}
+
 /**
  * Close all queues and workers (call during shutdown)
  */
 export async function closeQueues(): Promise<void> {
-  const queues = [_imageQueue, _emailQueue].filter(Boolean);
+  const queues = [_imageQueue, _emailQueue, _docQueue, _renderQueue].filter(Boolean);
   await Promise.allSettled(queues.map(q => q!.close()));
   logger.info('All queues closed');
 }

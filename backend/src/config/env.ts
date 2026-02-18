@@ -117,6 +117,23 @@ const envSchema = z.object({
     .default('info'),
 
   // ============================================
+  // PDF Generation (Phase 3: Documents)
+  // ============================================
+  PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
+  PDF_GENERATION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+
+  // ============================================
+  // AI Image Generation (Phase 3.2: Room Renders)
+  // ============================================
+  IMAGE_GENERATION_PROVIDER: z
+    .enum(['gemini', 'stability'])
+    .default('gemini'),
+  STABILITY_API_KEY: z.string().optional(),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -231,8 +248,22 @@ export function isEmailEnabled(): boolean {
 }
 
 /**
+ * Helper function to check if PDF generation is enabled
+ */
+export function isPdfEnabled(): boolean {
+  return env.PDF_GENERATION_ENABLED;
+}
+
+/**
  * Helper function to check if OpenTelemetry is enabled
  */
 export function isTelemetryEnabled(): boolean {
   return env.OTEL_ENABLED;
+}
+
+/**
+ * Helper function to check if AI image generation is configured
+ */
+export function isImageGenerationEnabled(): boolean {
+  return env.IMAGE_GENERATION_PROVIDER === 'gemini' || !!env.STABILITY_API_KEY;
 }
