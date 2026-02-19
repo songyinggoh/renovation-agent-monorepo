@@ -40,6 +40,9 @@ export {
   type SessionRoomsUpdatedPayload,
   type SessionPhaseChangedPayload,
   type AssetProcessingProgressPayload,
+  type RenderStartedPayload,
+  type RenderCompletePayload,
+  type RenderFailedPayload,
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from './socket-events.js';

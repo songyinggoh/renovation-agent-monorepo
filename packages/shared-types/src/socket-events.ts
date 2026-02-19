@@ -68,6 +68,26 @@ export interface AssetProcessingProgressPayload {
   progress: number; // 0-100
 }
 
+export interface RenderStartedPayload {
+  assetId: string;
+  roomId: string;
+  sessionId: string;
+}
+
+export interface RenderCompletePayload {
+  assetId: string;
+  roomId: string;
+  contentType: string;
+  sizeBytes: number;
+  model: string;
+}
+
+export interface RenderFailedPayload {
+  assetId: string;
+  roomId: string;
+  error: string;
+}
+
 export interface ClientToServerEvents {
   'chat:join_session': (data: ChatJoinSessionPayload) => void;
   'chat:user_message': (data: ChatUserMessagePayload) => void;
@@ -84,4 +104,7 @@ export interface ServerToClientEvents {
   'session:rooms_updated': (data: SessionRoomsUpdatedPayload) => void;
   'session:phase_changed': (data: SessionPhaseChangedPayload) => void;
   'asset:processing_progress': (data: AssetProcessingProgressPayload) => void;
+  'render:started': (data: RenderStartedPayload) => void;
+  'render:complete': (data: RenderCompletePayload) => void;
+  'render:failed': (data: RenderFailedPayload) => void;
 }
