@@ -80,12 +80,12 @@ describe('ImageWorker', () => {
   });
 
   it('should throw UnrecoverableError for missing assetId', async () => {
-    const job = { data: { assetId: '', sessionId: 's1' }, id: 'job-1' };
+    const job = { data: { assetId: '', sessionId: '00000000-0000-4000-a000-000000000002' }, id: 'job-1' };
     await expect(processImageJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
   it('should throw UnrecoverableError for missing sessionId', async () => {
-    const job = { data: { assetId: 'a1', sessionId: '' }, id: 'job-1' };
+    const job = { data: { assetId: '00000000-0000-4000-a000-000000000001', sessionId: '' }, id: 'job-1' };
     await expect(processImageJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
@@ -115,7 +115,7 @@ describe('ImageWorker', () => {
     const { createWorker: cw2 } = await import('../../../src/config/queue.js');
     const processor = (cw2 as Mock).mock.calls[0][1] as typeof processImageJob;
 
-    const job = { data: { assetId: 'a1', sessionId: 's1' }, id: 'job-1' };
+    const job = { data: { assetId: '00000000-0000-4000-a000-000000000001', sessionId: '00000000-0000-4000-a000-000000000002' }, id: 'job-1' };
     await expect(processor(job)).resolves.toBeUndefined();
   });
 
@@ -153,7 +153,7 @@ describe('ImageWorker', () => {
     const { createWorker: cw2 } = await import('../../../src/config/queue.js');
     const processor = (cw2 as Mock).mock.calls[0][1] as typeof processImageJob;
 
-    const job = { data: { assetId: 'a1', sessionId: 's1' }, id: 'job-1' };
+    const job = { data: { assetId: '00000000-0000-4000-a000-000000000001', sessionId: '00000000-0000-4000-a000-000000000002' }, id: 'job-1' };
     await expect(processor(job)).rejects.toThrow(UnrecoverableError);
   });
 
@@ -178,7 +178,7 @@ describe('ImageWorker', () => {
         select: vi.fn().mockReturnValue({
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{
-              id: 'a1', assetType: 'document',
+              id: '00000000-0000-4000-a000-000000000001', assetType: 'document',
               contentType: 'application/pdf', storagePath: 'path/file.pdf',
             }]),
           }),
@@ -196,7 +196,7 @@ describe('ImageWorker', () => {
     const { createWorker: cw2 } = await import('../../../src/config/queue.js');
     const processor = (cw2 as Mock).mock.calls[0][1] as typeof processImageJob;
 
-    const job = { data: { assetId: 'a1', sessionId: 's1' }, id: 'job-1' };
+    const job = { data: { assetId: '00000000-0000-4000-a000-000000000001', sessionId: '00000000-0000-4000-a000-000000000002' }, id: 'job-1' };
     await expect(processor(job)).rejects.toThrow(UnrecoverableError);
   });
 
@@ -221,7 +221,7 @@ describe('ImageWorker', () => {
         select: vi.fn().mockReturnValue({
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{
-              id: 'a1', assetType: 'photo',
+              id: '00000000-0000-4000-a000-000000000001', assetType: 'photo',
               contentType: 'image/tiff', storagePath: 'path/file.tiff',
             }]),
           }),
@@ -239,7 +239,7 @@ describe('ImageWorker', () => {
     const { createWorker: cw2 } = await import('../../../src/config/queue.js');
     const processor = (cw2 as Mock).mock.calls[0][1] as typeof processImageJob;
 
-    const job = { data: { assetId: 'a1', sessionId: 's1' }, id: 'job-1' };
+    const job = { data: { assetId: '00000000-0000-4000-a000-000000000001', sessionId: '00000000-0000-4000-a000-000000000002' }, id: 'job-1' };
     await expect(processor(job)).rejects.toThrow(UnrecoverableError);
   });
 

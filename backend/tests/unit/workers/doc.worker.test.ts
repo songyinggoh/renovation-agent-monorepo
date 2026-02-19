@@ -34,27 +34,27 @@ describe('DocWorker', () => {
   });
 
   it('should throw UnrecoverableError for missing sessionId', async () => {
-    const job = { data: { sessionId: '', roomId: 'r1', format: 'pdf' }, id: 'job-1' };
+    const job = { data: { sessionId: '', roomId: '00000000-0000-4000-a000-000000000002', format: 'pdf' }, id: 'job-1' };
     await expect(processDocJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
   it('should throw UnrecoverableError for missing roomId', async () => {
-    const job = { data: { sessionId: 's1', roomId: '', format: 'pdf' }, id: 'job-1' };
+    const job = { data: { sessionId: '00000000-0000-4000-a000-000000000001', roomId: '', format: 'pdf' }, id: 'job-1' };
     await expect(processDocJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
   it('should throw UnrecoverableError for invalid format', async () => {
-    const job = { data: { sessionId: 's1', roomId: 'r1', format: 'docx' }, id: 'job-1' };
+    const job = { data: { sessionId: '00000000-0000-4000-a000-000000000001', roomId: '00000000-0000-4000-a000-000000000002', format: 'docx' }, id: 'job-1' };
     await expect(processDocJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
   it('should succeed for valid pdf job (no-op)', async () => {
-    const job = { data: { sessionId: 's1', roomId: 'r1', format: 'pdf' }, id: 'job-1' };
+    const job = { data: { sessionId: '00000000-0000-4000-a000-000000000001', roomId: '00000000-0000-4000-a000-000000000002', format: 'pdf' }, id: 'job-1' };
     await expect(processDocJob(job)).resolves.toBeUndefined();
   });
 
   it('should succeed for valid html job (no-op)', async () => {
-    const job = { data: { sessionId: 's1', roomId: 'r1', format: 'html' }, id: 'job-1' };
+    const job = { data: { sessionId: '00000000-0000-4000-a000-000000000001', roomId: '00000000-0000-4000-a000-000000000002', format: 'html' }, id: 'job-1' };
     await expect(processDocJob(job)).resolves.toBeUndefined();
   });
 

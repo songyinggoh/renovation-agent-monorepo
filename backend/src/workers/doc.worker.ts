@@ -1,29 +1,22 @@
 import { type Job, UnrecoverableError } from 'bullmq';
 import { createWorker, type JobTypes } from '../config/queue.js';
 import { Logger } from '../utils/logger.js';
+import { docGeneratePlanJobSchema } from '../validators/job.validators.js';
 
 const logger = new Logger({ serviceName: 'DocWorker' });
 
 type DocJobData = JobTypes['doc:generate-plan'];
 
-const VALID_FORMATS = ['pdf', 'html'] as const;
-
 /**
  * Process a document generation job (skeleton — no-op until Phase 3 adds Puppeteer)
  */
 async function processDocJob(job: Job<DocJobData>): Promise<void> {
-  const { sessionId, roomId, format } = job.data;
-
-  // Validate job data
-  if (!sessionId || typeof sessionId !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "sessionId" must be a string');
+  // Validate job data with Zod schema
+  const parsed = docGeneratePlanJobSchema.safeParse(job.data);
+  if (!parsed.success) {
+    throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
-  if (!roomId || typeof roomId !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "roomId" must be a string');
-  }
-  if (!format || !VALID_FORMATS.includes(format as typeof VALID_FORMATS[number])) {
-    throw new UnrecoverableError(`Invalid job data: "format" must be one of: ${VALID_FORMATS.join(', ')}`);
-  }
+  const { sessionId, roomId, format } = parsed.data;
 
   logger.info('Document generation job received (no-op)', {
     jobId: job.id,

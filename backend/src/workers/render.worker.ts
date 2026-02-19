@@ -4,6 +4,7 @@ import { createImageGenerationAdapter } from '../services/image-generation.servi
 import { RenderService } from '../services/render.service.js';
 import { emitToSession } from '../utils/socket-emitter.js';
 import { Logger } from '../utils/logger.js';
+import { renderGenerateJobSchema } from '../validators/job.validators.js';
 
 const logger = new Logger({ serviceName: 'RenderWorker' });
 
@@ -20,7 +21,12 @@ const renderService = new RenderService();
  * 4. Emits `render:complete` or `render:failed` Socket.io event
  */
 async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
-  const { sessionId, roomId, prompt, assetId } = job.data;
+  // Validate job data with Zod schema
+  const parsed = renderGenerateJobSchema.safeParse(job.data);
+  if (!parsed.success) {
+    throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
+  }
+  const { sessionId, roomId, prompt, assetId } = parsed.data;
 
   logger.info('Processing render job', {
     jobId: job.id,
@@ -29,11 +35,6 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
     assetId,
     promptLength: prompt.length,
   });
-
-  // Validate job data
-  if (!sessionId || !roomId || !prompt || !assetId) {
-    throw new UnrecoverableError('Invalid job data: missing required fields');
-  }
 
   // Notify client that render generation has started
   emitToSession(sessionId, 'render:started', { assetId, roomId });

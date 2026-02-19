@@ -3,6 +3,7 @@ import { createWorker, type JobTypes } from '../config/queue.js';
 import { getResendClient } from '../config/email.js';
 import { isEmailEnabled, env } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
+import { emailSendNotificationJobSchema } from '../validators/job.validators.js';
 
 const logger = new Logger({ serviceName: 'EmailWorker' });
 
@@ -47,24 +48,17 @@ function isPermanentError(errorMessage: string): boolean {
  * - Uses UnrecoverableError for permanent failures to prevent futile retries
  */
 async function processEmailJob(job: Job<EmailJobData>): Promise<void> {
-  const { to, subject, data } = job.data;
-
-  // Validate job data (Issue #3 fix)
-  if (!to || typeof to !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "to" must be a string');
+  // Validate job data with Zod schema
+  const parsed = emailSendNotificationJobSchema.safeParse(job.data);
+  if (!parsed.success) {
+    throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
-  if (!subject || typeof subject !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "subject" must be a string');
-  }
-  if (!data || typeof data !== 'object') {
-    throw new UnrecoverableError('Invalid job data: "data" must be an object');
-  }
+  const { to, subject, data } = parsed.data;
 
   const dataObj = data as Record<string, unknown>;
   if (!dataObj.html || typeof dataObj.html !== 'string') {
     throw new UnrecoverableError('Invalid job data: "data.html" must be a string');
   }
-
   const html = dataObj.html;
 
   logger.info('Processing email job', { jobId: job.id, to, subject });

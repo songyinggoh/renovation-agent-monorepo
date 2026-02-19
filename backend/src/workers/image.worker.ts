@@ -9,6 +9,7 @@ import { assetVariants } from '../db/schema/asset-variants.schema.js';
 import { roomAssets } from '../db/schema/assets.schema.js';
 import { eq } from 'drizzle-orm';
 import { emitToSession } from '../utils/socket-emitter.js';
+import { imageOptimizeJobSchema } from '../validators/job.validators.js';
 
 const logger = new Logger({ serviceName: 'ImageWorker' });
 
@@ -51,15 +52,12 @@ const VARIANT_CONFIGS: VariantConfig[] = [
 const SUPPORTED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 async function processImageJob(job: Job<ImageJobData>): Promise<void> {
-  const { assetId, sessionId } = job.data;
-
-  // Validate job data
-  if (!assetId || typeof assetId !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "assetId" must be a string');
+  // Validate job data with Zod schema
+  const parsed = imageOptimizeJobSchema.safeParse(job.data);
+  if (!parsed.success) {
+    throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
-  if (!sessionId || typeof sessionId !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "sessionId" must be a string');
-  }
+  const { assetId, sessionId } = parsed.data;
 
   // Storage guard — skip when Supabase Storage not configured
   if (!isStorageEnabled() || !supabaseAdmin) {

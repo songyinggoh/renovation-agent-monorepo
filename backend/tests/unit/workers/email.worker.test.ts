@@ -127,7 +127,7 @@ describe('Email Worker', () => {
       } as Job<EmailJobData>;
 
       await expect(processEmailJob(job)).rejects.toThrow(UnrecoverableError);
-      await expect(processEmailJob(job)).rejects.toThrow('Invalid job data: "to" must be a string');
+      await expect(processEmailJob(job)).rejects.toThrow('Invalid job data');
     });
 
     it('should throw UnrecoverableError when "subject" is missing', async () => {
@@ -199,7 +199,7 @@ describe('Email Worker', () => {
       const job = {
         id: 'job-8',
         data: {
-          to: 'invalid-email',
+          to: 'user@example.com',
           subject: 'Test',
           template: 'session-created',
           data: { html: '<p>Test</p>' },
