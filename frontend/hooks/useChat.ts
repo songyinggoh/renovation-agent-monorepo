@@ -177,23 +177,6 @@ export function useChat(sessionId: string) {
           ]);
         });
 
-        // Handle session-level events (emitted by save_intake_state tool)
-        socket.on('session:rooms_updated', (data: { sessionId: string }) => {
-          if (data.sessionId !== sessionId) return;
-          logger.info('Rooms updated', { sessionId: data.sessionId });
-          window.dispatchEvent(
-            new CustomEvent('session:update', { detail: { type: 'rooms_updated' } })
-          );
-        });
-
-        socket.on('session:phase_changed', (data: { sessionId: string; phase: string }) => {
-          if (data.sessionId !== sessionId) return;
-          logger.info('Phase changed', { sessionId: data.sessionId, phase: data.phase });
-          window.dispatchEvent(
-            new CustomEvent('session:update', { detail: { type: 'phase_changed', phase: data.phase } })
-          );
-        });
-
         // Handle errors from server
         socket.on('chat:error', (data: { sessionId: string; error: string }) => {
           if (data.sessionId !== sessionId) return;
@@ -245,5 +228,6 @@ export function useChat(sessionId: string) {
     error,
     isAssistantTyping,
     isLoadingHistory,
+    socketRef,
   };
 }

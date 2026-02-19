@@ -104,16 +104,32 @@ describe('useChat Hook - Phase 1.1', () => {
       });
     });
 
-    it('should set error when no token found', async () => {
+    it('should connect anonymously when no token found', async () => {
       mockSupabase.auth.getSession.mockResolvedValue({
         data: { session: null },
         error: null,
       });
 
+      const { io } = await import('socket.io-client');
+
+      renderHook(() => useChat('session-123'));
+
+      await waitFor(() => {
+        expect(io).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            auth: {},
+          })
+        );
+      });
+    });
+
+    it('should expose socketRef', async () => {
       const { result } = renderHook(() => useChat('session-123'));
 
       await waitFor(() => {
-        expect(result.current.error).toContain('No authentication token found');
+        expect(result.current.socketRef).toBeDefined();
+        expect(result.current.socketRef.current).toBeDefined();
       });
     });
   });
@@ -140,7 +156,7 @@ describe('useChat Hook - Phase 1.1', () => {
       });
 
       // Verify it emits join_session
-      expect(mockSocket.emit).toHaveBeenCalledWith('chat:join_session', 'session-123');
+      expect(mockSocket.emit).toHaveBeenCalledWith('chat:join_session', { sessionId: 'session-123' });
     });
 
     it('should set isConnected to false on disconnect', async () => {
@@ -482,6 +498,25 @@ describe('useChat Hook - Phase 1.1', () => {
       unmount();
 
       expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('Session Event Bridge Removal', () => {
+    it('should NOT dispatch window CustomEvents for session events', async () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+      renderHook(() => useChat('session-123'));
+
+      await waitFor(() => {
+        expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+      });
+
+      // session:rooms_updated and session:phase_changed listeners should NOT be registered
+      const registeredEvents = (mockSocket.on.mock.calls as [string, unknown][]).map((call) => call[0]);
+      expect(registeredEvents).not.toContain('session:rooms_updated');
+      expect(registeredEvents).not.toContain('session:phase_changed');
+
+      dispatchSpy.mockRestore();
     });
   });
 });
