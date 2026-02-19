@@ -128,14 +128,11 @@ async function processEmailJob(job: Job<EmailJobData>): Promise<void> {
 }
 
 /**
- * Start the email worker
- *
- * Returns the worker instance for shutdown registration.
- * Concurrency is kept low (2) to respect Resend rate limits.
+ * Start the email worker.
+ * Concurrency, rate limiting, and timeouts derived from WORKER_PROFILES.
  */
 export function startEmailWorker() {
-  const worker = createWorker('email:send-notification', processEmailJob, 2);
-
+  const worker = createWorker('email:send-notification', processEmailJob);
   logger.info('Email worker started');
   return worker;
 }

@@ -21,6 +21,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { startEmailWorker } from './workers/email.worker.js';
 import { startImageWorker } from './workers/image.worker.js';
 import { startDocWorker } from './workers/doc.worker.js';
+import { startRenderWorker } from './workers/render.worker.js';
 import { closeQueues } from './config/queue.js';
 import {
   chatUserMessageSchema,
@@ -46,6 +47,7 @@ let shutdownManager: ShutdownManager;
 let emailWorker: ReturnType<typeof startEmailWorker> | null = null;
 let imageWorker: ReturnType<typeof startImageWorker> | null = null;
 let docWorker: ReturnType<typeof startDocWorker> | null = null;
+let renderWorker: ReturnType<typeof startRenderWorker> | null = null;
 
 /**
  * Application startup sequence
@@ -139,6 +141,21 @@ async function startServer(): Promise<void> {
       }
     } catch (workerError) {
       logger.warn('Doc worker failed to start', workerError as Error);
+    }
+
+    // ============================================
+    // STEP 0.9: Start Render Worker (if Redis available)
+    // ============================================
+    try {
+      const redisOk = await testRedisConnection();
+      if (redisOk) {
+        renderWorker = startRenderWorker();
+        logger.info('Render worker started');
+      } else {
+        logger.warn('Render worker not started — Redis unavailable');
+      }
+    } catch (workerError) {
+      logger.warn('Render worker failed to start', workerError as Error);
     }
 
     // ============================================
@@ -636,7 +653,7 @@ function setupGracefulShutdown(): void {
   shutdownManager.registerResource({
     name: 'Workers & Queues',
     cleanup: async () => {
-      const workers = [emailWorker, imageWorker, docWorker].filter(Boolean);
+      const workers = [emailWorker, imageWorker, docWorker, renderWorker].filter(Boolean);
       await Promise.allSettled(workers.map(w => w!.close()));
       await closeQueues();
     },

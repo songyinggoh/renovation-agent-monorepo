@@ -2,7 +2,12 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import * as Sentry from '@sentry/node';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
 import { env } from './config/env.js';
+import { getImageQueue, getEmailQueue, getDocQueue, getRenderQueue } from './config/queue.js';
+import { getDLQ } from './config/dead-letter.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestIdMiddleware } from './middleware/request-id.middleware.js';
 import { apiLimiter, chatLimiter } from './middleware/rate-limit.middleware.js';
@@ -108,6 +113,26 @@ export function createApp(): Application {
   app.use('/api/styles', styleRoutes);
   app.use('/api', productRoutes);
   app.use('/api', assetRoutes);
+
+  // ============================================
+  // Bull Board (dev/staging only)
+  // ============================================
+  if (env.NODE_ENV !== 'production') {
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/admin/queues');
+    createBullBoard({
+      queues: [
+        new BullMQAdapter(getImageQueue()),
+        new BullMQAdapter(getEmailQueue()),
+        new BullMQAdapter(getDocQueue()),
+        new BullMQAdapter(getRenderQueue()),
+        new BullMQAdapter(getDLQ()),
+      ],
+      serverAdapter,
+    });
+    app.use('/admin/queues', serverAdapter.getRouter());
+    logger.info('Bull Board mounted at /admin/queues');
+  }
 
   // ============================================
   // 404 Handler

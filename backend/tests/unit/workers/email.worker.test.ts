@@ -277,7 +277,7 @@ describe('Email Worker', () => {
       expect(mockCreateWorker).toHaveBeenCalledWith(
         'email:send-notification',
         expect.any(Function),
-        2, // concurrency = 2 for Resend rate limits
+        // No explicit concurrency — derived from WORKER_PROFILES
       );
     });
   });

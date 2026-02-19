@@ -1,5 +1,5 @@
 import { type Job, UnrecoverableError } from 'bullmq';
-import { createWorker, type JobTypes } from '../config/queue.js';
+import { createWorker, WORKER_PROFILES, withTimeout, type JobTypes } from '../config/queue.js';
 import { createImageGenerationAdapter } from '../services/image-generation.service.js';
 import { RenderService } from '../services/render.service.js';
 import { emitToSession } from '../utils/socket-emitter.js';
@@ -40,10 +40,12 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
 
   try {
     const adapter = createImageGenerationAdapter();
-    const result = await adapter.generate(prompt, {
-      aspectRatio: '4:3',
-      size: '1K',
-    });
+    const profile = WORKER_PROFILES['render:generate'];
+    const result = await withTimeout(
+      adapter.generate(prompt, { aspectRatio: '4:3', size: '1K' }),
+      profile.timeoutMs,
+      `render:generate job ${job.id}`,
+    );
 
     // Persist render result
     await renderService.completeRender(assetId, result);
@@ -91,10 +93,10 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
 
 /**
  * Start the render generation worker.
- * Low concurrency (1) since image generation is resource-intensive.
+ * Concurrency and timeouts derived from WORKER_PROFILES.
  */
 export function startRenderWorker() {
-  const worker = createWorker('render:generate', processRenderJob, 1);
+  const worker = createWorker('render:generate', processRenderJob);
   logger.info('Render worker started');
   return worker;
 }
