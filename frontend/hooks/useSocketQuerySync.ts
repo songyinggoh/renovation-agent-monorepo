@@ -116,13 +116,15 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
     };
 
     // --- Render job events ---
-    const handleRenderStarted = (data: { assetId: string; roomId: string }) => {
-      logger.info('Render started — optimistic update', {
+    const handleRenderStarted = (data: { assetId: string; roomId: string; sessionId: string }) => {
+      if (data.sessionId !== sessionId) return;
+      logger.info('Render started', {
         assetId: data.assetId,
         roomId: data.roomId,
       });
-      // Invalidate rooms so the UI picks up the "processing" asset status
-      delayedInvalidate(sessionRoomsQueryKey(sessionId), 100);
+      // No query invalidation needed — progress hooks handle the UI state.
+      // This event is registered so useSocketQuerySync is the single source
+      // of truth for all render-related Socket.io events.
     };
 
     const handleRenderComplete = (data: { assetId: string; roomId: string }) => {
