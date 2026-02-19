@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi, afterEach, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
 interface MockSocket {
   on: Mock;
@@ -131,7 +131,7 @@ describe('useRenderState', () => {
 
     unmount();
 
-    const removedEvents = mockSocket.off.mock.calls.map((c: [string, unknown]) => c[0]);
+    const removedEvents = (mockSocket.off.mock.calls as [string, unknown][]).map((c) => c[0]);
     expect(removedEvents).toContain('render:started');
     expect(removedEvents).toContain('render:complete');
     expect(removedEvents).toContain('render:failed');

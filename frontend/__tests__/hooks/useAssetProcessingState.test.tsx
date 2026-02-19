@@ -106,7 +106,7 @@ describe('useAssetProcessingState', () => {
 
     unmount();
 
-    const removedEvents = mockSocket.off.mock.calls.map((c: [string, unknown]) => c[0]);
+    const removedEvents = (mockSocket.off.mock.calls as [string, unknown][]).map((c) => c[0]);
     expect(removedEvents).toContain('asset:processing_progress');
     expect(removedEvents).toContain('connect');
   });

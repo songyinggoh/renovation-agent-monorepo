@@ -65,7 +65,7 @@ describe('useSocketQuerySync', () => {
       { wrapper },
     );
 
-    const registeredEvents = mockSocket.on.mock.calls.map((c: [string, unknown]) => c[0]);
+    const registeredEvents = (mockSocket.on.mock.calls as [string, unknown][]).map((c) => c[0]);
     expect(registeredEvents).toContain('connect');
     expect(registeredEvents).toContain('session:rooms_updated');
     expect(registeredEvents).toContain('session:phase_changed');
@@ -85,7 +85,7 @@ describe('useSocketQuerySync', () => {
 
     unmount();
 
-    const removedEvents = mockSocket.off.mock.calls.map((c: [string, unknown]) => c[0]);
+    const removedEvents = (mockSocket.off.mock.calls as [string, unknown][]).map((c) => c[0]);
     expect(removedEvents).toContain('connect');
     expect(removedEvents).toContain('session:rooms_updated');
     expect(removedEvents).toContain('session:phase_changed');
