@@ -2,23 +2,28 @@
 
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useChat } from '@/hooks/useChat';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatInput } from '@/components/chat/chat-input';
 import { ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { PHASE_CONFIG, type RenovationPhase } from '@/lib/design-tokens';
+import type { Message } from '@/types/chat';
 
 interface ChatViewProps {
   sessionId: string;
   phase?: RenovationPhase;
   roomId?: string;
+  messages: Message[];
+  sendMessage: (content: string, attachments?: { assetId: string; fileName?: string }[]) => void;
+  isConnected: boolean;
+  error: string | null;
+  isAssistantTyping: boolean;
+  isLoadingHistory: boolean;
 }
 
-export function ChatView({ sessionId, phase, roomId }: ChatViewProps) {
+export function ChatView({ sessionId, phase, roomId, messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory }: ChatViewProps) {
   const router = useRouter();
-  const { messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory } = useChat(sessionId);
 
   const upload = useFileUpload({
     roomId: roomId ?? '',

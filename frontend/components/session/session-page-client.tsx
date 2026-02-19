@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useSessionRooms } from '@/hooks/useSessionRooms';
+import { useChat } from '@/hooks/useChat';
+import { useSocketQuerySync } from '@/hooks/useSocketQuerySync';
 import { ChatView } from '@/components/chat/chat-view';
 import { SessionSidebar } from '@/components/session/session-sidebar';
 
@@ -11,37 +12,19 @@ interface SessionPageClientProps {
 }
 
 export function SessionPageClient({ sessionId }: SessionPageClientProps) {
-  const { session, isLoading: sessionLoading, refetch: refetchSession } = useSession(sessionId);
+  const { session, isLoading: sessionLoading } = useSession(sessionId);
   const {
     rooms,
     isLoading: roomsLoading,
     selectedRoomId,
     selectRoom,
-    refetch: refetchRooms,
   } = useSessionRooms(sessionId);
 
-  const lastRefetchRef = useRef<number>(0);
+  // Lift useChat here so we can share socketRef with useSocketQuerySync
+  const chat = useChat(sessionId);
 
-  useEffect(() => {
-    const handler = (event: CustomEvent<{ type: string }>) => {
-      const now = Date.now();
-      if (now - lastRefetchRef.current < 2000) return;
-      lastRefetchRef.current = now;
-
-      switch (event.detail.type) {
-        case 'rooms_updated':
-          refetchRooms();
-          refetchSession();
-          break;
-        case 'phase_changed':
-          refetchSession();
-          break;
-      }
-    };
-
-    window.addEventListener('session:update', handler as EventListener);
-    return () => window.removeEventListener('session:update', handler as EventListener);
-  }, [refetchSession, refetchRooms]);
+  // Bridge Socket.io events → TanStack Query cache invalidation
+  useSocketQuerySync({ sessionId, socketRef: chat.socketRef });
 
   const phase = session?.phase ?? 'INTAKE';
 
@@ -62,6 +45,12 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
           sessionId={sessionId}
           phase={phase}
           roomId={selectedRoomId ?? undefined}
+          messages={chat.messages}
+          sendMessage={chat.sendMessage}
+          isConnected={chat.isConnected}
+          error={chat.error}
+          isAssistantTyping={chat.isAssistantTyping}
+          isLoadingHistory={chat.isLoadingHistory}
         />
       </div>
     </div>
