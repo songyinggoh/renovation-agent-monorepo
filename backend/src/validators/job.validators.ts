@@ -20,7 +20,7 @@ export const emailSendNotificationJobSchema = z.object({
   to: z.string().email(),
   subject: z.string().min(1).max(500),
   template: z.string().min(1).max(100),
-  data: z.record(z.unknown()),
+  data: z.object({ html: z.string().min(1) }),
 });
 
 export const docGeneratePlanJobSchema = z.object({

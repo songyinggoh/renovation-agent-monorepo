@@ -11,6 +11,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { env, isStorageEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors.js';
+import { getImageQueue } from '../config/queue.js';
 
 const logger = new Logger({ serviceName: 'AssetService' });
 
@@ -46,8 +47,7 @@ export function sanitizeFilename(filename: string): string {
  * Validate that a MIME type is allowed for the given asset type
  */
 export function validateFileType(contentType: string, assetType: AssetType): boolean {
-  const allowed = ALLOWED_MIME_TYPES[assetType];
-  return allowed ? allowed.includes(contentType) : false;
+  return ALLOWED_MIME_TYPES[assetType].includes(contentType);
 }
 
 /**
@@ -73,6 +73,24 @@ export function buildStoragePath(
   }
   const safeFilename = sanitizeFilename(filename);
   return `session_${sessionId}/room_${roomId}/${assetType}s/${Date.now()}_${safeFilename}`;
+}
+
+
+/**
+ * Build the mock storage URL used when Supabase Storage is not configured.
+ * Centralised here so the two call-sites (requestUpload / getSignedUrl) cannot
+ * diverge in format.
+ */
+function buildMockUrl(bucketName: string, storagePath: string): string {
+  return `mock://storage/${bucketName}/${storagePath}`;
+}
+
+/**
+ * Compute the ISO expiry timestamp for a signed URL.
+ * Extracted to avoid duplicating the identical expression in requestUpload.
+ */
+function buildExpiresAt(expirySeconds: number): string {
+  return new Date(Date.now() + expirySeconds * 1000).toISOString();
 }
 
 interface RequestUploadParams {
@@ -105,23 +123,19 @@ export class AssetService {
 
     logger.info('Requesting upload', { roomId, sessionId, assetType, contentType, fileSize });
 
-    // Validate asset type
     if (!ASSET_TYPES.includes(assetType)) {
       throw new BadRequestError(`Invalid asset type: ${assetType}. Must be one of: ${ASSET_TYPES.join(', ')}`);
     }
 
-    // Validate file type
     if (!validateFileType(contentType, assetType)) {
       const allowed = ALLOWED_MIME_TYPES[assetType];
       throw new BadRequestError(`Invalid file type: ${contentType}. Allowed for ${assetType}: ${allowed.join(', ')}`);
     }
 
-    // Validate file size
     if (!validateFileSize(fileSize)) {
       throw new BadRequestError(`Invalid file size: ${fileSize} bytes. Maximum: ${MAX_FILE_SIZE} bytes (10 MB)`);
     }
 
-    // Check room exists
     const [room] = await db
       .select()
       .from(renovationRooms)
@@ -131,7 +145,6 @@ export class AssetService {
       throw new NotFoundError(`Room not found: ${roomId}`);
     }
 
-    // Check asset count limit
     const [countResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(roomAssets)
@@ -141,11 +154,9 @@ export class AssetService {
       throw new BadRequestError(`Maximum assets per room reached (${MAX_ASSETS_PER_ROOM})`);
     }
 
-    // Build storage path
     const storagePath = buildStoragePath(sessionId, roomId, assetType, filename);
     const bucketName = env.SUPABASE_STORAGE_BUCKET;
 
-    // Create pending asset record
     const [asset] = await db.insert(roomAssets).values({
       sessionId,
       roomId,
@@ -163,15 +174,14 @@ export class AssetService {
       throw new Error('Failed to create asset record');
     }
 
-    // Generate signed upload URL
     if (!isStorageEnabled() || !supabaseAdmin) {
       logger.warn('Storage not configured, returning mock signed URL', undefined, { assetId: asset.id });
       return {
         assetId: asset.id,
-        signedUrl: `mock://storage/${bucketName}/${storagePath}`,
+        signedUrl: buildMockUrl(bucketName, storagePath),
         token: 'mock-token',
         storagePath,
-        expiresAt: new Date(Date.now() + SIGNED_URL_EXPIRY * 1000).toISOString(),
+        expiresAt: buildExpiresAt(SIGNED_URL_EXPIRY),
       };
     }
 
@@ -180,7 +190,6 @@ export class AssetService {
       .createSignedUploadUrl(storagePath);
 
     if (error || !data) {
-      // Clean up the pending record
       await db.delete(roomAssets).where(eq(roomAssets.id, asset.id));
       throw new Error(`Failed to generate signed upload URL: ${error?.message ?? 'Unknown error'}`);
     }
@@ -196,7 +205,7 @@ export class AssetService {
       signedUrl: data.signedUrl,
       token: data.token,
       storagePath,
-      expiresAt: new Date(Date.now() + SIGNED_URL_EXPIRY * 1000).toISOString(),
+      expiresAt: buildExpiresAt(SIGNED_URL_EXPIRY),
     };
   }
 
@@ -219,12 +228,11 @@ export class AssetService {
       throw new ConflictError(`Asset is not pending upload: ${asset.status}`);
     }
 
-    // Verify file exists in storage (if storage is configured)
     if (isStorageEnabled() && supabaseAdmin) {
       const bucketName = env.SUPABASE_STORAGE_BUCKET;
-      const pathParts = asset.storagePath.split('/');
-      const folder = pathParts.slice(0, -1).join('/');
-      const filename = pathParts[pathParts.length - 1];
+      const lastSlash = asset.storagePath.lastIndexOf('/');
+      const folder = asset.storagePath.slice(0, lastSlash);
+      const filename = asset.storagePath.slice(lastSlash + 1);
 
       const { data: files, error } = await supabaseAdmin.storage
         .from(bucketName)
@@ -246,6 +254,20 @@ export class AssetService {
     }
 
     logger.info('Upload confirmed', { assetId, storagePath: updated.storagePath });
+
+    // Enqueue image optimization for photos (best-effort — queue failure must not fail the HTTP response)
+    if (updated.assetType === 'photo') {
+      try {
+        await getImageQueue().add('image:optimize', {
+          assetId,
+          sessionId: updated.sessionId,
+        });
+        logger.info('Image optimization job enqueued', { assetId });
+      } catch (queueError) {
+        logger.warn('Failed to enqueue image optimization — Redis may be down', queueError as Error, { assetId });
+      }
+    }
+
     return updated;
   }
 
@@ -307,7 +329,6 @@ export class AssetService {
       throw new NotFoundError(`Asset not found: ${assetId}`);
     }
 
-    // Remove from storage
     if (isStorageEnabled() && supabaseAdmin) {
       const bucketName = env.SUPABASE_STORAGE_BUCKET;
       const { error } = await supabaseAdmin.storage
@@ -323,7 +344,6 @@ export class AssetService {
       }
     }
 
-    // Remove from database
     await db.delete(roomAssets).where(eq(roomAssets.id, assetId));
     logger.info('Asset deleted', { assetId, storagePath: asset.storagePath });
   }
@@ -339,12 +359,14 @@ export class AssetService {
 
     if (!asset) return null;
 
+    const bucketName = env.SUPABASE_STORAGE_BUCKET;
+
     if (!isStorageEnabled() || !supabaseAdmin) {
-      return `mock://storage/${env.SUPABASE_STORAGE_BUCKET}/${asset.storagePath}`;
+      return buildMockUrl(bucketName, asset.storagePath);
     }
 
     const { data, error } = await supabaseAdmin.storage
-      .from(env.SUPABASE_STORAGE_BUCKET)
+      .from(bucketName)
       .createSignedUrl(asset.storagePath, expiresIn);
 
     if (error || !data) {

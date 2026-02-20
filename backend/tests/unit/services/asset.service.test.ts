@@ -9,7 +9,6 @@ import {
 import { db } from '../../../src/db/index.js';
 import { roomAssets } from '../../../src/db/schema/assets.schema.js';
 
-// Mock the database module
 vi.mock('../../../src/db/index.js', () => ({
   db: {
     select: vi.fn(),
@@ -19,7 +18,6 @@ vi.mock('../../../src/db/index.js', () => ({
   },
 }));
 
-// Mock logger
 vi.mock('../../../src/utils/logger.js', () => ({
   Logger: vi.fn().mockImplementation(() => ({
     info: vi.fn(),
@@ -28,18 +26,23 @@ vi.mock('../../../src/utils/logger.js', () => ({
   })),
 }));
 
-// Mock supabase config
 vi.mock('../../../src/config/supabase.js', () => ({
   supabaseAdmin: null,
 }));
 
-// Mock env config
 vi.mock('../../../src/config/env.js', () => ({
   env: {
     NODE_ENV: 'test',
     SUPABASE_STORAGE_BUCKET: 'test-bucket',
   },
   isStorageEnabled: vi.fn().mockReturnValue(false),
+}));
+
+const { mockQueueAdd } = vi.hoisted(() => ({
+  mockQueueAdd: vi.fn().mockResolvedValue({ id: 'job-1' }),
+}));
+vi.mock('../../../src/config/queue.js', () => ({
+  getImageQueue: vi.fn().mockReturnValue({ add: mockQueueAdd }),
 }));
 
 describe('AssetService – helper functions', () => {
@@ -196,6 +199,39 @@ describe('AssetService', () => {
     updatedAt: new Date('2024-01-01'),
   };
 
+  /** Mock db.select().from().where() to resolve with the given rows */
+  function mockSelectRows(...callRows: unknown[][]): void {
+    for (const rows of callRows) {
+      const mockWhere = vi.fn().mockResolvedValue(rows);
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+      (db.select as Mock).mockReturnValueOnce({ from: mockFrom });
+    }
+  }
+
+  /** Mock db.select().from().where().orderBy() to resolve with the given rows */
+  function mockSelectWithOrderBy(rows: unknown[]): void {
+    const mockOrderBy = vi.fn().mockResolvedValue(rows);
+    const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+    const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+    (db.select as Mock).mockReturnValue({ from: mockFrom });
+  }
+
+  /** Mock db.insert().values().returning() to resolve with the given rows */
+  function mockInsertReturning(rows: unknown[]): Mock {
+    const mockReturning = vi.fn().mockResolvedValue(rows);
+    const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
+    (db.insert as Mock).mockReturnValue({ values: mockValues });
+    return mockValues;
+  }
+
+  /** Mock db.update().set().where().returning() to resolve with the given rows */
+  function mockUpdateReturning(rows: unknown[]): void {
+    const mockReturning = vi.fn().mockResolvedValue(rows);
+    const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockReturning });
+    const mockSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
+    (db.update as Mock).mockReturnValue({ set: mockSet });
+  }
+
   beforeEach(() => {
     service = new AssetService();
     vi.clearAllMocks();
@@ -238,47 +274,20 @@ describe('AssetService', () => {
     });
 
     it('should throw NotFoundError when room does not exist', async () => {
-      // Mock: room lookup returns empty
-      const mockWhere = vi.fn().mockResolvedValue([]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([]);
 
       await expect(service.requestUpload(validParams)).rejects.toThrow('Room not found');
     });
 
     it('should throw BadRequestError when room has max assets', async () => {
-      // First select: room exists
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: 'room-id-1' }]);
-      const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
-
-      // Second select: count is at limit
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 20 }]);
-      const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
-
-      (db.select as Mock)
-        .mockReturnValueOnce({ from: mockFrom1 })
-        .mockReturnValueOnce({ from: mockFrom2 });
+      mockSelectRows([{ id: 'room-id-1' }], [{ count: 20 }]);
 
       await expect(service.requestUpload(validParams)).rejects.toThrow('Maximum assets per room reached');
     });
 
     it('should create pending asset and return mock URL when storage is disabled', async () => {
-      // Room exists
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: 'room-id-1' }]);
-      const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
-
-      // Count under limit
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 5 }]);
-      const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
-
-      (db.select as Mock)
-        .mockReturnValueOnce({ from: mockFrom1 })
-        .mockReturnValueOnce({ from: mockFrom2 });
-
-      // Insert returns asset
-      const mockReturning = vi.fn().mockResolvedValue([mockAsset]);
-      const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-      (db.insert as Mock).mockReturnValue({ values: mockValues });
+      mockSelectRows([{ id: 'room-id-1' }], [{ count: 5 }]);
+      mockInsertReturning([mockAsset]);
 
       const result = await service.requestUpload(validParams);
 
@@ -291,39 +300,15 @@ describe('AssetService', () => {
     });
 
     it('should throw if insert returns no record', async () => {
-      // Room exists
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: 'room-id-1' }]);
-      const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
-
-      // Count under limit
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 0 }]);
-      const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
-
-      (db.select as Mock)
-        .mockReturnValueOnce({ from: mockFrom1 })
-        .mockReturnValueOnce({ from: mockFrom2 });
-
-      // Insert returns empty
-      const mockReturning = vi.fn().mockResolvedValue([undefined]);
-      const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-      (db.insert as Mock).mockReturnValue({ values: mockValues });
+      mockSelectRows([{ id: 'room-id-1' }], [{ count: 0 }]);
+      mockInsertReturning([undefined]);
 
       await expect(service.requestUpload(validParams)).rejects.toThrow('Failed to create asset record');
     });
 
     it('should pass uploadedBy to insert values', async () => {
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: 'room-id-1' }]);
-      const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 0 }]);
-      const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
-
-      (db.select as Mock)
-        .mockReturnValueOnce({ from: mockFrom1 })
-        .mockReturnValueOnce({ from: mockFrom2 });
-
-      const mockReturning = vi.fn().mockResolvedValue([mockAsset]);
-      const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-      (db.insert as Mock).mockReturnValue({ values: mockValues });
+      mockSelectRows([{ id: 'room-id-1' }], [{ count: 0 }]);
+      const mockValues = mockInsertReturning([mockAsset]);
 
       await service.requestUpload({ ...validParams, uploadedBy: 'user-123' });
 
@@ -337,34 +322,20 @@ describe('AssetService', () => {
 
   describe('confirmUpload', () => {
     it('should throw NotFoundError when asset not found', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([]);
 
       await expect(service.confirmUpload('nonexistent')).rejects.toThrow('Asset not found');
     });
 
     it('should throw ConflictError when asset is not pending', async () => {
-      const uploadedAsset = { ...mockAsset, status: 'uploaded' };
-      const mockWhere = vi.fn().mockResolvedValue([uploadedAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([{ ...mockAsset, status: 'uploaded' }]);
 
       await expect(service.confirmUpload('asset-id-1')).rejects.toThrow('not pending upload');
     });
 
     it('should update status to uploaded and return updated asset', async () => {
-      // Select returns pending asset
-      const mockWhere = vi.fn().mockResolvedValue([mockAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
-
-      // Update returns updated asset
-      const updatedAsset = { ...mockAsset, status: 'uploaded' };
-      const mockReturning = vi.fn().mockResolvedValue([updatedAsset]);
-      const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockReturning });
-      const mockSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
-      (db.update as Mock).mockReturnValue({ set: mockSet });
+      mockSelectRows([mockAsset]);
+      mockUpdateReturning([{ ...mockAsset, status: 'uploaded' }]);
 
       const result = await service.confirmUpload('asset-id-1');
 
@@ -373,14 +344,8 @@ describe('AssetService', () => {
     });
 
     it('should throw when update returns no record', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([mockAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
-
-      const mockReturning = vi.fn().mockResolvedValue([undefined]);
-      const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockReturning });
-      const mockSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
-      (db.update as Mock).mockReturnValue({ set: mockSet });
+      mockSelectRows([mockAsset]);
+      mockUpdateReturning([undefined]);
 
       await expect(service.confirmUpload('asset-id-1')).rejects.toThrow('Failed to update asset');
     });
@@ -390,11 +355,7 @@ describe('AssetService', () => {
 
   describe('getAssetsByRoom', () => {
     it('should return assets ordered by displayOrder and createdAt', async () => {
-      const assets = [mockAsset, { ...mockAsset, id: 'asset-id-2' }];
-      const mockOrderBy = vi.fn().mockResolvedValue(assets);
-      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectWithOrderBy([mockAsset, { ...mockAsset, id: 'asset-id-2' }]);
 
       const result = await service.getAssetsByRoom('room-id-1');
 
@@ -403,10 +364,7 @@ describe('AssetService', () => {
     });
 
     it('should return empty array when room has no assets', async () => {
-      const mockOrderBy = vi.fn().mockResolvedValue([]);
-      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectWithOrderBy([]);
 
       const result = await service.getAssetsByRoom('empty-room');
 
@@ -418,9 +376,7 @@ describe('AssetService', () => {
 
   describe('getAssetById', () => {
     it('should return asset when found', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([mockAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([mockAsset]);
 
       const result = await service.getAssetById('asset-id-1');
 
@@ -428,9 +384,7 @@ describe('AssetService', () => {
     });
 
     it('should return null when not found', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([]);
 
       const result = await service.getAssetById('nonexistent');
 
@@ -442,11 +396,7 @@ describe('AssetService', () => {
 
   describe('getAssetsBySession', () => {
     it('should return all assets for a session', async () => {
-      const assets = [mockAsset, { ...mockAsset, id: 'asset-id-2', roomId: 'room-id-2' }];
-      const mockOrderBy = vi.fn().mockResolvedValue(assets);
-      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectWithOrderBy([mockAsset, { ...mockAsset, id: 'asset-id-2', roomId: 'room-id-2' }]);
 
       const result = await service.getAssetsBySession('session-id-1');
 
@@ -454,10 +404,7 @@ describe('AssetService', () => {
     });
 
     it('should return empty array for session with no assets', async () => {
-      const mockOrderBy = vi.fn().mockResolvedValue([]);
-      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectWithOrderBy([]);
 
       const result = await service.getAssetsBySession('empty-session');
 
@@ -469,18 +416,13 @@ describe('AssetService', () => {
 
   describe('deleteAsset', () => {
     it('should throw NotFoundError when asset not found', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([]);
 
       await expect(service.deleteAsset('nonexistent')).rejects.toThrow('Asset not found');
     });
 
     it('should delete from database when storage is disabled', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([mockAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
-
+      mockSelectRows([mockAsset]);
       const mockDeleteWhere = vi.fn().mockResolvedValue(undefined);
       (db.delete as Mock).mockReturnValue({ where: mockDeleteWhere });
 
@@ -493,9 +435,7 @@ describe('AssetService', () => {
 
   describe('getSignedUrl', () => {
     it('should return null when asset not found', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([]);
 
       const result = await service.getSignedUrl('nonexistent');
 
@@ -503,9 +443,7 @@ describe('AssetService', () => {
     });
 
     it('should return mock URL when storage is disabled', async () => {
-      const mockWhere = vi.fn().mockResolvedValue([mockAsset]);
-      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
-      (db.select as Mock).mockReturnValue({ from: mockFrom });
+      mockSelectRows([mockAsset]);
 
       const result = await service.getSignedUrl('asset-id-1');
 

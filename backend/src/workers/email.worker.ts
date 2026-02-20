@@ -54,12 +54,7 @@ async function processEmailJob(job: Job<EmailJobData>): Promise<void> {
     throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
   const { to, subject, data } = parsed.data;
-
-  const dataObj = data as Record<string, unknown>;
-  if (!dataObj.html || typeof dataObj.html !== 'string') {
-    throw new UnrecoverableError('Invalid job data: "data.html" must be a string');
-  }
-  const html = dataObj.html;
+  const { html } = data;
 
   logger.info('Processing email job', { jobId: job.id, to, subject });
 

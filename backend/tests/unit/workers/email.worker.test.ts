@@ -156,7 +156,8 @@ describe('Email Worker', () => {
       } as Job<EmailJobData>;
 
       await expect(processEmailJob(job)).rejects.toThrow(UnrecoverableError);
-      await expect(processEmailJob(job)).rejects.toThrow('"data.html" must be a string');
+      // Zod now validates html as required string — error message reflects schema constraint
+      await expect(processEmailJob(job)).rejects.toThrow('Invalid job data');
     });
 
     it('should throw UnrecoverableError when "data.html" is not a string', async () => {
@@ -170,7 +171,9 @@ describe('Email Worker', () => {
         },
       } as Job<EmailJobData>;
 
+      // Zod rejects non-string html with an UnrecoverableError
       await expect(processEmailJob(job)).rejects.toThrow(UnrecoverableError);
+      await expect(processEmailJob(job)).rejects.toThrow('Invalid job data');
     });
 
     it('should throw UnrecoverableError when Resend client is unavailable', async () => {

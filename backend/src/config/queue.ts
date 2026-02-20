@@ -29,7 +29,7 @@ export interface JobTypes {
   'image:optimize': { assetId: string; sessionId: string; width?: number; quality?: number };
   'ai:process-message': { sessionId: string; content: string; userId?: string };
   'doc:generate-plan': { sessionId: string; roomId: string; format: 'pdf' | 'html' };
-  'email:send-notification': { to: string; subject: string; template: string; data: Record<string, unknown> };
+  'email:send-notification': { to: string; subject: string; template: string; data: { html: string } };
   'render:generate': { sessionId: string; roomId: string; prompt: string; assetId: string };
 }
 
