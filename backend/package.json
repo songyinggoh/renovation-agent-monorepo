@@ -20,7 +20,10 @@
     "db:seed-products": "tsx scripts/seed-products-catalog.ts",
     "db:check-tables": "tsx scripts/check-db-tables.ts",
     "db:check-migrations": "tsx scripts/check-migrations.ts",
-    "db:studio": "tsx node_modules/drizzle-kit/bin.cjs studio"
+    "db:studio": "tsx node_modules/drizzle-kit/bin.cjs studio",
+    "migration:analyze": "tsx scripts/migration-safety/analyze-migration.ts",
+    "migration:rollback": "tsx scripts/migration-safety/generate-rollback.ts",
+    "migration:validate": "tsx scripts/migration-safety/validate-rollback.ts"
   },
   "keywords": [
     "express",

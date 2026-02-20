@@ -21,7 +21,8 @@
   },
   "lint-staged": {
     "backend/src/**/*.ts": "pnpm --filter renovation-agent-backend lint",
-    "frontend/**/*.{ts,tsx}": "pnpm --filter frontend lint"
+    "frontend/**/*.{ts,tsx}": "pnpm --filter frontend lint",
+    "backend/drizzle/*.sql": "pnpm --filter renovation-agent-backend migration:analyze"
   },
   "pnpm": {
     "overrides": {

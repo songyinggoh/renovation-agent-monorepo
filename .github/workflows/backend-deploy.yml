@@ -88,10 +88,61 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  migration-dry-run:
+    name: Migration Dry Run
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Show pending migrations
+        run: |
+          echo "### Pending Migrations" >> "$GITHUB_STEP_SUMMARY"
+          echo "Review the SQL below before approving the migration step." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          PENDING=$(ls drizzle/*.sql 2>/dev/null | grep -v rollbacks | grep -v archive || true)
+          if [ -z "$PENDING" ]; then
+            echo "**No migration files found.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            for f in $PENDING; do
+              echo "#### \`$f\`" >> "$GITHUB_STEP_SUMMARY"
+              echo '```sql' >> "$GITHUB_STEP_SUMMARY"
+              cat "$f" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+
+      - name: Analyze migration risk
+        run: |
+          PENDING=$(ls drizzle/*.sql 2>/dev/null | grep -v rollbacks | grep -v archive || true)
+          if [ -n "$PENDING" ]; then
+            pnpm migration:analyze $PENDING --warn-only
+          fi
+
   run-migrations:
     name: Run Database Migrations
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: migration-dry-run
+    environment: production
     defaults:
       run:
         working-directory: backend

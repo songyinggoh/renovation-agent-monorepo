@@ -107,6 +107,106 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
 
+  migration-safety:
+    name: Migration Safety
+    runs-on: ubuntu-latest
+    if: |
+      contains(join(github.event.pull_request.files.*.filename, ','), 'backend/drizzle/')
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: migration_validation
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Detect new migration files
+        id: detect
+        run: |
+          git fetch origin main --depth=1
+          NEW=$(git diff --name-only origin/main...HEAD -- 'backend/drizzle/*.sql' \
+            | grep -v 'rollbacks/' | grep -v 'archive/' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NEW" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          if [ -z "$NEW" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Analyze migration risk
+        if: steps.detect.outputs.found == 'true'
+        working-directory: backend
+        run: |
+          echo "### Migration Safety Report" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          FAILED=0
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            pnpm migration:analyze "../$file" 2>&1 | tee -a /tmp/analysis.txt || FAILED=1
+          done <<< "${{ steps.detect.outputs.files }}"
+          cat /tmp/analysis.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit $FAILED
+
+      - name: Generate rollback scripts
+        if: steps.detect.outputs.found == 'true'
+        working-directory: backend
+        run: |
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            pnpm migration:rollback "../$file"
+          done <<< "${{ steps.detect.outputs.files }}"
+
+      - name: Validate rollback roundtrip
+        if: steps.detect.outputs.found == 'true'
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/migration_validation
+        run: |
+          FAILED=0
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            pnpm migration:validate "../$file" || FAILED=1
+          done <<< "${{ steps.detect.outputs.files }}"
+          exit $FAILED
+
+      - name: Upload rollback scripts
+        if: steps.detect.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-scripts
+          path: backend/drizzle/rollbacks/
+          retention-days: 30
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
