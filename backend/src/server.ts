@@ -9,7 +9,9 @@ import { createApp } from './app.js';
 import { env, isEmailEnabled, isAuthEnabled } from './config/env.js';
 import { initSentry } from './config/sentry.js';
 import { connectRedis, closeRedis, testRedisConnection, redis } from './config/redis.js';
-import { testConnection, closeConnection } from './db/index.js';
+import { db, testConnection, closeConnection } from './db/index.js';
+import { eq } from 'drizzle-orm';
+import { renovationSessions } from './db/schema/sessions.schema.js';
 import { createChatModel } from './config/gemini.js';
 import { Logger } from './utils/logger.js';
 import { ShutdownManager } from './utils/shutdown-manager.js';
@@ -359,7 +361,7 @@ async function startServer(): Promise<void> {
       });
 
       // Join Session Room
-      socket.on('chat:join_session', traceSocketEvent(socket, 'chat:join_session', (data: unknown) => {
+      socket.on('chat:join_session', traceSocketEvent(socket, 'chat:join_session', async (data: unknown) => {
         // Validate session ID with Zod schema
         const validationResult = chatJoinSessionSchema.safeParse(data);
 
@@ -382,6 +384,41 @@ async function startServer(): Promise<void> {
         }
 
         const { sessionId } = validationResult.data;
+
+        // Verify the session exists and check ownership
+        try {
+          const [session] = await db
+            .select({ id: renovationSessions.id, userId: renovationSessions.userId })
+            .from(renovationSessions)
+            .where(eq(renovationSessions.id, sessionId))
+            .limit(1);
+
+          if (!session) {
+            logger.warn('Join attempt for non-existent session', undefined, {
+              socketId: socket.id,
+              sessionId,
+            });
+            socket.emit('chat:error', { error: 'Session not found' });
+            return;
+          }
+
+          // When auth is enabled and the session has an owner, verify the socket user matches
+          const authenticatedUser = (socket as AuthenticatedSocket).user;
+          if (session.userId && authenticatedUser && session.userId !== authenticatedUser.id) {
+            logger.warn('Unauthorized session join attempt', undefined, {
+              socketId: socket.id,
+              sessionId,
+              userId: authenticatedUser.id,
+            });
+            socket.emit('chat:error', { error: 'Access denied' });
+            return;
+          }
+        } catch (err) {
+          logger.error('Session ownership check failed', err as Error, { sessionId });
+          socket.emit('chat:error', { error: 'Failed to join session' });
+          return;
+        }
+
         addJoinAttributes(sessionId);
         const roomName = `session:${sessionId}`;
         socket.join(roomName);

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { profiles } from '../db/schema/users.schema.js';
@@ -29,7 +29,7 @@ export const listSessions = asyncHandler(async (req: Request, res: Response) => 
     const sessions = await db
         .select()
         .from(renovationSessions)
-        .where(req.user?.id ? eq(renovationSessions.userId, req.user.id) : undefined)
+        .where(req.user?.id ? eq(renovationSessions.userId, req.user.id) : isNull(renovationSessions.userId))
         .orderBy(desc(renovationSessions.createdAt));
 
     res.json({

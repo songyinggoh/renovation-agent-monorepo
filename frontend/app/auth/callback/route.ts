@@ -2,11 +2,30 @@ import { NextResponse } from 'next/server'
 // The client you created from the Server-Side Auth instructions
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * Sanitize the `next` redirect parameter to prevent open redirect attacks.
+ * Accepts only relative paths starting with `/` — rejects protocol-relative
+ * (`//evil.com`) and absolute URLs (`https://evil.com`).
+ */
+function sanitizeRedirectPath(next: string | null): string {
+    const fallback = '/app'
+    if (!next) return fallback
+    if (!next.startsWith('/') || next.startsWith('//')) return fallback
+    if (next.includes('://')) return fallback
+    try {
+        const url = new URL(next, 'http://localhost')
+        if (url.hostname !== 'localhost') return fallback
+        return url.pathname + url.search + url.hash
+    } catch {
+        return fallback
+    }
+}
+
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    // if "next" is in param, use it as the redirect URL
-    const next = searchParams.get('next') ?? '/app'
+    // Sanitize `next` to prevent open redirect via protocol-relative or absolute URLs
+    const next = sanitizeRedirectPath(searchParams.get('next'))
 
     if (code) {
         const supabase = await createClient()
