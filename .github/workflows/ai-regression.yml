@@ -1,0 +1,78 @@
+name: AI Prompt Regression Guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/src/tools/**'
+      - 'backend/src/services/**'
+      - 'backend/src/config/gemini.ts'
+      - 'backend/src/config/prompts.ts'
+      - 'backend/src/utils/agent-guards.ts'
+      - 'backend/tests/ai-regression/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-smoke-test:
+    name: AI Prompt Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build shared-types
+        run: pnpm run build:shared-types
+        working-directory: .
+
+      - name: Run AI regression smoke tests
+        run: pnpm test:ai-regression
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY_TEST }}
+          OTEL_ENABLED: 'false'
+
+      - name: Generate token usage summary
+        if: always()
+        run: |
+          echo "### AI Prompt Regression Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "All prompt smoke tests passed. Token usage within budget." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Prompt smoke tests failed.** Check logs for:" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Token budget exceeded (prompt regression)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Empty or incoherent AI responses (model/prompt breakage)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- API errors (config/key issues)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Budget limits per phase:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Limit |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Input tokens / phase | 3,000 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Output tokens / phase | 2,000 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total tokens (all phases) | 30,000 |" >> "$GITHUB_STEP_SUMMARY"

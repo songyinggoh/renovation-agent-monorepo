@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "prep": "npm run lint && npm run build",
     "test:unit": "vitest run --coverage",
+    "test:ai-regression": "vitest run --config vitest.ai-regression.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "test:load": "k6 run load-tests/health-check.k6.js && k6 run load-tests/chat-flow.k6.js",
