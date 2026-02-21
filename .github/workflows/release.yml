@@ -1,0 +1,213 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Pre-release tag (leave empty for stable release, e.g. "beta", "phase3")'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run — validate only, no tag or release created'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Quality gates — must pass before any release
+  # ─────────────────────────────────────────────
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared-types
+        run: pnpm run build:shared-types
+
+      - name: Backend lint
+        run: pnpm --filter renovation-agent-backend lint
+
+      - name: Backend build
+        run: pnpm --filter renovation-agent-backend build
+
+      - name: Backend tests
+        run: pnpm --filter renovation-agent-backend test:unit
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          GOOGLE_API_KEY: test-key
+
+      - name: Frontend lint
+        run: pnpm --filter frontend lint
+
+      - name: Frontend type-check
+        run: pnpm --filter frontend type-check
+
+      - name: Frontend build
+        run: pnpm --filter frontend build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
+
+  # ─────────────────────────────────────────────
+  # 2. Bump versions, tag, and create GitHub Release
+  # ─────────────────────────────────────────────
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT%-*}"
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEXT="${MAJOR}.${MINOR}.${PATCH}"
+          PRERELEASE="${{ inputs.prerelease }}"
+          if [ -n "$PRERELEASE" ]; then
+            NEXT="${NEXT}-${PRERELEASE}"
+          fi
+
+          TAG="v${NEXT}"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "### Version Bump" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Current | \`$CURRENT\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Next | \`$NEXT\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`$TAG\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bump | \`${{ inputs.bump }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pre-release | \`${PRERELEASE:-none}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dry run | \`${{ inputs.dry_run }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bump versions in all package.json files
+        if: inputs.dry_run == false
+        run: |
+          VERSION="${{ steps.version.outputs.next }}"
+          for pkg in package.json backend/package.json frontend/package.json packages/shared-types/package.json; do
+            if [ -f "$pkg" ]; then
+              node -e "
+                const fs = require('fs');
+                const pkg = JSON.parse(fs.readFileSync('$pkg', 'utf8'));
+                pkg.version = '$VERSION';
+                fs.writeFileSync('$pkg', JSON.stringify(pkg, null, 2) + '\n');
+              "
+              echo "Bumped $pkg → $VERSION"
+            fi
+          done
+
+      - name: Commit version bump
+        if: inputs.dry_run == false
+        run: |
+          git add package.json backend/package.json frontend/package.json packages/shared-types/package.json
+          git commit -m "chore(release): ${{ steps.version.outputs.tag }}"
+
+      - name: Create tag
+        if: inputs.dry_run == false
+        run: git tag "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+
+      - name: Push commit and tag
+        if: inputs.dry_run == false
+        run: |
+          git push origin main
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Generate release notes
+        if: inputs.dry_run == false
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+
+          {
+            echo 'body<<RELEASE_EOF'
+            echo "## What's Changed"
+            echo ""
+            git log "$RANGE" --pretty=format:"- %s (%h)" --no-merges 2>/dev/null | head -100
+            echo ""
+            echo ""
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-initial}...${{ steps.version.outputs.tag }}"
+            echo 'RELEASE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: inputs.dry_run == false
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body: ${{ steps.notes.outputs.body }}
+          prerelease: ${{ inputs.prerelease != '' }}
+          generate_release_notes: true
+
+      - name: Dry run summary
+        if: inputs.dry_run == true
+        run: |
+          echo "### Dry Run Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "Would have created release **${{ steps.version.outputs.tag }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "No commits, tags, or releases were created." >> "$GITHUB_STEP_SUMMARY"
