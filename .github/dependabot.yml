@@ -1,0 +1,117 @@
+version: 2
+
+updates:
+  # ── Root (husky, concurrently, lint-staged) ──
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      root-devtools:
+        patterns: ["*"]
+
+  # ── Backend ──
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 15
+    groups:
+      langchain:
+        patterns:
+          - "@langchain/*"
+          - "langchain"
+      opentelemetry:
+        patterns:
+          - "@opentelemetry/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      bullmq:
+        patterns:
+          - "bullmq"
+          - "ioredis"
+      google-ai:
+        patterns:
+          - "@google/genai"
+          - "@google-cloud/*"
+    ignore:
+      # Drizzle ORM + Kit ship frequent minors with breaking changes;
+      # upgrade manually after checking migration compat.
+      - dependency-name: "drizzle-orm"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "drizzle-kit"
+        update-types: ["version-update:semver-minor"]
+
+  # ── Frontend ──
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      sentry:
+        patterns:
+          - "@sentry/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      next:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      tanstack:
+        patterns:
+          - "@tanstack/*"
+      radix:
+        patterns:
+          - "@radix-ui/*"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "tailwind-merge"
+          - "tailwindcss-animate"
+
+  # ── Shared Types ──
+  - package-ecosystem: npm
+    directory: /packages/shared-types
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  # ── Docker base images ──
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      node-images:
+        patterns: ["node"]
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      node-images:
+        patterns: ["node"]
+
+  # ── GitHub Actions versions ──
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
