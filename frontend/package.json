@@ -30,7 +30,7 @@
     "@renovation/shared-types": "workspace:*",
     "@sentry/nextjs": "^10.38.0",
     "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.94.1",
+    "@supabase/supabase-js": "^2.97.0",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-query-devtools": "^5.91.3",
     "class-variance-authority": "^0.7.1",
