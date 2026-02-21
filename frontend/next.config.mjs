@@ -2,6 +2,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@renovation/shared-types'],
   experimental: {
     typedRoutes: true,
   },
