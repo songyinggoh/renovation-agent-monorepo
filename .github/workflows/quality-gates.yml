@@ -107,6 +107,78 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
 
+  shared-types-contract:
+    name: Shared Types Contract Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 1. Build the shared contract ──
+      - name: Build shared-types
+        run: pnpm run build:shared-types
+
+      # ── 2. Verify backend compiles against shared-types ──
+      - name: Backend compiles against shared-types
+        working-directory: backend
+        run: pnpm build
+
+      # ── 3. Verify frontend compiles against shared-types ──
+      - name: Frontend compiles against shared-types
+        working-directory: frontend
+        run: pnpm type-check
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
+
+      # ── 4. Detect type exports that no consumer imports ──
+      - name: Check for unused shared-types exports
+        run: |
+          echo "### Shared Types Contract Report" >> "$GITHUB_STEP_SUMMARY"
+
+          # Get all named exports from the shared-types barrel
+          EXPORTS=$(grep -oP 'export\s+\{[^}]+\}|export\s+(type\s+)?\{[^}]+\}' \
+            packages/shared-types/src/index.ts \
+            | grep -oP '\b[A-Z]\w+' || true)
+
+          if [ -z "$EXPORTS" ]; then
+            echo "No named exports detected in shared-types barrel — skipping check." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          UNUSED=""
+          while IFS= read -r symbol; do
+            [ -z "$symbol" ] && continue
+            # Search backend and frontend for imports of this symbol
+            HITS=$(grep -r --include='*.ts' --include='*.tsx' -l "$symbol" \
+              backend/src/ frontend/ \
+              2>/dev/null | grep -v 'node_modules' | grep -v 'shared-types' || true)
+            if [ -z "$HITS" ]; then
+              UNUSED="$UNUSED\n- \`$symbol\`"
+            fi
+          done <<< "$EXPORTS"
+
+          if [ -n "$UNUSED" ]; then
+            echo "**Unused shared-types exports** (informational, does not block):" >> "$GITHUB_STEP_SUMMARY"
+            echo -e "$UNUSED" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "All shared-types exports are consumed by at least one package." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   migration-safety:
     name: Migration Safety
     runs-on: ubuntu-latest
