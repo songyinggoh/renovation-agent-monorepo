@@ -11,9 +11,6 @@ importers:
 
   .:
     devDependencies:
-      '@playwright/test':
-        specifier: ^1.58.2
-        version: 1.58.2
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
@@ -213,9 +210,6 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.11)(react@19.2.4)
-      '@renovation/shared-types':
-        specifier: workspace:*
-        version: link:../packages/shared-types
       '@sentry/nextjs':
         specifier: ^10.38.0
         version: 10.38.0(@opentelemetry/context-async-hooks@2.5.1(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.5.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.5.1(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)
@@ -8361,6 +8355,7 @@ snapshots:
   '@playwright/test@1.58.2':
     dependencies:
       playwright: 1.58.2
+    optional: true
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -12193,13 +12188,15 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  playwright-core@1.58.2: {}
+  playwright-core@1.58.2:
+    optional: true
 
   playwright@1.58.2:
     dependencies:
       playwright-core: 1.58.2
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   possible-typed-array-names@1.1.0: {}
 
