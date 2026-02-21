@@ -1,0 +1,91 @@
+name: Dependency Vulnerability Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pnpm-lock.yaml'
+      - '**/package.json'
+  schedule:
+    # Every Monday at 08:00 UTC — catch new CVEs even without code changes
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Critical / High — must block merge ──
+      - name: Audit for critical and high vulnerabilities
+        run: pnpm audit --severity high
+        # pnpm audit exits non-zero when advisories are found at or above the threshold
+
+      # ── Moderate / Low — informational, never blocks ──
+      - name: Audit for moderate vulnerabilities (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "### Moderate & Low Advisories (informational)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          pnpm audit 2>&1 | tee /tmp/full-audit.txt || true
+          cat /tmp/full-audit.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  osv-scanner:
+    name: OSV Scanner
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run OSV Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --format=table
+
+      # Upload SARIF on scheduled runs so results appear in Security tab
+      - name: Run OSV Scanner (SARIF)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --format=sarif
+            --output=/tmp/osv-results.sarif
+
+      - name: Upload SARIF to GitHub Security
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: /tmp/osv-results.sarif
