@@ -1,0 +1,218 @@
+name: Scheduled DB Health Check
+
+on:
+  schedule:
+    # Daily at 06:00 UTC — before the workday starts
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: db-health
+  cancel-in-progress: true
+
+jobs:
+  schema-drift:
+    name: Production Schema Drift Detection
+    runs-on: ubuntu-latest
+    environment: production
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: drift_check
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 1. Apply all Drizzle migrations to a clean local PG ──
+      - name: Apply migrations to reference DB
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/drift_check
+          GOOGLE_API_KEY: unused
+          NODE_ENV: production
+        run: pnpm db:migrate
+
+      # ── 2. Snapshot the reference DB (expected state) ──
+      - name: Snapshot reference schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d drift_check -t -A -F'|' <<'SQL' \
+            | sort > /tmp/expected_schema.txt
+          SELECT
+            c.table_name,
+            c.column_name,
+            c.data_type,
+            c.is_nullable,
+            c.column_default
+          FROM information_schema.columns c
+          WHERE c.table_schema = 'public'
+          ORDER BY c.table_name, c.ordinal_position;
+          SQL
+
+          psql -h localhost -U postgres -d drift_check -t -A -F'|' <<'SQL' \
+            | sort > /tmp/expected_indexes.txt
+          SELECT
+            tablename,
+            indexname,
+            indexdef
+          FROM pg_indexes
+          WHERE schemaname = 'public'
+          ORDER BY tablename, indexname;
+          SQL
+
+          psql -h localhost -U postgres -d drift_check -t -A -F'|' <<'SQL' \
+            | sort > /tmp/expected_enums.txt
+          SELECT
+            t.typname AS enum_name,
+            e.enumlabel AS enum_value
+          FROM pg_type t
+          JOIN pg_enum e ON t.oid = e.enumtypid
+          JOIN pg_namespace n ON t.typnamespace = n.oid
+          WHERE n.nspname = 'public'
+          ORDER BY t.typname, e.enumsortorder;
+          SQL
+
+      # ── 3. Snapshot the production DB (actual state) ──
+      - name: Snapshot production schema
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -t -A -F'|' <<'SQL' \
+            | sort > /tmp/actual_schema.txt
+          SELECT
+            c.table_name,
+            c.column_name,
+            c.data_type,
+            c.is_nullable,
+            c.column_default
+          FROM information_schema.columns c
+          WHERE c.table_schema = 'public'
+          ORDER BY c.table_name, c.ordinal_position;
+          SQL
+
+          psql "$DATABASE_URL" -t -A -F'|' <<'SQL' \
+            | sort > /tmp/actual_indexes.txt
+          SELECT
+            tablename,
+            indexname,
+            indexdef
+          FROM pg_indexes
+          WHERE schemaname = 'public'
+          ORDER BY tablename, indexname;
+          SQL
+
+          psql "$DATABASE_URL" -t -A -F'|' <<'SQL' \
+            | sort > /tmp/actual_enums.txt
+          SELECT
+            t.typname AS enum_name,
+            e.enumlabel AS enum_value
+          FROM pg_type t
+          JOIN pg_enum e ON t.oid = e.enumtypid
+          JOIN pg_namespace n ON t.typnamespace = n.oid
+          WHERE n.nspname = 'public'
+          ORDER BY t.typname, e.enumsortorder;
+          SQL
+
+      # ── 4. Diff and report ──
+      - name: Detect schema drift
+        run: |
+          DRIFT=0
+
+          echo "### DB Health Check — Schema Drift Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # --- Columns ---
+          if ! diff -u /tmp/expected_schema.txt /tmp/actual_schema.txt > /tmp/columns_diff.txt 2>&1; then
+            DRIFT=1
+            echo "#### Columns drift detected" >> "$GITHUB_STEP_SUMMARY"
+            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/columns_diff.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Columns: no drift" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # --- Indexes ---
+          if ! diff -u /tmp/expected_indexes.txt /tmp/actual_indexes.txt > /tmp/indexes_diff.txt 2>&1; then
+            DRIFT=1
+            echo "#### Indexes drift detected" >> "$GITHUB_STEP_SUMMARY"
+            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/indexes_diff.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Indexes: no drift" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # --- Enums ---
+          if ! diff -u /tmp/expected_enums.txt /tmp/actual_enums.txt > /tmp/enums_diff.txt 2>&1; then
+            DRIFT=1
+            echo "#### Enums drift detected" >> "$GITHUB_STEP_SUMMARY"
+            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/enums_diff.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Enums: no drift" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$DRIFT" -eq 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**No drift detected** — production matches Drizzle migrations." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Drift detected** — production schema does not match Drizzle migrations." >> "$GITHUB_STEP_SUMMARY"
+            echo "Investigate manually-applied changes or missed migration runs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit $DRIFT
+
+      # ── 5. Check for unapplied migrations ──
+      - name: Check pending migrations
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "### Pending Migrations" >> "$GITHUB_STEP_SUMMARY"
+
+          # Count migrations in journal
+          JOURNAL_COUNT=$(jq '.entries | length' backend/drizzle/meta/_journal.json)
+
+          # Count applied migrations in production
+          APPLIED_COUNT=$(psql "$DATABASE_URL" -t -A -c \
+            "SELECT count(*) FROM __drizzle_migrations;" 2>/dev/null || echo "0")
+
+          echo "- Migrations in journal: **$JOURNAL_COUNT**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Applied in production: **$APPLIED_COUNT**" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$JOURNAL_COUNT" != "$APPLIED_COUNT" ]; then
+            PENDING=$((JOURNAL_COUNT - APPLIED_COUNT))
+            echo "- **$PENDING migration(s) pending** — run \`pnpm db:migrate\` against production." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::$PENDING unapplied migration(s) in production"
+          else
+            echo "- All migrations applied." >> "$GITHUB_STEP_SUMMARY"
+          fi
