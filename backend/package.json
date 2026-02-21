@@ -38,7 +38,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@bull-board/api": "^6.18.0",
+    "@bull-board/api": "^6.19.0",
     "@bull-board/express": "^6.18.0",
     "@google/genai": "^1.0.0",
     "@google/generative-ai": "^0.24.1",
