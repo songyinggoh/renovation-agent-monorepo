@@ -97,13 +97,8 @@ export class RenderService {
         roomId,
         prompt,
         assetId: asset.id,
+        ...(baseAssetId ? { baseAssetId } : {}),
       },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-        removeOnComplete: 100,
-        removeOnFail: 50,
-      }
     );
 
     logger.info('Render job enqueued', {
@@ -199,6 +194,30 @@ export class RenderService {
         updatedAt: new Date(),
       })
       .where(eq(roomAssets.id, assetId));
+  }
+
+  /**
+   * Update approval status on a render asset.
+   */
+  async updateApproval(assetId: string, approvalStatus: 'approved' | 'rejected'): Promise<void> {
+    const [asset] = await db
+      .select()
+      .from(roomAssets)
+      .where(eq(roomAssets.id, assetId));
+
+    if (!asset) {
+      throw new NotFoundError(`Render asset not found: ${assetId}`);
+    }
+
+    await db
+      .update(roomAssets)
+      .set({
+        metadata: sql`coalesce(metadata, '{}'::jsonb) || ${JSON.stringify({ approvalStatus })}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(roomAssets.id, assetId));
+
+    logger.info('Render approval updated', { assetId, approvalStatus });
   }
 
   /**

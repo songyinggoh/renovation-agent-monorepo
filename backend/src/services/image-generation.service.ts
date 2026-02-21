@@ -56,9 +56,22 @@ export class GeminiImageAdapter implements ImageGenerationAdapter {
       aspectRatio: options?.aspectRatio ?? '4:3',
     });
 
+    // Build content: multimodal (image + text) if reference provided, text-only otherwise
+    const contents = options?.referenceImageBase64
+      ? [
+          {
+            role: 'user' as const,
+            parts: [
+              { inlineData: { mimeType: 'image/jpeg', data: options.referenceImageBase64 } },
+              { text: prompt },
+            ],
+          },
+        ]
+      : prompt;
+
     const response = await this.client.models.generateContent({
       model,
-      contents: prompt,
+      contents,
       config: {
         responseModalities: ['IMAGE', 'TEXT'],
       },

@@ -9,18 +9,20 @@ const logger = new Logger({ serviceName: 'GenerateRenderTool' });
 const renderService = new RenderService();
 
 export const generateRenderTool = tool(
-  async ({ sessionId, roomId, prompt }): Promise<string> => {
+  async ({ sessionId, roomId, prompt, baseAssetId }): Promise<string> => {
     logger.info('Tool invoked: generate_render', {
       sessionId,
       roomId,
       promptLength: prompt.length,
+      baseAssetId,
     });
 
     try {
       const { assetId, jobId } = await renderService.requestRender(
         sessionId,
         roomId,
-        prompt
+        prompt,
+        baseAssetId,
       );
 
       logger.info('Render requested successfully', {
@@ -55,6 +57,13 @@ export const generateRenderTool = tool(
         .max(1000)
         .describe(
           'Detailed render prompt describing the desired renovation look. Include style, materials, colors, lighting, and furniture.'
+        ),
+      baseAssetId: z
+        .string()
+        .uuid()
+        .optional()
+        .describe(
+          'Optional: ID of an existing room photo to use as reference for the render'
         ),
     }),
   }

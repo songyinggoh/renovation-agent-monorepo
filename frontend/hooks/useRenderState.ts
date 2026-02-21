@@ -15,6 +15,8 @@ export interface RenderEntry {
   assetId: string;
   roomId: string;
   status: 'started' | 'complete' | 'failed';
+  progress?: number;
+  stage?: string;
   error?: string;
 }
 
@@ -70,6 +72,21 @@ export function useRenderState(socketRef: React.RefObject<Socket | null>) {
       });
     };
 
+    const handleProgress = (data: { assetId: string; roomId: string; sessionId: string; progress: number; stage: string }) => {
+      logger.info('Render progress', { assetId: data.assetId, progress: data.progress, stage: data.stage });
+      setActiveRenders((prev) => {
+        const existing = prev.get(data.assetId);
+        if (!existing) return prev;
+        const next = new Map(prev);
+        next.set(data.assetId, {
+          ...existing,
+          progress: data.progress,
+          stage: data.stage,
+        });
+        return next;
+      });
+    };
+
     const handleComplete = (data: { assetId: string; roomId: string }) => {
       logger.info('Render complete', { assetId: data.assetId, roomId: data.roomId });
       setActiveRenders((prev) => {
@@ -105,6 +122,7 @@ export function useRenderState(socketRef: React.RefObject<Socket | null>) {
     };
 
     socket.on('render:started', handleStarted);
+    socket.on('render:progress', handleProgress);
     socket.on('render:complete', handleComplete);
     socket.on('render:failed', handleFailed);
     socket.on('connect', handleConnect);
@@ -113,6 +131,7 @@ export function useRenderState(socketRef: React.RefObject<Socket | null>) {
 
     return () => {
       socket.off('render:started', handleStarted);
+      socket.off('render:progress', handleProgress);
       socket.off('render:complete', handleComplete);
       socket.off('render:failed', handleFailed);
       socket.off('connect', handleConnect);

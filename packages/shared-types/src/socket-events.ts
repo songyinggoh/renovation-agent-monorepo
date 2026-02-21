@@ -77,6 +77,7 @@ export interface RenderStartedPayload {
 export interface RenderCompletePayload {
   assetId: string;
   roomId: string;
+  sessionId: string;
   contentType: string;
   sizeBytes: number;
   model: string;
@@ -85,7 +86,24 @@ export interface RenderCompletePayload {
 export interface RenderFailedPayload {
   assetId: string;
   roomId: string;
+  sessionId: string;
   error: string;
+}
+
+export type RenderStage = 'queued' | 'generating' | 'uploading' | 'finalizing';
+
+export interface RenderProgressPayload {
+  assetId: string;
+  roomId: string;
+  sessionId: string;
+  progress: number;
+  stage: RenderStage;
+}
+
+export interface DocGeneratedPayload {
+  sessionId: string;
+  roomId: string;
+  format: 'pdf' | 'html';
 }
 
 export interface ClientToServerEvents {
@@ -106,5 +124,7 @@ export interface ServerToClientEvents {
   'asset:processing_progress': (data: AssetProcessingProgressPayload) => void;
   'render:started': (data: RenderStartedPayload) => void;
   'render:complete': (data: RenderCompletePayload) => void;
+  'render:progress': (data: RenderProgressPayload) => void;
   'render:failed': (data: RenderFailedPayload) => void;
+  'doc:generated': (data: DocGeneratedPayload) => void;
 }

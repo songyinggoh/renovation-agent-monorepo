@@ -127,7 +127,8 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
       // of truth for all render-related Socket.io events.
     };
 
-    const handleRenderComplete = (data: { assetId: string; roomId: string }) => {
+    const handleRenderComplete = (data: { assetId: string; roomId: string; sessionId: string }) => {
+      if (data.sessionId !== sessionId) return;
       logger.info('Render complete — invalidating queries', {
         assetId: data.assetId,
         roomId: data.roomId,
@@ -136,7 +137,20 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
       delayedInvalidate(sessionRoomsQueryKey(sessionId), JOB_COMPLETE_DELAY_MS);
     };
 
-    const handleRenderFailed = (data: { assetId: string; roomId: string; error: string }) => {
+    const handleRenderProgress = (data: { assetId: string; sessionId: string; progress: number; stage: string }) => {
+      if (data.sessionId !== sessionId) return;
+      // Progress is ephemeral — no query invalidation needed.
+      // useRenderState handles the UI update via its own listener.
+    };
+
+    const handleDocGenerated = (data: { sessionId: string; roomId: string }) => {
+      if (data.sessionId !== sessionId) return;
+      logger.info('Document generated — invalidating session query', { sessionId, roomId: data.roomId });
+      delayedInvalidate(sessionQueryKey(sessionId), JOB_COMPLETE_DELAY_MS);
+    };
+
+    const handleRenderFailed = (data: { assetId: string; roomId: string; sessionId: string; error: string }) => {
+      if (data.sessionId !== sessionId) return;
       logger.warn('Render failed', undefined, {
         assetId: data.assetId,
         roomId: data.roomId,
@@ -153,7 +167,9 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
     socket.on('asset:processing_progress', handleAssetProgress);
     socket.on('render:started', handleRenderStarted);
     socket.on('render:complete', handleRenderComplete);
+    socket.on('render:progress', handleRenderProgress);
     socket.on('render:failed', handleRenderFailed);
+    socket.on('doc:generated', handleDocGenerated);
 
     // Capture ref value for cleanup (React exhaustive-deps rule)
     const timers = pendingTimers.current;
@@ -165,7 +181,9 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
       socket.off('asset:processing_progress', handleAssetProgress);
       socket.off('render:started', handleRenderStarted);
       socket.off('render:complete', handleRenderComplete);
+      socket.off('render:progress', handleRenderProgress);
       socket.off('render:failed', handleRenderFailed);
+      socket.off('doc:generated', handleDocGenerated);
 
       // Clear pending timers on cleanup
       for (const timer of timers) {

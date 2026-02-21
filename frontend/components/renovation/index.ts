@@ -7,3 +7,5 @@ export { TimelineView, type TimelineItem } from './timeline-view';
 export { TrustBadge } from './trust-badge';
 export { BeforeAfterSlider } from './before-after-slider';
 export { PhaseTransition } from './phase-transition';
+export { RenderCard } from './render-card';
+export { RenderGallery } from './render-gallery';

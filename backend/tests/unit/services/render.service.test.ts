@@ -189,9 +189,9 @@ describe('RenderService', () => {
         expect.objectContaining({
           sessionId: SESSION_ID,
           roomId: ROOM_ID,
+          prompt: 'A modern kitchen with marble counters',
           assetId: 'asset-uuid-1',
         }),
-        expect.any(Object)
       );
     });
   });

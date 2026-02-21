@@ -42,7 +42,10 @@ export {
   type AssetProcessingProgressPayload,
   type RenderStartedPayload,
   type RenderCompletePayload,
+  type RenderProgressPayload,
+  type RenderStage,
   type RenderFailedPayload,
+  type DocGeneratedPayload,
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from './socket-events.js';

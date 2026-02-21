@@ -34,6 +34,7 @@ export const renderGenerateJobSchema = z.object({
   roomId: z.string().uuid(),
   prompt: z.string().min(1).max(5000),
   assetId: z.string().uuid(),
+  baseAssetId: z.string().uuid().optional(),
 });
 
 export const aiProcessMessageJobSchema = z.object({

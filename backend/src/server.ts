@@ -686,15 +686,24 @@ function setupGracefulShutdown(): void {
     timeout: 3000, // 3 second timeout for checkpointer cleanup
   });
 
-  // Workers & queues cleanup (workers must finish before browser closes)
+  // Render worker gets a longer timeout (90s job + 5s buffer)
+  shutdownManager.registerResource({
+    name: 'Render Worker',
+    cleanup: async () => {
+      if (renderWorker) await renderWorker.close();
+    },
+    timeout: 95_000,
+  });
+
+  // Other workers + all queues
   shutdownManager.registerResource({
     name: 'Workers & Queues',
     cleanup: async () => {
-      const workers = [emailWorker, imageWorker, docWorker, renderWorker].filter(Boolean);
+      const workers = [emailWorker, imageWorker, docWorker].filter(Boolean);
       await Promise.allSettled(workers.map(w => w!.close()));
       await closeQueues();
     },
-    timeout: 5000,
+    timeout: 35_000,
   });
 
   // Redis cleanup (Phase 3: Production Safety)

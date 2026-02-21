@@ -67,7 +67,8 @@ describe('generateRenderTool', () => {
     expect(mockRequestRender).toHaveBeenCalledWith(
       SESSION_ID,
       ROOM_ID,
-      'A modern kitchen with oak flooring and marble countertops'
+      'A modern kitchen with oak flooring and marble countertops',
+      undefined,
     );
   });
 

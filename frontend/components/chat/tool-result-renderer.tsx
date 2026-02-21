@@ -13,6 +13,7 @@ const TOOL_LABELS: Record<string, string> = {
   save_intake_state: 'Intake Saved',
   save_checklist_state: 'Checklist Saved',
   save_product_recommendation: 'Product Saved',
+  generate_render: 'Render Requested',
 };
 
 interface ColorSwatch {
@@ -61,6 +62,7 @@ function ToolIcon({ toolName }: { toolName: string }) {
     save_intake_state: '\u{2705}',
     save_checklist_state: '\u{1F4CB}',
     save_product_recommendation: '\u{1F4E6}',
+    generate_render: '\u{1F5BC}',
   };
   return <span className="text-base">{iconMap[toolName] ?? '\u{1F527}'}</span>;
 }
@@ -77,6 +79,8 @@ function ToolContent({ toolName, data }: { toolName: string; data: Record<string
       return <ChecklistSavedResult data={data} />;
     case 'save_product_recommendation':
       return <ProductSavedResult data={data} />;
+    case 'generate_render':
+      return <RenderRequestedResult data={data} />;
     default:
       return (
         <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
@@ -234,6 +238,40 @@ function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
       {roomName && (
         <p className="text-xs text-muted-foreground">
           Added to <span className="font-medium">{roomName}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RenderRequestedResult({ data }: { data: Record<string, unknown> }) {
+  const success = typeof data.success === 'boolean' ? data.success : undefined;
+  const error = typeof data.error === 'string' ? data.error : undefined;
+  const jobId = typeof data.jobId === 'string' ? data.jobId : undefined;
+
+  if (success === false || error) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive/10 text-xs text-destructive">
+          !
+        </span>
+        <p className="text-sm text-destructive">{error ?? 'Failed to generate render'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 animate-pulse rounded-full bg-[hsl(var(--phase-render))]" />
+        <p className="text-sm font-medium">Render generation started</p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Your AI render is being generated. It will appear shortly.
+      </p>
+      {jobId && (
+        <p className="text-[10px] font-mono text-muted-foreground/60">
+          Job: {jobId}
         </p>
       )}
     </div>
