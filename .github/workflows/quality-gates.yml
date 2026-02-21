@@ -40,12 +40,21 @@ jobs:
       - name: Run TypeScript compilation
         run: pnpm build
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: pnpm test:unit
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           GOOGLE_API_KEY: test-key
+
+      - name: Upload backend coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: backend/coverage/coverage-final.json
+          flags: backend
+          fail_ci_if_error: false
 
       - name: Check for uncommitted schema drift
         run: |
@@ -98,8 +107,17 @@ jobs:
       - name: Run TypeScript type-check
         run: pnpm type-check
 
-      - name: Run tests
-        run: pnpm test
+      - name: Run unit tests with coverage
+        run: pnpm test:unit
+
+      - name: Upload frontend coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: frontend/coverage/coverage-final.json
+          flags: frontend
+          fail_ci_if_error: false
 
       - name: Verify production build
         run: pnpm build

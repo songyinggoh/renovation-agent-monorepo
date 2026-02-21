@@ -1,0 +1,133 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/lighthouse.yml'
+
+concurrency:
+  group: lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: Core Web Vitals
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          configPath: .github/lighthouse/lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Format Lighthouse results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const glob = require('@actions/glob');
+
+            const globber = await glob.create('.lighthouseci/lhr-*.json');
+            const files = await globber.glob();
+
+            if (files.length === 0) {
+              console.log('No Lighthouse results found');
+              return;
+            }
+
+            let body = '## Lighthouse CI Results\n\n';
+            body += '| Page | Performance | Accessibility | Best Practices | SEO | LCP | CLS | TBT |\n';
+            body += '|------|:-----------:|:-------------:|:--------------:|:---:|:---:|:---:|:---:|\n';
+
+            for (const file of files) {
+              const raw = fs.readFileSync(file, 'utf8');
+              const lhr = JSON.parse(raw);
+              const url = new URL(lhr.finalUrl || lhr.requestedUrl);
+              const path = url.pathname === '/' ? '/' : url.pathname;
+
+              const score = (key) => {
+                const s = lhr.categories[key]?.score;
+                if (s == null) return 'N/A';
+                const pct = Math.round(s * 100);
+                if (pct >= 90) return `🟢 ${pct}`;
+                if (pct >= 50) return `🟠 ${pct}`;
+                return `🔴 ${pct}`;
+              };
+
+              const metric = (id, unit = 'ms') => {
+                const val = lhr.audits[id]?.numericValue;
+                if (val == null) return 'N/A';
+                if (unit === 'ms') return `${Math.round(val)}ms`;
+                return val.toFixed(3);
+              };
+
+              body += `| \`${path}\` | ${score('performance')} | ${score('accessibility')} | ${score('best-practices')} | ${score('seo')} | ${metric('largest-contentful-paint')} | ${metric('cumulative-layout-shift', '')} | ${metric('total-blocking-time')} |\n`;
+            }
+
+            body += '\n<details><summary>Thresholds</summary>\n\n';
+            body += '- **Performance** ≥ 80 (warn) / ≥ 50 (fail)\n';
+            body += '- **LCP** ≤ 2500ms (good) / ≤ 4000ms (needs improvement)\n';
+            body += '- **CLS** ≤ 0.1 (good) / ≤ 0.25 (needs improvement)\n';
+            body += '- **TBT** ≤ 200ms (good) / ≤ 600ms (needs improvement)\n';
+            body += '</details>\n';
+
+            const summary = body;
+            await core.summary.addRaw(summary).write();
+
+            // Post as PR comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = '## Lighthouse CI Results';
+            const existing = comments.find(c => c.body?.startsWith(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
