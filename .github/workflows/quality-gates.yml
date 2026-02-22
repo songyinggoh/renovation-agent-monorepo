@@ -1,6 +1,7 @@
 name: Quality Gates
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
 
