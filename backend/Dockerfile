@@ -28,8 +28,9 @@ WORKDIR /app/backend
 RUN pnpm run build
 
 # Create production-only deployment (strips devDependencies)
+# --legacy required in pnpm v10 for workspace:* protocol support without inject-workspace-packages
 WORKDIR /app
-RUN pnpm --filter renovation-agent-backend deploy --prod /app/deploy
+RUN pnpm --filter renovation-agent-backend deploy --legacy --prod /app/deploy
 
 # Stage 2: Production
 FROM node:20-alpine AS production
