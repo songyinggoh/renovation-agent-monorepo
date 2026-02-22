@@ -36,6 +36,13 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Remove npm, corepack, and yarn — only node is needed at runtime.
+# This eliminates CVEs from npm's bundled transitive deps (cross-spawn,
+# glob, tar, minimatch) that Trivy would otherwise flag.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    && rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
 # Copy only production dependencies and build output
 COPY --from=builder /app/deploy/package.json ./package.json
 COPY --from=builder /app/deploy/node_modules ./node_modules

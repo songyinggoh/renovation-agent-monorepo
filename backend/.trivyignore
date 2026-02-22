@@ -1,0 +1,11 @@
+# Trivy CVE ignore list for backend Docker image
+#
+# Each line is a CVE ID. Only add CVEs here with documented justification.
+
+# minimatch@9.0.5 ReDoS via repeated wildcards (O(4^N) with N consecutive *)
+# No fix available in 9.x line; fixed only in 10.2.1+ which is a breaking
+# major version bump incompatible with glob@10.5.0's ^9.0.4 requirement.
+# Risk: LOW — minimatch is used server-side by google-auth-library/rimraf
+# for file path matching, never with untrusted user-supplied glob patterns.
+# Also ignored in pnpm auditConfig (root package.json).
+CVE-2026-26996
