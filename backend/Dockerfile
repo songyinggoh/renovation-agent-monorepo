@@ -9,11 +9,16 @@ RUN npm install -g pnpm
 # Copy monorepo root files needed for pnpm workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Copy backend package.json
+# Copy package.json files for backend and its workspace dependency
 COPY backend/package.json ./backend/
+COPY packages/shared-types/package.json ./packages/shared-types/
 
-# Install dependencies for backend only
-RUN pnpm install --frozen-lockfile --filter renovation-agent-backend
+# Install dependencies for backend and shared-types
+RUN pnpm install --frozen-lockfile --filter renovation-agent-backend...
+
+# Copy shared-types source and build it first
+COPY packages/shared-types/. ./packages/shared-types/
+RUN pnpm --filter @renovation/shared-types run build
 
 # Copy the rest of the backend source code
 COPY backend/. ./backend/

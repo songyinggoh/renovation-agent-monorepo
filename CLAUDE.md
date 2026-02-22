@@ -191,16 +191,37 @@ Before implementing ANY solution:
 
 ---
 
-## 2. Bug Fixing Protocol (MANDATORY)
+## 2. Bug Fixing & Debugging Protocol (MANDATORY)
 
-**NEVER run in circles. ALWAYS follow this:**
+**NEVER run in circles. NEVER guess. Reason structurally, propose hypotheses, and falsify them.**
 
-1. **STOP**: Don't immediately try to fix
-2. **Research**: Use Task tool with `subagent_type='general-purpose'`, search docs, identify 3-5 solutions
-3. **Document**: Export to `docs/Research/Bug_Fix_[BUG_NAME].md` with root cause analysis
-4. **Plan** (if non-trivial): Write to `docs/06_Implementation-plans/`
-5. **Progress Tracker**: Create `.claude/progress/Bug_Fix_[BUG_NAME]_PROGRESS.md`
-6. **Execute**: Only now fix following the researched solution
+### Debugging Sequence (follow every time)
+
+1. **Clarify the invariant** — What should be true that isn't?
+2. **Collect evidence** — Read logs, stack traces, recent diffs. Do not speculate without data. If you need more context (logs, env, config), ask for exactly what you need.
+3. **Form 3 ranked hypotheses** — Most probable first. Each must be falsifiable. Never say "it might be X" without stating how to confirm or deny X.
+4. **Propose minimal isolation test** — For the top hypothesis, design the smallest possible test that proves or disproves it.
+5. **Execute and narrow** — Run the test, eliminate hypotheses, repeat until root cause is isolated.
+6. **Fix + regression guard** — After fix, generate a test that would have caught this bug before it shipped. Then ask: "What structural change prevents this class of bug?"
+
+### Debugging Rules
+
+- Prefer additive instrumentation (logging, assertions) over speculative edits when investigating.
+- Do not refactor while debugging. Fix first, refactor second.
+- Do not suggest solutions that require more than one variable change at a time. Isolate.
+- Treat every bug as a system boundary failure until proven otherwise: check process boundaries, network calls, env injection, async timing, and state mutation order.
+
+### Distributed System Debugging (Docker, subprocesses, multi-service)
+
+- Map the full execution flow across process boundaries first.
+- Identify which boundary the failure occurs at before diving into code.
+- Check environment variables, network config, and process exit codes before reading application logic.
+
+### Documentation (MANDATORY)
+
+1. **Research**: Export findings to `docs/Research/Bug_Fix_[BUG_NAME].md` with root cause analysis
+2. **Plan** (if non-trivial): Write to `docs/06_Implementation-plans/`
+3. **Progress Tracker**: Create `.claude/progress/Bug_Fix_[BUG_NAME]_PROGRESS.md`
 
 ---
 
@@ -294,6 +315,12 @@ def generate_referral_code(self, user_id: str) -> str:
 # PART 4: STANDARDS & QUALITY
 
 ## Core Mandatory Standards (NON-NEGOTIABLE)
+
+### Code Quality Defaults
+- Prefer explicit over clever.
+- Side effects must be isolated and observable.
+- Every function with branching logic needs at minimum: happy path test, edge case test, failure mode test.
+- If a function does more than one thing, flag it for extraction.
 
 ---
 
