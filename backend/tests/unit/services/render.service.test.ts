@@ -276,4 +276,68 @@ describe('RenderService', () => {
       expect(renders).toHaveLength(2);
     });
   });
+
+  describe('saveRendersState', () => {
+    const ASSET_ID = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('should save a valid render selection and tag asset + room', async () => {
+      // Select returns a ready render asset matching session + room
+      setupDbSelectChain([{
+        id: ASSET_ID,
+        sessionId: SESSION_ID,
+        roomId: ROOM_ID,
+        assetType: 'render',
+        status: 'ready',
+        storagePath: 'sessions/abc/rooms/def/renders/render_1.png',
+      }]);
+
+      // Two updates: one for asset metadata, one for room renderUrls
+      const mockWhere = vi.fn().mockResolvedValue(undefined);
+      const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
+      mockDbUpdate.mockReturnValue({ set: mockSet });
+
+      const result = await service.saveRendersState(SESSION_ID, [
+        { roomId: ROOM_ID, assetId: ASSET_ID, renderType: 'initial' },
+      ]);
+
+      expect(result.saved).toHaveLength(1);
+      expect(result.saved[0]).toEqual({ roomId: ROOM_ID, assetId: ASSET_ID });
+      expect(result.errors).toHaveLength(0);
+      // Two db.update calls: asset metadata + room renderUrls
+      expect(mockDbUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('should report error when asset is not found', async () => {
+      // Select returns empty — asset doesn't exist
+      setupDbSelectChain([]);
+
+      const result = await service.saveRendersState(SESSION_ID, [
+        { roomId: ROOM_ID, assetId: ASSET_ID, renderType: 'initial' },
+      ]);
+
+      expect(result.saved).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].reason).toContain('not found');
+    });
+
+    it('should report error when asset is not ready', async () => {
+      // Select returns an asset that's still processing
+      setupDbSelectChain([{
+        id: ASSET_ID,
+        sessionId: SESSION_ID,
+        roomId: ROOM_ID,
+        assetType: 'render',
+        status: 'processing',
+        storagePath: 'path/to/render.png',
+      }]);
+
+      const result = await service.saveRendersState(SESSION_ID, [
+        { roomId: ROOM_ID, assetId: ASSET_ID, renderType: 'initial' },
+      ]);
+
+      expect(result.saved).toHaveLength(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].reason).toContain('not ready');
+    });
+  });
 });

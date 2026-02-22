@@ -263,4 +263,105 @@ export class RenderService {
       )
       .orderBy(roomAssets.createdAt);
   }
+
+  /**
+   * Persist which renders are "selected" for each room and their type
+   * (initial vs iteration).
+   *
+   * For each selection:
+   *  1. Validate the render asset exists, belongs to the session, and is ready.
+   *  2. Tag the asset metadata with renderType + selectedRender flag.
+   *  3. Write the mapping into renovation_rooms.renderUrls JSONB so that
+   *     the PDF generator and UI know which render to display.
+   *
+   * Returns a summary of saved vs failed entries (partial success is allowed
+   * so the agent can report which ones failed without losing the rest).
+   */
+  async saveRendersState(
+    sessionId: string,
+    selections: Array<{ roomId: string; assetId: string; renderType: 'initial' | 'iteration' }>
+  ): Promise<{ saved: Array<{ roomId: string; assetId: string }>; errors: Array<{ roomId: string; assetId: string; reason: string }> }> {
+    const saved: Array<{ roomId: string; assetId: string }> = [];
+    const errors: Array<{ roomId: string; assetId: string; reason: string }> = [];
+
+    for (const sel of selections) {
+      try {
+        // 1. Validate the render asset exists, is a render, belongs to session, and is ready
+        const [asset] = await db
+          .select()
+          .from(roomAssets)
+          .where(
+            and(
+              eq(roomAssets.id, sel.assetId),
+              eq(roomAssets.sessionId, sessionId),
+              eq(roomAssets.roomId, sel.roomId),
+              eq(roomAssets.assetType, 'render')
+            )
+          );
+
+        if (!asset) {
+          errors.push({ roomId: sel.roomId, assetId: sel.assetId, reason: 'Render asset not found or does not belong to this session/room' });
+          continue;
+        }
+
+        if (asset.status !== 'ready') {
+          errors.push({ roomId: sel.roomId, assetId: sel.assetId, reason: `Render is not ready (status: ${asset.status})` });
+          continue;
+        }
+
+        // 2. Tag the asset metadata with renderType and selectedRender flag
+        await db
+          .update(roomAssets)
+          .set({
+            metadata: sql`coalesce(metadata, '{}'::jsonb) || ${JSON.stringify({
+              renderType: sel.renderType,
+              selectedRender: true,
+              selectedAt: new Date().toISOString(),
+            })}::jsonb`,
+            updatedAt: new Date(),
+          })
+          .where(eq(roomAssets.id, sel.assetId));
+
+        // 3. Write/merge the selection into renovation_rooms.renderUrls JSONB.
+        //    renderUrls is an array of { assetId, storagePath, renderType, selectedAt }.
+        //    We append the new selection (the PDF generator picks the latest per type).
+        const renderUrlEntry = {
+          assetId: sel.assetId,
+          storagePath: asset.storagePath,
+          renderType: sel.renderType,
+          selectedAt: new Date().toISOString(),
+        };
+
+        await db
+          .update(renovationRooms)
+          .set({
+            renderUrls: sql`coalesce(render_urls, '[]'::jsonb) || ${JSON.stringify([renderUrlEntry])}::jsonb`,
+            updatedAt: new Date(),
+          })
+          .where(eq(renovationRooms.id, sel.roomId));
+
+        saved.push({ roomId: sel.roomId, assetId: sel.assetId });
+
+        logger.info('Render selection saved', {
+          sessionId,
+          roomId: sel.roomId,
+          assetId: sel.assetId,
+          renderType: sel.renderType,
+        });
+      } catch (error) {
+        logger.error('Failed to save render selection', error as Error, {
+          sessionId,
+          roomId: sel.roomId,
+          assetId: sel.assetId,
+        });
+        errors.push({
+          roomId: sel.roomId,
+          assetId: sel.assetId,
+          reason: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    return { saved, errors };
+  }
 }
