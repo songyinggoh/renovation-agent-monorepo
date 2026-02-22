@@ -9,21 +9,23 @@ const logger = new Logger({ serviceName: 'GenerateRenderTool' });
 const renderService = new RenderService();
 
 export const generateRenderTool = tool(
-  async ({ sessionId, roomId, prompt, baseAssetId }): Promise<string> => {
+  async ({ sessionId, roomId, mode, prompt, baseImageUrl }): Promise<string> => {
     logger.info('Tool invoked: generate_render', {
       sessionId,
       roomId,
+      mode,
       promptLength: prompt.length,
-      baseAssetId,
+      hasBaseImage: !!baseImageUrl,
     });
 
     try {
-      const { assetId, jobId } = await renderService.requestRender(
+      const { assetId, jobId } = await renderService.requestRender({
         sessionId,
         roomId,
+        mode,
         prompt,
-        baseAssetId,
-      );
+        baseImageUrl,
+      });
 
       logger.info('Render requested successfully', {
         sessionId,
@@ -47,10 +49,15 @@ export const generateRenderTool = tool(
   {
     name: 'generate_render',
     description:
-      'Generate an AI render of a renovation room. Provide the session ID, room ID, and a detailed prompt describing the desired renovation look. The render generates asynchronously — inform the user it will appear shortly. Write detailed prompts including style, materials, colors, lighting, and furniture.',
+      'Generate an AI render of a renovation room. Use mode "edit_existing" with a baseImageUrl to modify an existing room photo, or "from_scratch" to generate a new design. The render generates asynchronously — inform the user it will appear shortly. Write detailed prompts including style, materials, colors, lighting, and furniture.',
     schema: z.object({
       sessionId: z.string().uuid().describe('The current session ID'),
       roomId: z.string().uuid().describe('The room ID to generate a render for'),
+      mode: z
+        .enum(['edit_existing', 'from_scratch'])
+        .describe(
+          'Render mode: "edit_existing" modifies an existing room photo (requires baseImageUrl), "from_scratch" generates a new design from prompt only'
+        ),
       prompt: z
         .string()
         .min(10)
@@ -58,12 +65,12 @@ export const generateRenderTool = tool(
         .describe(
           'Detailed render prompt describing the desired renovation look. Include style, materials, colors, lighting, and furniture.'
         ),
-      baseAssetId: z
+      baseImageUrl: z
         .string()
-        .uuid()
+        .url()
         .optional()
         .describe(
-          'Optional: ID of an existing room photo to use as reference for the render'
+          'URL of the room photo to use as reference when mode is "edit_existing". Ignored for "from_scratch" mode.'
         ),
     }),
   }

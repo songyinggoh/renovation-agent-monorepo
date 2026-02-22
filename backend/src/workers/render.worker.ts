@@ -1,13 +1,8 @@
 import { type Job, UnrecoverableError } from 'bullmq';
-import { eq } from 'drizzle-orm';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { createWorker, WORKER_PROFILES, withTimeout, type JobTypes } from '../config/queue.js';
 import { createImageGenerationAdapter } from '../services/image-generation.service.js';
 import { RenderService } from '../services/render.service.js';
-import { db } from '../db/index.js';
-import { roomAssets } from '../db/schema/assets.schema.js';
-import { isStorageEnabled } from '../config/env.js';
-import { supabaseAdmin } from '../config/supabase.js';
 import { emitToSession } from '../utils/socket-emitter.js';
 import { Logger } from '../utils/logger.js';
 import { renderGenerateJobSchema } from '../validators/job.validators.js';
@@ -35,37 +30,42 @@ function isPermanentError(msg: string): boolean {
 
 const tracer = trace.getTracer('render-worker');
 
+/** Max size for reference image downloads (10 MB). Prevents OOM on malicious URLs. */
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+
 /**
- * Load a reference image from storage as base64.
- * Returns undefined if the asset doesn't exist or storage is unavailable.
+ * Fetch a reference image from a URL and return it as base64.
+ * Used in "edit_existing" mode so the AI adapter can modify the photo.
+ * Returns undefined on failure (non-fatal — worker falls back to from-scratch).
  */
-async function loadReferenceImage(baseAssetId: string): Promise<string | undefined> {
-  const [asset] = await db
-    .select({ storagePath: roomAssets.storagePath })
-    .from(roomAssets)
-    .where(eq(roomAssets.id, baseAssetId));
+async function fetchReferenceImage(url: string): Promise<string | undefined> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      logger.warn('Failed to fetch reference image', undefined, { url, status: response.status });
+      return undefined;
+    }
 
-  if (!asset) {
-    logger.warn('Reference asset not found', undefined, { baseAssetId });
+    const arrayBuffer = await response.arrayBuffer();
+
+    // Guard against oversized images to prevent OOM in the worker
+    if (arrayBuffer.byteLength > MAX_REFERENCE_IMAGE_BYTES) {
+      logger.warn('Reference image too large, skipping', undefined, {
+        url,
+        sizeBytes: arrayBuffer.byteLength,
+        maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+      });
+      return undefined;
+    }
+
+    return Buffer.from(arrayBuffer).toString('base64');
+  } catch (error) {
+    logger.warn('Error fetching reference image', undefined, {
+      url,
+      error: (error as Error).message,
+    });
     return undefined;
   }
-
-  if (!isStorageEnabled() || !supabaseAdmin) {
-    logger.warn('Storage not configured — cannot load reference image', undefined, { baseAssetId });
-    return undefined;
-  }
-
-  const { data, error } = await supabaseAdmin.storage
-    .from('room-assets')
-    .download(asset.storagePath);
-
-  if (error || !data) {
-    logger.warn('Failed to download reference image', undefined, { baseAssetId, error: error?.message });
-    return undefined;
-  }
-
-  const buffer = Buffer.from(await data.arrayBuffer());
-  return buffer.toString('base64');
 }
 
 /**
@@ -83,7 +83,7 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
   if (!parsed.success) {
     throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
-  const { sessionId, roomId, prompt, assetId, baseAssetId } = parsed.data;
+  const { sessionId, roomId, mode, prompt, assetId, baseImageUrl } = parsed.data;
 
   await tracer.startActiveSpan('job:render:generate', async (span) => {
     span.setAttributes({
@@ -91,7 +91,8 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
       'render.session_id': sessionId,
       'render.room_id': roomId,
       'render.asset_id': assetId,
-      ...(baseAssetId ? { 'render.base_asset_id': baseAssetId } : {}),
+      'render.mode': mode,
+      ...(baseImageUrl ? { 'render.base_image_url': baseImageUrl } : {}),
     });
 
     logger.info('Processing render job', {
@@ -99,7 +100,7 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
       sessionId,
       roomId,
       assetId,
-      baseAssetId,
+      mode,
       promptLength: prompt.length,
     });
 
@@ -111,10 +112,12 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
       const adapter = createImageGenerationAdapter();
       const profile = WORKER_PROFILES['render:generate'];
 
-      // Load reference image if baseAssetId provided
+      // In "edit_existing" mode, fetch the reference photo from its URL
+      // so the AI adapter can use it as a base for modifications.
+      // Falls back gracefully (undefined) if the fetch fails.
       let referenceImageBase64: string | undefined;
-      if (baseAssetId) {
-        referenceImageBase64 = await loadReferenceImage(baseAssetId);
+      if (mode === 'edit_existing' && baseImageUrl) {
+        referenceImageBase64 = await fetchReferenceImage(baseImageUrl);
       }
 
       span.setAttribute('ai.provider', adapter.providerName);

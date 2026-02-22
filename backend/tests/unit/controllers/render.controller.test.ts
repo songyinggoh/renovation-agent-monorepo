@@ -68,18 +68,28 @@ describe('RenderController', () => {
   });
 
   describe('requestRender', () => {
+    // Controller now validates mode (required) and baseImageUrl (optional URL),
+    // then calls service.requestRender({ sessionId, roomId, mode, prompt, baseImageUrl })
+
     it('should create a render and return 201', async () => {
       mockRequestRender.mockResolvedValue({ assetId: ASSET_ID, jobId: 'job-1' });
 
       const req = mockReq({
         params: { roomId: ROOM_ID },
-        body: { prompt: 'Modern kitchen with marble countertops', sessionId: SESSION_ID },
+        body: { prompt: 'Modern kitchen with marble countertops', sessionId: SESSION_ID, mode: 'from_scratch' },
       });
       const res = mockRes();
 
       await requestRender(req, res, vi.fn());
 
-      expect(mockRequestRender).toHaveBeenCalledWith(SESSION_ID, ROOM_ID, 'Modern kitchen with marble countertops', undefined);
+      // Service receives a single object with the new schema
+      expect(mockRequestRender).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        roomId: ROOM_ID,
+        mode: 'from_scratch',
+        prompt: 'Modern kitchen with marble countertops',
+        baseImageUrl: undefined,
+      });
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith({ assetId: ASSET_ID, jobId: 'job-1' });
     });
@@ -87,7 +97,7 @@ describe('RenderController', () => {
     it('should return 400 for prompt too short', async () => {
       const req = mockReq({
         params: { roomId: ROOM_ID },
-        body: { prompt: 'short', sessionId: SESSION_ID },
+        body: { prompt: 'short', sessionId: SESSION_ID, mode: 'from_scratch' },
       });
       const res = mockRes();
 
@@ -100,7 +110,7 @@ describe('RenderController', () => {
     it('should return 400 for missing sessionId', async () => {
       const req = mockReq({
         params: { roomId: ROOM_ID },
-        body: { prompt: 'Modern kitchen with marble countertops' },
+        body: { prompt: 'Modern kitchen with marble countertops', mode: 'from_scratch' },
       });
       const res = mockRes();
 
@@ -109,22 +119,44 @@ describe('RenderController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    it('should pass baseAssetId when provided', async () => {
+    it('should return 400 for missing mode', async () => {
+      // mode is now required in the request body
+      const req = mockReq({
+        params: { roomId: ROOM_ID },
+        body: { prompt: 'Modern kitchen with marble countertops', sessionId: SESSION_ID },
+      });
+      const res = mockRes();
+
+      await requestRender(req, res, vi.fn());
+
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('should pass baseImageUrl when provided in edit_existing mode', async () => {
       mockRequestRender.mockResolvedValue({ assetId: ASSET_ID, jobId: 'job-1' });
 
+      const baseUrl = 'https://storage.example.com/rooms/kitchen.jpg';
       const req = mockReq({
         params: { roomId: ROOM_ID },
         body: {
           prompt: 'Modern kitchen with marble countertops',
           sessionId: SESSION_ID,
-          baseAssetId: ASSET_ID,
+          mode: 'edit_existing',
+          baseImageUrl: baseUrl,
         },
       });
       const res = mockRes();
 
       await requestRender(req, res, vi.fn());
 
-      expect(mockRequestRender).toHaveBeenCalledWith(SESSION_ID, ROOM_ID, 'Modern kitchen with marble countertops', ASSET_ID);
+      // Service receives the URL for edit_existing mode
+      expect(mockRequestRender).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        roomId: ROOM_ID,
+        mode: 'edit_existing',
+        prompt: 'Modern kitchen with marble countertops',
+        baseImageUrl: baseUrl,
+      });
     });
   });
 

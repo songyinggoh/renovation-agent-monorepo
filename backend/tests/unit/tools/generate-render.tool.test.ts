@@ -14,7 +14,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
   })),
 }));
 
-// Mock RenderService
+// Mock RenderService — requestRender now takes a single object arg
 vi.mock('../../../src/services/render.service.js', () => ({
   RenderService: vi.fn().mockImplementation(() => ({
     requestRender: mockRequestRender,
@@ -46,9 +46,12 @@ describe('generateRenderTool', () => {
   it('should have correct name and description', () => {
     expect(generateRenderTool.name).toBe('generate_render');
     expect(generateRenderTool.description).toContain('AI render');
+    // Verify new mode parameter is documented in the description
+    expect(generateRenderTool.description).toContain('edit_existing');
+    expect(generateRenderTool.description).toContain('from_scratch');
   });
 
-  it('should return async tool response on success', async () => {
+  it('should return async tool response on success (from_scratch)', async () => {
     mockRequestRender.mockResolvedValue({
       assetId: 'asset-uuid-1',
       jobId: 'job-123',
@@ -57,6 +60,7 @@ describe('generateRenderTool', () => {
     const result = await generateRenderTool.invoke({
       sessionId: SESSION_ID,
       roomId: ROOM_ID,
+      mode: 'from_scratch',
       prompt: 'A modern kitchen with oak flooring and marble countertops',
     });
 
@@ -64,12 +68,44 @@ describe('generateRenderTool', () => {
     expect(parsed.status).toBe('started');
     expect(parsed.jobId).toBe('job-123');
 
-    expect(mockRequestRender).toHaveBeenCalledWith(
-      SESSION_ID,
-      ROOM_ID,
-      'A modern kitchen with oak flooring and marble countertops',
-      undefined,
-    );
+    // Service now receives a single object with mode, no baseImageUrl
+    expect(mockRequestRender).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      roomId: ROOM_ID,
+      mode: 'from_scratch',
+      prompt: 'A modern kitchen with oak flooring and marble countertops',
+      baseImageUrl: undefined,
+    });
+  });
+
+  it('should pass baseImageUrl when mode is edit_existing', async () => {
+    mockRequestRender.mockResolvedValue({
+      assetId: 'asset-uuid-2',
+      jobId: 'job-456',
+    });
+
+    const baseUrl = 'https://storage.example.com/rooms/kitchen.jpg';
+
+    const result = await generateRenderTool.invoke({
+      sessionId: SESSION_ID,
+      roomId: ROOM_ID,
+      mode: 'edit_existing',
+      prompt: 'Renovate this kitchen with japandi style, light wood cabinets',
+      baseImageUrl: baseUrl,
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.status).toBe('started');
+    expect(parsed.jobId).toBe('job-456');
+
+    // Service receives the URL for edit mode
+    expect(mockRequestRender).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      roomId: ROOM_ID,
+      mode: 'edit_existing',
+      prompt: 'Renovate this kitchen with japandi style, light wood cabinets',
+      baseImageUrl: baseUrl,
+    });
   });
 
   it('should return error response when render service fails', async () => {
@@ -78,6 +114,7 @@ describe('generateRenderTool', () => {
     const result = await generateRenderTool.invoke({
       sessionId: SESSION_ID,
       roomId: ROOM_ID,
+      mode: 'from_scratch',
       prompt: 'A modern kitchen with oak flooring and marble countertops',
     });
 
@@ -94,11 +131,30 @@ describe('generateRenderTool', () => {
     const result = await generateRenderTool.invoke({
       sessionId: SESSION_ID,
       roomId: ROOM_ID,
+      mode: 'from_scratch',
       prompt: 'Yet another render request',
     });
 
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
     expect(parsed.error).toContain('Render limit reached');
+  });
+
+  it('should return error when edit_existing lacks baseImageUrl', async () => {
+    mockRequestRender.mockRejectedValue(
+      new Error('baseImageUrl is required when mode is "edit_existing"')
+    );
+
+    const result = await generateRenderTool.invoke({
+      sessionId: SESSION_ID,
+      roomId: ROOM_ID,
+      mode: 'edit_existing',
+      prompt: 'Renovate this room in scandinavian style',
+      // baseImageUrl intentionally omitted — service should reject
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('baseImageUrl is required');
   });
 });

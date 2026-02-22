@@ -10,7 +10,10 @@ const renderService = new RenderService();
 const requestRenderSchema = z.object({
   prompt: z.string().min(10).max(1000),
   sessionId: z.string().uuid(),
-  baseAssetId: z.string().uuid().optional(),
+  /** "edit_existing" modifies a room photo, "from_scratch" generates from prompt only. */
+  mode: z.enum(['edit_existing', 'from_scratch']),
+  /** URL of the room photo — required when mode is "edit_existing". */
+  baseImageUrl: z.string().url().optional(),
 });
 
 const approveRenderSchema = z.object({
@@ -50,11 +53,11 @@ export const requestRender = asyncHandler(async (req: Request, res: Response) =>
     return;
   }
 
-  const { prompt, sessionId, baseAssetId } = parsed.data;
+  const { prompt, sessionId, mode, baseImageUrl } = parsed.data;
 
-  logger.info('Requesting render via REST', { roomId, sessionId, promptLength: prompt.length });
+  logger.info('Requesting render via REST', { roomId, sessionId, mode, promptLength: prompt.length });
 
-  const result = await renderService.requestRender(sessionId, roomId, prompt, baseAssetId);
+  const result = await renderService.requestRender({ sessionId, roomId, mode, prompt, baseImageUrl });
 
   res.status(201).json(result);
 });

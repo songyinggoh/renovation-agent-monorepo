@@ -32,9 +32,11 @@ export const docGeneratePlanJobSchema = z.object({
 export const renderGenerateJobSchema = z.object({
   sessionId: z.string().uuid(),
   roomId: z.string().uuid(),
+  mode: z.enum(['edit_existing', 'from_scratch']),
   prompt: z.string().min(1).max(5000),
   assetId: z.string().uuid(),
-  baseAssetId: z.string().uuid().optional(),
+  /** URL of the reference image — required when mode is "edit_existing". */
+  baseImageUrl: z.string().url().optional(),
 });
 
 export const aiProcessMessageJobSchema = z.object({

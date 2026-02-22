@@ -47,36 +47,13 @@ vi.mock('../../../src/services/image-generation.service.js', () => ({
   }),
 }));
 
-vi.mock('../../../src/db/index.js', () => ({
-  db: {
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue([]),
-  },
-}));
-
-vi.mock('../../../src/db/schema/assets.schema.js', () => ({
-  roomAssets: { id: 'id', storagePath: 'storagePath' },
-}));
-
-vi.mock('../../../src/config/env.js', () => ({
-  isStorageEnabled: vi.fn().mockReturnValue(false),
-}));
-
-vi.mock('../../../src/config/supabase.js', () => ({
-  supabaseAdmin: null,
-}));
-
 vi.mock('@opentelemetry/api', () => ({
   trace: {
     getTracer: () => ({
       startActiveSpan: vi.fn((_name: string, fn: (span: Record<string, unknown>) => Promise<unknown>) => {
         const mockSpan = {
-          setAttributes: vi.fn(),
-          setAttribute: vi.fn(),
-          setStatus: vi.fn(),
-          recordException: vi.fn(),
-          end: vi.fn(),
+          setAttributes: vi.fn(), setAttribute: vi.fn(),
+          setStatus: vi.fn(), recordException: vi.fn(), end: vi.fn(),
         };
         return fn(mockSpan);
       }),
@@ -89,12 +66,14 @@ const SESSION_ID = '00000000-0000-4000-a000-000000000001';
 const ROOM_ID = '00000000-0000-4000-a000-000000000002';
 const ASSET_ID = '00000000-0000-4000-a000-000000000003';
 
+/** Helper to build a mock BullMQ job with the updated schema (mode + baseImageUrl). */
 function makeJob(overrides: Record<string, unknown> = {}, opts: Record<string, unknown> = {}) {
   return {
     id: 'job-1',
     data: {
       sessionId: SESSION_ID,
       roomId: ROOM_ID,
+      mode: 'from_scratch',              // default mode for most tests
       prompt: 'Modern kitchen with marble countertops',
       assetId: ASSET_ID,
       ...overrides,
@@ -148,18 +127,6 @@ describe('RenderWorker', () => {
         }),
       }),
     }));
-    vi.doMock('../../../src/db/index.js', () => ({
-      db: { select: vi.fn().mockReturnThis(), from: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) },
-    }));
-    vi.doMock('../../../src/db/schema/assets.schema.js', () => ({
-      roomAssets: { id: 'id', storagePath: 'storagePath' },
-    }));
-    vi.doMock('../../../src/config/env.js', () => ({
-      isStorageEnabled: vi.fn().mockReturnValue(false),
-    }));
-    vi.doMock('../../../src/config/supabase.js', () => ({
-      supabaseAdmin: null,
-    }));
     vi.doMock('@opentelemetry/api', () => ({
       trace: {
         getTracer: () => ({
@@ -198,7 +165,13 @@ describe('RenderWorker', () => {
     await expect(processRenderJob(job)).rejects.toThrow(UnrecoverableError);
   });
 
-  // --- Happy path ---
+  it('should throw UnrecoverableError for invalid mode', async () => {
+    // mode must be "edit_existing" or "from_scratch"
+    const job = makeJob({ mode: 'invalid_mode' });
+    await expect(processRenderJob(job)).rejects.toThrow(UnrecoverableError);
+  });
+
+  // --- Happy path (from_scratch) ---
 
   it('should emit started, progress, and complete events on success', async () => {
     const job = makeJob();
@@ -235,6 +208,17 @@ describe('RenderWorker', () => {
       ASSET_ID,
       expect.objectContaining({ contentType: 'image/png' }),
     );
+  });
+
+  it('should NOT pass referenceImageBase64 in from_scratch mode', async () => {
+    // In from_scratch mode, the adapter.generate() should receive no reference image
+    const job = makeJob({ mode: 'from_scratch' });
+    await processRenderJob(job);
+
+    const adapter = createImageGenerationAdapter();
+    // The generate call's options should not include referenceImageBase64
+    const generateCall = adapter.generate.mock.calls[0];
+    expect(generateCall[1]).not.toHaveProperty('referenceImageBase64');
   });
 
   // --- Permanent error detection ---

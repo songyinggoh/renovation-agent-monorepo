@@ -118,13 +118,22 @@ describe('RenderService', () => {
   });
 
   describe('requestRender', () => {
+    // requestRender now takes a single object: { sessionId, roomId, mode, prompt, baseImageUrl? }
+
     it('should throw NotFoundError when room does not exist', async () => {
       // First select (room check) returns empty
       setupDbSelectChain([]);
 
       await expect(
-        service.requestRender(SESSION_ID, ROOM_ID, 'A modern kitchen render')
+        service.requestRender({ sessionId: SESSION_ID, roomId: ROOM_ID, mode: 'from_scratch', prompt: 'A modern kitchen render' })
       ).rejects.toThrow('Room not found');
+    });
+
+    it('should throw BadRequestError when edit_existing lacks baseImageUrl', async () => {
+      // edit_existing mode requires a base image URL — service should reject before any DB call
+      await expect(
+        service.requestRender({ sessionId: SESSION_ID, roomId: ROOM_ID, mode: 'edit_existing', prompt: 'Renovate this room' })
+      ).rejects.toThrow('baseImageUrl is required');
     });
 
     it('should throw BadRequestError when rate limit is exceeded', async () => {
@@ -144,7 +153,7 @@ describe('RenderService', () => {
       });
 
       await expect(
-        service.requestRender(SESSION_ID, ROOM_ID, 'A modern kitchen render')
+        service.requestRender({ sessionId: SESSION_ID, roomId: ROOM_ID, mode: 'from_scratch', prompt: 'A modern kitchen render' })
       ).rejects.toThrow('Render limit reached');
     });
 
@@ -176,19 +185,22 @@ describe('RenderService', () => {
       // Queue add returns job
       mockQueueAdd.mockResolvedValue({ id: 'job-123' });
 
-      const result = await service.requestRender(
-        SESSION_ID,
-        ROOM_ID,
-        'A modern kitchen with marble counters'
-      );
+      const result = await service.requestRender({
+        sessionId: SESSION_ID,
+        roomId: ROOM_ID,
+        mode: 'from_scratch',
+        prompt: 'A modern kitchen with marble counters',
+      });
 
       expect(result.assetId).toBe('asset-uuid-1');
       expect(result.jobId).toBe('job-123');
+      // Job data should now include mode
       expect(mockQueueAdd).toHaveBeenCalledWith(
         'render:generate',
         expect.objectContaining({
           sessionId: SESSION_ID,
           roomId: ROOM_ID,
+          mode: 'from_scratch',
           prompt: 'A modern kitchen with marble counters',
           assetId: 'asset-uuid-1',
         }),

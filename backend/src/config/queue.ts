@@ -30,7 +30,9 @@ export interface JobTypes {
   'ai:process-message': { sessionId: string; content: string; userId?: string };
   'doc:generate-plan': { sessionId: string; roomId: string; format: 'pdf' | 'html' };
   'email:send-notification': { to: string; subject: string; template: string; data: { html: string } };
-  'render:generate': { sessionId: string; roomId: string; prompt: string; assetId: string; baseAssetId?: string };
+  // mode: determines whether to generate from scratch or edit an existing photo
+  // baseImageUrl: reference image URL, required when mode is "edit_existing"
+  'render:generate': { sessionId: string; roomId: string; mode: 'edit_existing' | 'from_scratch'; prompt: string; assetId: string; baseImageUrl?: string };
 }
 
 export type JobName = keyof JobTypes;

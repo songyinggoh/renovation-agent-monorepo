@@ -123,20 +123,58 @@ describe('job.validators', () => {
   });
 
   describe('renderGenerateJobSchema', () => {
-    it('should accept valid render job data', () => {
+    // Schema now requires mode: 'edit_existing' | 'from_scratch'
+    // and uses baseImageUrl (URL) instead of baseAssetId (UUID)
+
+    it('should accept valid render job data (from_scratch)', () => {
       const result = renderGenerateJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
         roomId: '660e8400-e29b-41d4-a716-446655440000',
+        mode: 'from_scratch',
         prompt: 'Modern kitchen with marble countertops',
         assetId: '770e8400-e29b-41d4-a716-446655440000',
       });
       expect(result.success).toBe(true);
     });
 
+    it('should accept valid render job data (edit_existing with baseImageUrl)', () => {
+      const result = renderGenerateJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        roomId: '660e8400-e29b-41d4-a716-446655440000',
+        mode: 'edit_existing',
+        prompt: 'Renovate this kitchen in japandi style',
+        assetId: '770e8400-e29b-41d4-a716-446655440000',
+        baseImageUrl: 'https://storage.example.com/rooms/kitchen.jpg',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject missing mode', () => {
+      const result = renderGenerateJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        roomId: '660e8400-e29b-41d4-a716-446655440000',
+        prompt: 'Modern kitchen',
+        assetId: '770e8400-e29b-41d4-a716-446655440000',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid mode value', () => {
+      const result = renderGenerateJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        roomId: '660e8400-e29b-41d4-a716-446655440000',
+        mode: 'invalid_mode',
+        prompt: 'Modern kitchen',
+        assetId: '770e8400-e29b-41d4-a716-446655440000',
+      });
+      expect(result.success).toBe(false);
+    });
+
     it('should reject empty prompt', () => {
       const result = renderGenerateJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
         roomId: '660e8400-e29b-41d4-a716-446655440000',
+        mode: 'from_scratch',
         prompt: '',
         assetId: '770e8400-e29b-41d4-a716-446655440000',
       });
@@ -147,6 +185,7 @@ describe('job.validators', () => {
       const result = renderGenerateJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
         roomId: '660e8400-e29b-41d4-a716-446655440000',
+        mode: 'from_scratch',
         prompt: 'x'.repeat(5001),
         assetId: '770e8400-e29b-41d4-a716-446655440000',
       });

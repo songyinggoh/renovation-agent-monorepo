@@ -14,6 +14,23 @@ const logger = new Logger({ serviceName: 'RenderService' });
 
 const MAX_RENDERS_PER_HOUR = 10;
 
+/** Render mode per the Phase 3 roadmap spec (§3.1 Render service). */
+export type RenderMode = 'edit_existing' | 'from_scratch';
+
+/**
+ * Input for requesting a new render.
+ * - "edit_existing" + baseImageUrl: AI modifies the provided room photo.
+ * - "from_scratch": AI generates a design purely from the text prompt.
+ */
+export interface RequestRenderInput {
+  sessionId: string;
+  roomId: string;
+  mode: RenderMode;
+  prompt: string;
+  /** URL of the room photo to use as reference (required when mode is "edit_existing"). */
+  baseImageUrl?: string;
+}
+
 interface RequestRenderResult {
   assetId: string;
   jobId: string;
@@ -28,14 +45,20 @@ export class RenderService {
   /**
    * Request an AI render for a room.
    * Creates a pending asset record and enqueues a BullMQ job.
+   *
+   * @param input.mode - "edit_existing" uses baseImageUrl as a reference photo;
+   *                     "from_scratch" generates purely from the prompt.
+   * @param input.baseImageUrl - Required when mode is "edit_existing".
    */
-  async requestRender(
-    sessionId: string,
-    roomId: string,
-    prompt: string,
-    baseAssetId?: string
-  ): Promise<RequestRenderResult> {
-    logger.info('Requesting render', { sessionId, roomId, promptLength: prompt.length });
+  async requestRender(input: RequestRenderInput): Promise<RequestRenderResult> {
+    const { sessionId, roomId, mode, prompt, baseImageUrl } = input;
+
+    logger.info('Requesting render', { sessionId, roomId, mode, promptLength: prompt.length });
+
+    // Guard: edit mode requires a reference image URL
+    if (mode === 'edit_existing' && !baseImageUrl) {
+      throw new BadRequestError('baseImageUrl is required when mode is "edit_existing"');
+    }
 
     // Validate room exists
     const [room] = await db
@@ -67,7 +90,8 @@ export class RenderService {
     const filename = `render_${Date.now()}.png`;
     const storagePath = buildStoragePath(sessionId, roomId, 'render', filename);
 
-    // Create pending asset record
+    // Create pending asset record — stores mode + baseImageUrl in metadata
+    // so the worker and UI can see what was requested.
     const [asset] = await db.insert(roomAssets).values({
       sessionId,
       roomId,
@@ -80,7 +104,8 @@ export class RenderService {
       fileSize: 0, // Updated when render completes
       metadata: {
         prompt,
-        ...(baseAssetId ? { baseAssetId } : {}),
+        mode,
+        ...(baseImageUrl ? { baseImageUrl } : {}),
       },
     }).returning();
 
@@ -88,16 +113,18 @@ export class RenderService {
       throw new Error('Failed to create render asset record');
     }
 
-    // Enqueue BullMQ job
+    // Enqueue BullMQ job — the worker picks this up asynchronously
+    // and emits Socket.io events (started → progress → complete/failed).
     const queue = getRenderQueue();
     const job = await queue.add(
       'render:generate',
       {
         sessionId,
         roomId,
+        mode,
         prompt,
         assetId: asset.id,
-        ...(baseAssetId ? { baseAssetId } : {}),
+        ...(baseImageUrl ? { baseImageUrl } : {}),
       },
     );
 
@@ -106,6 +133,7 @@ export class RenderService {
       jobId: job.id,
       sessionId,
       roomId,
+      mode,
     });
 
     return {
