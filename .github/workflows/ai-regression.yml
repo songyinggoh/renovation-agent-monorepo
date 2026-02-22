@@ -1,6 +1,7 @@
 name: AI Prompt Regression Guard
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
