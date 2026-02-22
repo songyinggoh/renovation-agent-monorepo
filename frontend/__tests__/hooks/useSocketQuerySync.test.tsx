@@ -172,9 +172,9 @@ describe('useSocketQuerySync', () => {
       { wrapper },
     );
 
-    const handler = getMockHandler<(data: { assetId: string; roomId: string }) => void>('render:complete');
+    const handler = getMockHandler<(data: { assetId: string; roomId: string; sessionId: string }) => void>('render:complete');
 
-    act(() => handler?.({ assetId: 'a-1', roomId: 'r-1' }));
+    act(() => handler?.({ assetId: 'a-1', roomId: 'r-1', sessionId: 'sess-1' }));
 
     act(() => vi.advanceTimersByTime(499));
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
