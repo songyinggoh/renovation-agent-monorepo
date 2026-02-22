@@ -17,9 +17,9 @@ ON renovation_rooms (session_id);
 CREATE INDEX IF NOT EXISTS idx_product_recommendations_room
 ON product_recommendations (room_id);
 
--- contractor_recommendations: Queried by roomId
-CREATE INDEX IF NOT EXISTS idx_contractor_recommendations_room
-ON contractor_recommendations (room_id);
+-- contractor_recommendations: Queried by sessionId
+CREATE INDEX IF NOT EXISTS idx_contractor_recommendations_session
+ON contractor_recommendations (session_id);
 
 -- renovation_sessions: Queried by userId (when auth is enforced)
 CREATE INDEX IF NOT EXISTS idx_renovation_sessions_user
