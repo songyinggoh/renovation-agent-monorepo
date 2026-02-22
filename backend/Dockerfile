@@ -3,11 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm (match version pinned in package.json packageManager field)
+RUN corepack enable && corepack prepare pnpm@10.29.1 --activate
 
 # Copy monorepo root files needed for pnpm workspace
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # Copy package.json files for backend and its workspace dependency
 COPY backend/package.json ./backend/
@@ -27,24 +27,23 @@ COPY backend/. ./backend/
 WORKDIR /app/backend
 RUN pnpm run build
 
+# Create production-only deployment (strips devDependencies)
+WORKDIR /app
+RUN pnpm --filter renovation-agent-backend deploy --prod /app/deploy
+
 # Stage 2: Production
 FROM node:20-alpine AS production
 
-# Install pnpm for start script
-RUN npm install -g pnpm
-
 WORKDIR /app
 
-# Copy package.json for start script and dependencies
-COPY --from=builder /app/backend/package.json ./package.json
-
-# Only copy production dependencies and build output
-COPY --from=builder /app/backend/node_modules ./node_modules
-COPY --from=builder /app/backend/dist ./dist
+# Copy only production dependencies and build output
+COPY --from=builder /app/deploy/package.json ./package.json
+COPY --from=builder /app/deploy/node_modules ./node_modules
+COPY --from=builder /app/deploy/dist ./dist
 
 # Expose the port the app runs on (override via $PORT env var)
 ENV PORT="8080"
 EXPOSE 8080
 
 # Command to run the application
-CMD ["pnpm", "start"]
+CMD ["node", "dist/server.js"]

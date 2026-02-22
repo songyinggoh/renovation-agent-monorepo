@@ -15,6 +15,11 @@
       "node",
       "express"
     ],
+    "paths": {
+      "@renovation/shared-types": [
+        "../packages/shared-types/dist/index.d.ts"
+      ]
+    },
     "resolveJsonModule": true,
     "allowJs": true,
     "esModuleInterop": true,
