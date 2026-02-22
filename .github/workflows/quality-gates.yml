@@ -34,6 +34,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: .
 
+      - name: Build shared-types
+        run: pnpm run build:shared-types
+        working-directory: .
+
       - name: Run ESLint
         run: pnpm lint
 
@@ -99,6 +103,10 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build shared-types
+        run: pnpm run build:shared-types
         working-directory: .
 
       - name: Run ESLint
