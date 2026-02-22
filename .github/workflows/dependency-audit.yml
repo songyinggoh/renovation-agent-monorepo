@@ -39,7 +39,7 @@ jobs:
 
       # ── Critical / High — must block merge ──
       - name: Audit for critical and high vulnerabilities
-        run: pnpm audit --severity high
+        run: pnpm audit --audit-level high
         # pnpm audit exits non-zero when advisories are found at or above the threshold
 
       # ── Moderate / Low — informational, never blocks ──
