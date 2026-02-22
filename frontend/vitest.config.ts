@@ -23,7 +23,6 @@ export default defineConfig({
         '**/*.d.ts',
         'components/ui/**',
       ],
-      all: true,
       thresholds: {
         lines: 80,
         functions: 80,

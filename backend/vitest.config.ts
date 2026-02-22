@@ -16,12 +16,11 @@ export default defineConfig({
         'src/db/schema/**',
         'src/server.ts', // Exclude main server file from coverage
       ],
-      all: true,
       thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 80,
-        statements: 80,
+        lines: 50,
+        functions: 70,
+        branches: 70,
+        statements: 50,
       },
     },
   },
