@@ -114,6 +114,62 @@ vi.mock('../../../src/config/supabase.js', () => ({
   supabaseAdmin: null,
 }));
 
+// ── Redis: no connection in integration tests ──
+vi.mock('../../../src/config/redis.js', () => ({
+  redis: { ping: vi.fn().mockResolvedValue('PONG'), on: vi.fn(), quit: vi.fn(), disconnect: vi.fn() },
+  default: { ping: vi.fn().mockResolvedValue('PONG'), on: vi.fn(), quit: vi.fn(), disconnect: vi.fn() },
+  testRedisConnection: vi.fn().mockResolvedValue(true),
+  connectRedis: vi.fn().mockResolvedValue(undefined),
+  closeRedis: vi.fn().mockResolvedValue(undefined),
+}));
+
+// ── Sentry: no-op in integration tests ──
+vi.mock('../../../src/config/sentry.js', () => ({
+  initSentry: vi.fn(),
+  isSentryEnabled: vi.fn().mockReturnValue(false),
+  Sentry: { init: vi.fn(), setupExpressErrorHandler: vi.fn() },
+}));
+
+vi.mock('@sentry/node', () => ({
+  init: vi.fn(),
+  setupExpressErrorHandler: vi.fn(),
+  startSpan: vi.fn((_opts: unknown, fn: () => unknown) => fn()),
+  captureException: vi.fn(),
+}));
+
+// ── BullMQ / Queue: no Redis in integration tests ──
+vi.mock('../../../src/config/queue.js', () => ({
+  connection: {},
+  getImageQueue: vi.fn(() => ({ on: vi.fn() })),
+  getEmailQueue: vi.fn(() => ({ on: vi.fn() })),
+  getDocQueue: vi.fn(() => ({ on: vi.fn() })),
+  getRenderQueue: vi.fn(() => ({ on: vi.fn() })),
+  createWorker: vi.fn(),
+  closeQueues: vi.fn().mockResolvedValue(undefined),
+  WORKER_PROFILES: {},
+  withTimeout: vi.fn((p: Promise<unknown>) => p),
+}));
+
+vi.mock('../../../src/config/dead-letter.js', () => ({
+  getDLQ: vi.fn(() => ({ on: vi.fn() })),
+  moveToDeadLetter: vi.fn().mockResolvedValue(undefined),
+  closeDLQ: vi.fn().mockResolvedValue(undefined),
+}));
+
+// ── Bull Board: no-op adapters ──
+vi.mock('@bull-board/api', () => ({
+  createBullBoard: vi.fn(),
+}));
+vi.mock('@bull-board/api/bullMQAdapter', () => ({
+  BullMQAdapter: vi.fn(),
+}));
+vi.mock('@bull-board/express', () => ({
+  ExpressAdapter: vi.fn().mockImplementation(() => ({
+    setBasePath: vi.fn(),
+    getRouter: vi.fn(() => (_req: Request, _res: Response, next: NextFunction) => next()),
+  })),
+}));
+
 export { mockPoolQuery, mockDbResolve, mockPoolConnect, mockClientQuery };
 
 /**
