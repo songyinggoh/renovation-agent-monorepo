@@ -12,6 +12,9 @@ on:
       - 'backend/src/utils/agent-guards.ts'
       - 'backend/tests/ai-regression/**'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

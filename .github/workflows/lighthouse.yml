@@ -8,6 +8,10 @@ on:
       - 'packages/shared-types/**'
       - '.github/workflows/lighthouse.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: lighthouse-${{ github.ref }}
   cancel-in-progress: true
