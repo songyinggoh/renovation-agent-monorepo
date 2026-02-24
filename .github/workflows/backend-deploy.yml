@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'packages/shared-types/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
       - '.github/workflows/backend-deploy.yml'
   workflow_dispatch:
 
