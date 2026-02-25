@@ -48,7 +48,7 @@ export class GeminiImageAdapter implements ImageGenerationAdapter {
 
   async generate(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
     const startTime = Date.now();
-    const model = 'gemini-2.0-flash-exp';
+    const model = 'gemini-2.0-flash-preview-image-generation';
 
     logger.info('Generating image with Gemini', {
       model,

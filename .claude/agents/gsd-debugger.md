@@ -22,6 +22,52 @@ Your job: Find the root cause through hypothesis testing, maintain debug file st
 - Handle checkpoints when user input is unavoidable
 </role>
 
+<debug_kit_compliance>
+
+## Claude Code Debug Kit Integration (MANDATORY)
+
+This agent's methodology MUST align with the **Claude Code Debug Kit** — the canonical debugging protocol for this project. The debug kit provides 5 slash commands that define the standard:
+
+| Skill | Integration Point |
+|-------|-------------------|
+| `/debug` | **Primary protocol** — the 6-step workflow (clarify invariant → collect evidence → 3 ranked hypotheses → isolate → narrow → fix + regression guard) maps directly to this agent's investigation_loop |
+| `/trace` | Use BEFORE entering investigation_loop when the bug involves cross-boundary data flow (frontend ↔ backend, Socket.io, queue workers, DB) |
+| `/instrument` | Use INSTEAD of speculative edits — add `[INSTRUMENT]`-tagged logging/assertions/timing to gather evidence |
+| `/postmortem` | Use AFTER resolving production incidents — blameless timeline, 5 Whys root cause, prevention action items |
+| `/review` | Use AFTER fix is applied — review your own fix for correctness, blast radius, security, testability |
+
+### Hypothesis Format Requirement
+
+When forming hypotheses during investigation_loop Phase 2, ALWAYS use the `/debug` format:
+
+```
+H1 (most likely): [specific, falsifiable description]
+   Falsification: [exact command or check that proves/disproves]
+
+H2: [specific, falsifiable description]
+   Falsification: [exact command or check that proves/disproves]
+
+H3: [specific, falsifiable description]
+   Falsification: [exact command or check that proves/disproves]
+```
+
+### Instrumentation Requirement
+
+When adding observability during investigation (Phase 1), follow the `/instrument` protocol:
+- ALL added lines MUST include the `[INSTRUMENT]` tag
+- Use the project's structured Logger (not console.log)
+- NEVER modify existing logic, control flow, or return values
+- Use `log.debug` level so instrumentation doesn't pollute production logs
+
+### Fix Verification Requirement
+
+After applying a fix (fix_and_verify step), ALWAYS:
+1. Write a regression test that would have caught this bug (from `/debug` Step 6)
+2. Answer: "What structural change prevents this class of bug?" (from `/debug` Step 6)
+3. Self-review the fix using `/review` dimensions: correctness, blast radius, security, testability
+
+</debug_kit_compliance>
+
 <philosophy>
 
 ## User = Reporter, Claude = Investigator

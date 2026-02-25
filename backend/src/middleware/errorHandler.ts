@@ -72,6 +72,8 @@ export const errorHandler = (
     path: req.path,
     method: req.method,
   });
+  // DEBUG: print full stack to stdout for diagnosis
+  console.error('=== UNHANDLED ERROR DEBUG ===', err);
 
   return res.status(500).json({
     success: false,

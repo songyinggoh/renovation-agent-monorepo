@@ -12,6 +12,10 @@ vi.mock('../../../src/config/queue.js', () => ({
   createWorker: vi.fn().mockReturnValue({ on: vi.fn(), close: vi.fn() }),
 }));
 
+vi.mock('../../../src/utils/socket-emitter.js', () => ({
+  emitToSession: vi.fn(),
+}));
+
 describe('DocWorker', () => {
   let processDocJob: (job: Record<string, unknown>) => Promise<void>;
 
@@ -24,6 +28,9 @@ describe('DocWorker', () => {
     }));
     vi.doMock('../../../src/config/queue.js', () => ({
       createWorker: vi.fn().mockReturnValue({ on: vi.fn(), close: vi.fn() }),
+    }));
+    vi.doMock('../../../src/utils/socket-emitter.js', () => ({
+      emitToSession: vi.fn(),
     }));
 
     const mod = await import('../../../src/workers/doc.worker.js');
@@ -51,6 +58,29 @@ describe('DocWorker', () => {
   it('should succeed for valid pdf job (no-op)', async () => {
     const job = { data: { sessionId: '00000000-0000-4000-a000-000000000001', roomId: '00000000-0000-4000-a000-000000000002', format: 'pdf' }, id: 'job-1' };
     await expect(processDocJob(job)).resolves.toBeUndefined();
+  });
+
+  it('should emit doc:generated with correct payload on valid job', async () => {
+    const { emitToSession } = await import('../../../src/utils/socket-emitter.js');
+    const sessionId = '00000000-0000-4000-a000-000000000001';
+    const roomId = '00000000-0000-4000-a000-000000000002';
+    const job = { data: { sessionId, roomId, format: 'pdf' }, id: 'job-1' };
+
+    await processDocJob(job);
+
+    expect(emitToSession).toHaveBeenCalledWith(sessionId, 'doc:generated', {
+      sessionId,
+      roomId,
+      format: 'pdf',
+    });
+  });
+
+  it('should not emit doc:generated when job data is invalid', async () => {
+    const { emitToSession } = await import('../../../src/utils/socket-emitter.js');
+    const job = { data: { sessionId: 'bad-uuid', roomId: '00000000-0000-4000-a000-000000000002', format: 'pdf' }, id: 'job-2' };
+
+    await expect(processDocJob(job)).rejects.toThrow(UnrecoverableError);
+    expect(emitToSession).not.toHaveBeenCalled();
   });
 
   it('should succeed for valid html job (no-op)', async () => {
