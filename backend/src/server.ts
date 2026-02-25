@@ -650,7 +650,7 @@ function setupGracefulShutdown(): void {
 
   // Create shutdown manager
   shutdownManager = new ShutdownManager(httpServer, {
-    timeout: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10),
+    timeout: env.SHUTDOWN_TIMEOUT_MS,
     logger,
   });
 

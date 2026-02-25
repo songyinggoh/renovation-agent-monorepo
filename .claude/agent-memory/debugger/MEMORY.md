@@ -50,6 +50,21 @@
 - **Secondary issue**: A stale `frontend/package-lock.json` (npm lockfile) exists and is untracked. Should be deleted and added to `.gitignore`.
 - **Key config**: Root `.npmrc` has `shamefully-hoist=true`. `pnpm-workspace.yaml` lists `backend` and `frontend`.
 
+### 5. Playwright E2E Locator Scoping Bug (PR #62)
+- **Symptom**: All 3 E2E tests timeout at 15s waiting for `[data-connected="true"]` inside `connection-status` element
+- **Root Cause**: `session.page.ts` uses `this.connectionStatus.locator('[data-connected="true"]')` which searches **descendants only**. But `data-connected` is on the `connection-status` element **itself** (same `<span>` in `chat-view.tsx`). Playwright `locator.locator()` never matches the element itself.
+- **Fix**: Use `toHaveAttribute('data-connected', 'true')` instead of `locator('[data-connected="true"]')`
+- **Key files**: `e2e/page-objects/session.page.ts`, `e2e/tests/chat-flow.spec.ts`, `frontend/components/chat/chat-view.tsx`
+- **Pattern rule**: Never use `locator.locator('[data-*=value]')` to test attributes on the matched element itself -- use `toHaveAttribute()` instead.
+- **Note**: E2E suite was scaffolded in `dc208d7` and has never passed -- this is a bug-from-birth, not a regression.
+
+## E2E Test Infrastructure
+- **Config**: `e2e/playwright.config.ts` (webServer launches backend+frontend from root)
+- **Page objects**: `e2e/page-objects/session.page.ts`, `e2e/page-objects/dashboard.page.ts`
+- **Helpers**: `e2e/helpers/api-helper.ts` (direct REST for setup/teardown), `e2e/helpers/wait-for-stream.ts`
+- **CI job**: `quality-gates.yml` > `e2e-tests` (needs postgres service, no Supabase env vars = anonymous mode)
+- **Anonymous mode in CI**: No `NEXT_PUBLIC_SUPABASE_*` set, so `createClient()` returns null, layout bypasses auth
+
 ## Quality Gates
 - `npx tsc --noEmit` for type-check
 - `npm run lint` for ESLint

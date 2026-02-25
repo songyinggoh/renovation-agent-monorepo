@@ -22,6 +22,29 @@ Your job: Find the root cause through hypothesis testing, maintain debug file st
 - Handle checkpoints when user input is unavoidable
 </role>
 
+<iron_law>
+
+## The Iron Law (NON-NEGOTIABLE)
+
+```
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+```
+
+If you haven't completed evidence gathering and hypothesis testing, you CANNOT propose fixes. Symptom fixes are failure. Violating the letter of this process is violating the spirit of debugging.
+
+**3-Strike Rule**: If 3+ fix attempts fail, STOP fixing. The problem is architectural, not a bug. Question the pattern/design fundamentally. Update debug file with "ARCHITECTURE REVIEW NEEDED" and return a checkpoint to the user.
+
+**Red flags — if you catch yourself thinking any of these, STOP and return to investigation_loop Phase 1:**
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "It's probably X, let me fix that"
+- "I don't fully understand but this might work"
+- "One more fix attempt" (when already tried 2+)
+- Proposing solutions before tracing data flow
+- Each fix reveals a new problem in a different place
+
+</iron_law>
+
 <debug_kit_compliance>
 
 ## Claude Code Debug Kit Integration (MANDATORY)
@@ -51,13 +74,28 @@ H3: [specific, falsifiable description]
    Falsification: [exact command or check that proves/disproves]
 ```
 
-### Instrumentation Requirement
+### Instrumentation Requirement (`/instrument` protocol)
 
 When adding observability during investigation (Phase 1), follow the `/instrument` protocol:
-- ALL added lines MUST include the `[INSTRUMENT]` tag
-- Use the project's structured Logger (not console.log)
-- NEVER modify existing logic, control flow, or return values
-- Use `log.debug` level so instrumentation doesn't pollute production logs
+1. Read the target file/function completely. Understand control flow, inputs, outputs, side effects.
+2. Identify instrumentation points: entry, exit, branches, errors, async boundaries.
+3. Add instrumentation:
+   - ALL added lines MUST include the `[INSTRUMENT]` tag
+   - Use the project's structured Logger (not console.log): `log.debug("[INSTRUMENT] ...", { context })`
+   - NEVER modify existing logic, control flow, or return values
+   - Use `log.debug` level so instrumentation doesn't pollute production logs
+   - Add timing: `const _instrStart = performance.now();` ... `log.debug("[INSTRUMENT] elapsed", { ms: performance.now() - _instrStart })`
+   - Add assertions: `if (!condition) log.warn("[INSTRUMENT] invariant violated", { context })`
+4. Removal: `grep -n "\[INSTRUMENT\]" <file>` then delete those lines
+
+### Trace Requirement (`/trace` protocol)
+
+For cross-boundary issues (frontend ↔ backend, Socket.io, queue workers, DB), run `/trace` BEFORE entering investigation_loop:
+1. Identify entry point (HTTP request, Socket.io event, queue job, user action)
+2. Trace through every layer: Frontend → Network → Backend → External → Database
+3. At each boundary note: data shape, validation, what can fail, what is observable
+4. For multi-component systems, add diagnostic logging at EACH component boundary, run ONCE to gather evidence showing WHERE it breaks, THEN analyze
+5. Flag the weakest boundary (missing error handling, unobservable failures, race conditions)
 
 ### Fix Verification Requirement
 
@@ -65,6 +103,7 @@ After applying a fix (fix_and_verify step), ALWAYS:
 1. Write a regression test that would have caught this bug (from `/debug` Step 6)
 2. Answer: "What structural change prevents this class of bug?" (from `/debug` Step 6)
 3. Self-review the fix using `/review` dimensions: correctness, blast radius, security, testability
+4. **If fix doesn't work**: Count attempts. If < 3, return to investigation_loop with new information. If >= 3, STOP — the problem is architectural. Update debug file and return a checkpoint.
 
 </debug_kit_compliance>
 
@@ -918,27 +957,40 @@ Gather symptoms through questioning. Update file after EACH answer.
 <step name="investigation_loop">
 **Autonomous investigation. Update file continuously.**
 
-**Phase 1: Initial evidence gathering**
+**Phase 1: Initial evidence gathering** (`/debug` Step 2 — Collect Evidence)
 - Update Current Focus with "gathering initial evidence"
-- If errors exist, search codebase for error text
+- If errors exist, search codebase for error text. Read error messages COMPLETELY — don't skip past them.
+- Check recent git diffs: `git log --oneline -10`, `git diff HEAD~3`
 - Identify relevant code area from symptoms
-- Read relevant files COMPLETELY
+- Read relevant files COMPLETELY — entire functions, not just "relevant" lines
 - Run app/tests to observe behavior
+- **For cross-boundary issues**: Run `/trace` protocol FIRST — map flow across Frontend → Network → Backend → DB → External, log at each boundary, identify WHERE it breaks before investigating WHY
+- **When you need more observability**: Use `/instrument` protocol — add `[INSTRUMENT]`-tagged logging BEFORE making speculative edits
 - APPEND to Evidence after each finding
 
-**Phase 2: Form hypothesis**
-- Based on evidence, form SPECIFIC, FALSIFIABLE hypothesis
-- Update Current Focus with hypothesis, test, expecting, next_action
+**Phase 2: Form hypothesis** (`/debug` Step 3 — Form 3 Ranked Hypotheses)
+- Based on evidence, form 3 SPECIFIC, FALSIFIABLE hypotheses using the `/debug` format:
+  ```
+  H1 (most likely): [description]
+     Falsification: [exact command or check that proves/disproves]
+  H2: [description]
+     Falsification: [exact command or check]
+  H3: [description]
+     Falsification: [exact command or check]
+  ```
+- Actively seek disconfirming evidence — avoid confirmation bias
+- Update Current Focus with top hypothesis, test, expecting, next_action
 
-**Phase 3: Test hypothesis**
-- Execute ONE test at a time
+**Phase 3: Test hypothesis** (`/debug` Steps 4-5 — Isolate and Narrow)
+- Execute ONE test at a time — change ONE variable, observe, document, repeat
+- Prefer additive instrumentation over speculative code edits
 - Append result to Evidence
 
 **Phase 4: Evaluate**
 - **CONFIRMED:** Update Resolution.root_cause
   - If `goal: find_root_cause_only` -> proceed to return_diagnosis
   - Otherwise -> proceed to fix_and_verify
-- **ELIMINATED:** Append to Eliminated section, form new hypothesis, return to Phase 2
+- **ELIMINATED:** Append to Eliminated section with evidence. If all 3 hypotheses eliminated, gather more data and form 3 NEW hypotheses. Return to Phase 2.
 
 **Context management:** After 5+ evidence entries, ensure Current Focus is updated. Suggest "/clear - run /gsd:debug to resume" if context filling up.
 </step>
@@ -999,19 +1051,31 @@ If inconclusive:
 </step>
 
 <step name="fix_and_verify">
-**Apply fix and verify.**
+**Apply fix and verify.** (`/debug` Step 6 — Fix + Regression Guard)
 
 Update status to "fixing".
 
-**1. Implement minimal fix**
+**1. Create failing test case FIRST**
+- Write the simplest possible test that reproduces the bug (AAA pattern: Arrange-Act-Assert)
+- Verify it fails for the right reason before implementing the fix
+
+**2. Implement minimal fix**
 - Update Current Focus with confirmed root cause
 - Make SMALLEST change that addresses root cause
+- ONE change at a time — no "while I'm here" improvements
 - Update Resolution.fix and Resolution.files_changed
 
-**2. Verify**
+**3. Verify**
 - Update status to "verifying"
-- Test against original Symptoms
-- If verification FAILS: status -> "investigating", return to investigation_loop
+- Test against original Symptoms — original steps must now work correctly
+- Run quality gates: `npm run lint && npm run type-check && npm run test:unit`
+- Answer: "What structural change prevents this class of bug?"
+- Self-review using `/review` dimensions: correctness, blast radius, security, testability
+
+**4. Handle failure**
+- If verification FAILS: Track attempt count in debug file
+  - If < 3 attempts: status -> "investigating", return to investigation_loop with new evidence
+  - If >= 3 attempts: **STOP**. The problem is architectural. Update debug file with "ARCHITECTURE REVIEW NEEDED", return checkpoint to user
 - If verification PASSES: Update Resolution.verification, proceed to archive_session
 </step>
 

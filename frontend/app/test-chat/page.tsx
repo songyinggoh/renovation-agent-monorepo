@@ -2,8 +2,11 @@
 
 import { useChat } from '@/hooks/useChat';
 import { useState } from 'react';
+import { notFound } from 'next/navigation';
 
 export default function TestChatPage() {
+  if (process.env.NODE_ENV === 'production') notFound();
+
   const { isConnected, sendMessage, error, messages, isAssistantTyping } = useChat('test-session-123');
   const [messageInput, setMessageInput] = useState('');
 
