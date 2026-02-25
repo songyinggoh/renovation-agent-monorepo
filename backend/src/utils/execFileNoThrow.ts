@@ -55,13 +55,15 @@ export function execFileNoThrow(
           return;
         }
 
-        // execFile sets error.code to the exit code on non-zero exit
+        // Prefer error.status (exit code) over error.code (which may be a string like 'ERR_...')
         const exitCode =
-          error && 'code' in error && typeof error.code === 'number'
-            ? error.code
-            : error
-              ? 1
-              : 0;
+          error && typeof (error as { status?: unknown }).status === 'number'
+            ? (error as { status: number }).status
+            : error && 'code' in error && typeof error.code === 'number'
+              ? error.code
+              : error
+                ? 1
+                : 0;
 
         resolve({
           stdout: typeof stdout === 'string' ? stdout : '',

@@ -122,7 +122,7 @@ describe('bash_exec safety filter', () => {
   });
 
   it('BLOCKED_PATTERNS has expected number of patterns', () => {
-    expect(BLOCKED_PATTERNS).toHaveLength(5);
+    expect(BLOCKED_PATTERNS).toHaveLength(6);
   });
 
   it('bash_exec returns blocked message for destructive command', async () => {

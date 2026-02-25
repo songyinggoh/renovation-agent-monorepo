@@ -15,13 +15,14 @@ import { Logger } from '../../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'DevTools:Bash' });
 
-/** Patterns that are blocked for safety */
+/** Patterns that are blocked for safety (case-insensitive, word-bounded) */
 export const BLOCKED_PATTERNS: RegExp[] = [
-  /rm\s+-rf\s+[/~]/,     // rm -rf / or ~
-  /mkfs/,                 // format filesystem
-  /dd\s+if=/,             // raw disk write
-  /curl.*\|\s*bash/,      // pipe curl to bash
-  /wget.*\|\s*bash/,      // pipe wget to bash
+  /rm\s+-rf\b.*[/~]/i,     // rm -rf / or ~ (including flags like --no-preserve-root)
+  /\bmkfs\b/i,              // format filesystem
+  /\bdd\s+if=/i,            // raw disk write
+  /curl.*\|\s*bash/i,       // pipe curl to bash
+  /wget.*\|\s*bash/i,       // pipe wget to bash
+  /\bgit\s+push\s+.*--force/i, // force push (matches branch isolation goal)
 ];
 
 /**

@@ -5,6 +5,7 @@ vi.mock('../../../src/config/redis.js', () => ({
   redis: {
     get: vi.fn(),
     set: vi.fn(),
+    del: vi.fn(),
   },
 }));
 
@@ -44,6 +45,11 @@ describe('Agent Kill Switch', () => {
       expect(await isAgentEnabled('render-agent')).toBe(false);
     });
 
+    it('returns false for unexpected non-"true" values', async () => {
+      mockRedis.get.mockResolvedValue('yes');
+      expect(await isAgentEnabled('render-agent')).toBe(false);
+    });
+
     it('returns true (graceful degradation) when Redis fails', async () => {
       mockRedis.get.mockRejectedValue(new Error('Redis connection refused'));
       expect(await isAgentEnabled('render-agent')).toBe(true);
@@ -80,15 +86,34 @@ describe('Agent Kill Switch', () => {
   });
 
   describe('enableAgent', () => {
-    it('sets key to "true"', async () => {
-      mockRedis.set.mockResolvedValue('OK');
+    it('deletes the key (absent = enabled)', async () => {
+      mockRedis.del.mockResolvedValue(1);
       await enableAgent('render-agent');
-      expect(mockRedis.set).toHaveBeenCalledWith('agent:render-agent:enabled', 'true');
+      expect(mockRedis.del).toHaveBeenCalledWith('agent:render-agent:enabled');
     });
 
     it('throws when Redis fails', async () => {
-      mockRedis.set.mockRejectedValue(new Error('Redis write error'));
+      mockRedis.del.mockRejectedValue(new Error('Redis write error'));
       await expect(enableAgent('render-agent')).rejects.toThrow('Redis write error');
+    });
+  });
+
+  describe('input validation', () => {
+    it('rejects empty agentId', async () => {
+      await expect(isAgentEnabled('')).rejects.toThrow('Invalid agentId');
+    });
+
+    it('rejects agentId with uppercase', async () => {
+      await expect(isAgentEnabled('MyAgent')).rejects.toThrow('Invalid agentId');
+    });
+
+    it('rejects agentId with special characters', async () => {
+      await expect(disableAgent('agent:foo')).rejects.toThrow('Invalid agentId');
+    });
+
+    it('accepts valid lowercase-hyphenated agentId', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      expect(await isAgentEnabled('scaffold-agent')).toBe(true);
     });
   });
 });

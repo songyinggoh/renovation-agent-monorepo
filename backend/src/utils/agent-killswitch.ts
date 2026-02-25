@@ -5,9 +5,18 @@ const logger = new Logger({ serviceName: 'AgentKillSwitch' });
 
 const KEY_PREFIX = 'agent:';
 const KEY_SUFFIX = ':enabled';
+const AGENT_ID_PATTERN = /^[a-z0-9-]+$/;
 
 function agentKey(agentId: string): string {
   return `${KEY_PREFIX}${agentId}${KEY_SUFFIX}`;
+}
+
+function validateAgentId(agentId: string): void {
+  if (!agentId || agentId.length > 128 || !AGENT_ID_PATTERN.test(agentId)) {
+    throw new Error(
+      `Invalid agentId: "${agentId}" — must be 1-128 lowercase alphanumeric/hyphen characters`
+    );
+  }
 }
 
 /**
@@ -17,6 +26,7 @@ function agentKey(agentId: string): string {
  * Graceful degradation: returns true if Redis unavailable
  */
 export async function isAgentEnabled(agentId: string): Promise<boolean> {
+  validateAgentId(agentId);
   try {
     const value = await redis.get(agentKey(agentId));
     if (value === null) return true; // key absent = enabled by default
@@ -36,6 +46,7 @@ export async function isAgentEnabled(agentId: string): Promise<boolean> {
  * TTL: 24 hours auto-expiry by default (prevents permanent lockout from forgotten flags).
  */
 export async function disableAgent(agentId: string, ttlSeconds = 86400): Promise<void> {
+  validateAgentId(agentId);
   try {
     await redis.set(agentKey(agentId), 'false', 'EX', ttlSeconds);
     logger.info('Agent disabled', { agentId, ttlSeconds });
@@ -46,12 +57,14 @@ export async function disableAgent(agentId: string, ttlSeconds = 86400): Promise
 }
 
 /**
- * Re-enable an agent by setting its key to 'true'.
+ * Re-enable an agent by removing its kill switch key.
+ * Since absent key = enabled (default), deleting is cleaner than setting 'true'.
  */
 export async function enableAgent(agentId: string): Promise<void> {
+  validateAgentId(agentId);
   try {
-    await redis.set(agentKey(agentId), 'true');
-    logger.info('Agent enabled', { agentId });
+    await redis.del(agentKey(agentId));
+    logger.info('Agent enabled (key removed)', { agentId });
   } catch (err) {
     logger.error('Failed to enable agent via Redis', err as Error, { agentId });
     throw err;
