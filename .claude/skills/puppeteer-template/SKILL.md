@@ -158,9 +158,9 @@ const TEMPLATES: Record<DocumentType, string> = {
 
 ## Key Rules
 
-1. **Self-contained HTML**: No external `<link>` or `<script>` — everything inline
+1. **Self-contained HTML**: No external `<link>` or `<script>` tags — everything inline (the Google Fonts `@import` inside `<style>` is the only approved external fetch; see rule 3)
 2. **HSL color values**: Convert CSS variables to actual `hsl()` values (Puppeteer doesn't have access to globals.css)
-3. **Google Fonts via `@import`**: Use `@import url('https://fonts.googleapis.com/...')` in the `<style>` block
+3. **Google Fonts via `@import`**: Use `@import url('https://fonts.googleapis.com/...')` as the first line inside the `<style>` block — this is the sole exception to rule 1
 4. **Print-first CSS**: Use `@page` rules, `page-break-*` properties, and `@media print`
 5. **No Tailwind**: Templates can't use Tailwind classes — use plain CSS with the design token values
 6. **Handlebars helpers**: Register custom helpers for currency formatting, date formatting, phase colors

@@ -46,21 +46,25 @@ Complete HTML boilerplate for Puppeteer PDF templates. Every template follows th
     {{!-- See design-tokens-css.md for the full token set --}}
 
     :root {
-      /* Core palette */
+      /* Core palette — see design-tokens-css.md for the full canonical block */
       --primary: hsl(16, 65%, 45%);
-      --primary-light: hsl(16, 65%, 55%);
+      --primary-foreground: hsl(40, 33%, 98%);
       --secondary: hsl(140, 20%, 92%);
-      --secondary-dark: hsl(140, 25%, 20%);
+      --secondary-foreground: hsl(140, 25%, 20%);
       --background: hsl(40, 33%, 98%);
       --foreground: hsl(20, 20%, 12%);
+      --card: hsl(0, 0%, 100%);
       --muted: hsl(30, 15%, 93%);
       --muted-foreground: hsl(20, 10%, 38%);
       --border: hsl(30, 15%, 88%);
       --success: hsl(142, 71%, 45%);
       --warning: hsl(38, 92%, 50%);
       --destructive: hsl(0, 84%, 60%);
+      --info: hsl(210, 60%, 50%);
+      --chat-user: hsl(16, 65%, 45%);
+      --chat-assistant: hsl(30, 15%, 93%);
 
-      /* Phase colors */
+      /* Phase accent colors */
       --phase-intake: hsl(210, 60%, 50%);
       --phase-checklist: hsl(45, 85%, 50%);
       --phase-plan: hsl(160, 50%, 42%);
@@ -69,13 +73,25 @@ Complete HTML boilerplate for Puppeteer PDF templates. Every template follows th
       --phase-complete: hsl(142, 71%, 45%);
       --phase-iterate: hsl(200, 60%, 50%);
 
-      /* Material colors */
+      /* Material palette */
       --material-oak: hsl(30, 45%, 55%);
       --material-walnut: hsl(25, 40%, 35%);
+      --material-maple: hsl(40, 50%, 70%);
       --material-marble: hsl(220, 10%, 90%);
+      --material-granite: hsl(0, 0%, 45%);
+      --material-slate: hsl(210, 10%, 40%);
       --material-copper: hsl(20, 70%, 50%);
       --material-brass: hsl(45, 65%, 55%);
       --material-steel: hsl(210, 5%, 65%);
+      --material-porcelain: hsl(200, 15%, 95%);
+      --material-terracotta: hsl(16, 65%, 45%);
+      --material-concrete: hsl(30, 5%, 60%);
+
+      /* Chart / data visualization */
+      --chart-budget: hsl(142, 71%, 45%);
+      --chart-spent: hsl(16, 65%, 45%);
+      --chart-remaining: hsl(210, 60%, 50%);
+      --chart-timeline: hsl(45, 85%, 50%);
     }
 
     /* ============================================

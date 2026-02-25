@@ -124,7 +124,7 @@ Report the result. Eliminate disproven hypotheses. If H1 is disproven, move to H
 1. Implement the smallest correct change that addresses the confirmed root cause.
 2. Write a test that would have caught this bug before it shipped (AAA pattern: Arrange-Act-Assert).
 3. Run quality gates to verify the fix doesn't break anything:
-   - `npm run lint && npm run type-check && npm test:unit`
+   - `npm run lint && npm run type-check && npm run test:unit`
 4. Answer: **"What structural change prevents this class of bug?"**
 5. Follow project standards:
    - No `any` types in TypeScript. Use proper domain types.

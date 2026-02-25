@@ -65,7 +65,7 @@ BullMQ stores queue data under these Redis key prefixes:
 
 ```
 bull:<queue-name>:id          # Auto-incrementing job ID counter
-bull:<queue-name>:waiting     # List of waiting job IDs
+bull:<queue-name>:wait        # List of waiting job IDs
 bull:<queue-name>:active      # List of active job IDs
 bull:<queue-name>:delayed     # Sorted set of delayed job IDs
 bull:<queue-name>:completed   # Set of completed job IDs

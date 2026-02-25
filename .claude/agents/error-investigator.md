@@ -61,7 +61,7 @@ Eliminate disproven hypotheses. Move to next. Repeat until root cause is isolate
 ### Step 6: Fix + Regression Guard
 1. Apply minimal fix for confirmed root cause
 2. Write a regression test that would have caught this bug
-3. Run quality gates: `npm run lint && npm run type-check && npm test:unit`
+3. Run quality gates: `npm run lint && npm run type-check && npm run test:unit`
 4. Answer: "What structural change prevents this class of bug?"
 5. For production incidents, follow up with `/postmortem`
 

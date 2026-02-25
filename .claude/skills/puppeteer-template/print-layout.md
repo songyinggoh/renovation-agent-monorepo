@@ -40,7 +40,7 @@ const pdf = await page.pdf({
 
 With 15mm margins on A4:
 - Width: 210mm - 30mm = **180mm** usable
-- Height: 297mm - 35mm = **262mm** usable (first page: 287mm - 10mm top)
+- Height: 297mm - 35mm = **262mm** usable (first page with smaller top: 297mm - 10mm top - 20mm bottom = **267mm**)
 
 ## Page Breaks
 

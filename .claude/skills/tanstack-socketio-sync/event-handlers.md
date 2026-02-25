@@ -34,8 +34,8 @@ socket.off('namespace:event_name', handleEventName);
 | `session:phase_changed` | `{ sessionId, phase }` | 100ms | `sessionQueryKey` | `save_intake_state` tool |
 | `asset:processing_progress` | `{ assetId, status, progress }` | 500ms | `sessionRoomsQueryKey` (only on ready/failed) | Image worker |
 | `render:started` | `{ assetId, roomId, sessionId }` | — | No invalidation (progress hook handles UI) | Render worker |
-| `render:complete` | `{ assetId, roomId, contentType, sizeBytes, model }` | 500ms | `sessionRoomsQueryKey` | Render worker |
-| `render:failed` | `{ assetId, roomId, error }` | 500ms | `sessionRoomsQueryKey` | Render worker |
+| `render:complete` | `{ assetId, roomId, sessionId, contentType, sizeBytes, model }` | 500ms | `sessionRoomsQueryKey` | Render worker |
+| `render:failed` | `{ assetId, roomId, sessionId, error }` | 500ms | `sessionRoomsQueryKey` | Render worker |
 | `connect` (reconnection) | — | 300ms | `sessionQueryKey`, `sessionRoomsQueryKey` | Socket.io client |
 
 ## Adding a New Event Type

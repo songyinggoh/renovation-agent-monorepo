@@ -134,7 +134,7 @@ The only existing worker. Key patterns to follow:
   ```
 - Workers must call `worker.close()` which waits for in-progress jobs to finish
 - Set per-worker shutdown timeout based on max job duration
-- Order: close queues (stop accepting) before closing workers (drain in-progress)
+- Order: pause queues (stop accepting new jobs) → drain workers (finish in-progress) → close Redis connections
 
 ### 7. Job Priority & Scheduling
 - Design priority levels for job types:
@@ -184,7 +184,7 @@ The only existing worker. Key patterns to follow:
 ### Shutdown Safely
 - Every worker MUST register with ShutdownManager
 - Shutdown timeout = max expected job duration + 2s buffer
-- Close queue connections after workers (workers need Redis during drain)
+- Close Redis/queue connections only after workers are fully drained (workers need Redis during drain)
 - Log in-progress job count at shutdown start for visibility
 
 ---
@@ -279,7 +279,7 @@ When designing queue topology or new workers, present:
 
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `C:\Users\user\Desktop\renovation-agent-monorepo\.claude\agent-memory\queue-operations-specialist\`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/queue-operations-specialist/` (relative to the repo root). Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
