@@ -58,7 +58,7 @@ export function execFileNoThrow(
         // Prefer error.status (exit code) over error.code (which may be a string like 'ERR_...')
         const exitCode =
           error && typeof (error as { status?: unknown }).status === 'number'
-            ? (error as { status: number }).status
+            ? (error as unknown as { status: number }).status
             : error && 'code' in error && typeof error.code === 'number'
               ? error.code
               : error
