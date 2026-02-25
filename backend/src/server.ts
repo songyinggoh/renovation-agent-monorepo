@@ -731,9 +731,11 @@ function setupGracefulShutdown(): void {
 }
 
 // ============================================
-// Start Server (only if not in test environment)
+// Start Server (skip only when vitest is running unit tests)
 // ============================================
-if (env.NODE_ENV !== 'test') {
+// NODE_ENV=test is also used by Playwright E2E runs, which DO need the real
+// server to start. Guard on VITEST instead — vitest sets it automatically.
+if (!process.env.VITEST) {
   startServer();
 }
 
