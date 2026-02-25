@@ -21,7 +21,12 @@ export type WorkflowPhase =
   | 'review'
   | 'complete';
 
-/** State tracked across the SOP workflow */
+/**
+ * State tracked across the SOP workflow.
+ * Note: The LangGraph SOPState (Task 13) defines its own Annotation.Root
+ * with additional fields (testRetries, qualityGatesPassed, etc.).
+ * This interface is for non-LangGraph consumers of workflow state.
+ */
 export interface WorkflowState {
   taskDescription: string;
   branchName: string;

@@ -15,25 +15,42 @@ const logger = new Logger({ serviceName: 'ClaudeConfig' });
  */
 
 /**
- * Create a Claude Sonnet model for dev-agent tasks.
- * Used for: scaffold, migration, test, implement agents.
+ * Model name constants for easy reference
  */
-export function createDevModel() {
+export const CLAUDE_MODELS = {
+  SONNET: 'claude-sonnet-4-20250514',
+  OPUS: 'claude-opus-4-20250514',
+} as const;
+
+/**
+ * Validate that the Anthropic API key is configured.
+ * Returns the key as a narrowed string type.
+ */
+function requireAnthropicKey(): string {
   if (!env.ANTHROPIC_API_KEY) {
     throw new Error(
       'ANTHROPIC_API_KEY is required for dev-agent. Set it in backend/.env'
     );
   }
+  return env.ANTHROPIC_API_KEY;
+}
+
+/**
+ * Create a Claude Sonnet model for dev-agent tasks.
+ * Used for: scaffold, migration, test, implement agents.
+ */
+export function createDevModel() {
+  const apiKey = requireAnthropicKey();
 
   logger.info('Creating Claude dev model', {
-    model: 'claude-sonnet-4-20250514',
+    model: CLAUDE_MODELS.SONNET,
     temperature: 0,
     maxTokens: 8192,
   });
 
   return new ChatAnthropic({
-    modelName: 'claude-sonnet-4-20250514',
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    modelName: CLAUDE_MODELS.SONNET,
+    anthropicApiKey: apiKey,
     temperature: 0,
     maxTokens: 8192,
   });
@@ -44,30 +61,18 @@ export function createDevModel() {
  * Used for: review agent (deeper reasoning needed).
  */
 export function createDevReviewModel() {
-  if (!env.ANTHROPIC_API_KEY) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is required for dev-agent. Set it in backend/.env'
-    );
-  }
+  const apiKey = requireAnthropicKey();
 
   logger.info('Creating Claude review model', {
-    model: 'claude-opus-4-20250514',
+    model: CLAUDE_MODELS.OPUS,
     temperature: 0,
     maxTokens: 8192,
   });
 
   return new ChatAnthropic({
-    modelName: 'claude-opus-4-20250514',
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    modelName: CLAUDE_MODELS.OPUS,
+    anthropicApiKey: apiKey,
     temperature: 0,
     maxTokens: 8192,
   });
 }
-
-/**
- * Model name constants for easy reference
- */
-export const CLAUDE_MODELS = {
-  SONNET: 'claude-sonnet-4-20250514',
-  OPUS: 'claude-opus-4-20250514',
-} as const;
