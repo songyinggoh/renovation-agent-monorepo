@@ -60,9 +60,10 @@ describe('ai-tracing', () => {
       expect(cost).toBeCloseTo(0.000225, 6);
     });
 
-    it('should calculate cost for gemini-1.5-pro', () => {
-      const cost = estimateCost('gemini-1.5-pro', 1000, 500);
-      expect(cost).toBeCloseTo(0.00375, 5);
+    it('should calculate cost for gemini-2.5-pro', () => {
+      const cost = estimateCost('gemini-2.5-pro', 1000, 500);
+      // input: 1000/1M * 1.25 = 0.00125, output: 500/1M * 10.00 = 0.005
+      expect(cost).toBeCloseTo(0.00625, 5);
     });
 
     it('should use default pricing for unknown models', () => {

@@ -239,7 +239,7 @@ describe('RenderService', () => {
       const result = await service.completeRender('asset-uuid-1', {
         imageBuffer: Buffer.from('image-data'),
         contentType: 'image/png',
-        metadata: { model: 'gemini-2.0-flash-exp', generationTimeMs: 5000 },
+        metadata: { model: 'gemini-2.5-flash-image', generationTimeMs: 5000 },
       });
 
       expect(result.status).toBe('ready');

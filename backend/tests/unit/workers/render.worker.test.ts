@@ -42,7 +42,7 @@ vi.mock('../../../src/services/image-generation.service.js', () => ({
     generate: vi.fn().mockResolvedValue({
       imageBuffer: Buffer.from('fake-image'),
       contentType: 'image/png',
-      metadata: { model: 'gemini-2.0-flash-exp', generationTimeMs: 1234 },
+      metadata: { model: 'gemini-2.5-flash-image', generationTimeMs: 1234 },
     }),
   }),
 }));
@@ -123,7 +123,7 @@ describe('RenderWorker', () => {
         generate: vi.fn().mockResolvedValue({
           imageBuffer: Buffer.from('fake-image'),
           contentType: 'image/png',
-          metadata: { model: 'gemini-2.0-flash-exp', generationTimeMs: 1234 },
+          metadata: { model: 'gemini-2.5-flash-image', generationTimeMs: 1234 },
         }),
       }),
     }));
