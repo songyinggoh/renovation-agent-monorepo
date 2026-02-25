@@ -17,8 +17,8 @@ test.describe('Chat Flow', () => {
     await sessionPage.goto(session.id);
 
     await expect(
-      sessionPage.connectionStatus.locator('[data-connected="true"]'),
-    ).toBeVisible();
+      sessionPage.connectionStatus,
+    ).toHaveAttribute('data-connected', 'true');
   });
 
   test('send message and receive streaming response', async ({ sessionPage, api }) => {

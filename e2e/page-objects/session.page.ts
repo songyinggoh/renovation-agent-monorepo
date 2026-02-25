@@ -33,8 +33,8 @@ export class SessionPage {
 
   async waitForConnection(timeout = 15_000) {
     await expect(
-      this.connectionStatus.locator('[data-connected="true"]'),
-    ).toBeVisible({ timeout });
+      this.connectionStatus,
+    ).toHaveAttribute('data-connected', 'true', { timeout });
   }
 
   async sendMessage(content: string) {
