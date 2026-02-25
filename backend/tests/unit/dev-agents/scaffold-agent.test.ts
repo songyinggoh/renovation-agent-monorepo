@@ -1,16 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock external dependencies before importing modules under test
 vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: vi.fn(({ name, tools, prompt }: {
-    name: string;
-    tools: unknown[];
-    prompt: string;
-  }) => ({
-    name,
-    tools,
-    prompt,
-  })),
+  createReactAgent: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 vi.mock('../../../src/config/claude.js', () => ({
@@ -34,19 +26,13 @@ import { writeTools } from '../../../src/dev-agents/tools/index.js';
 // ── createScaffoldAgent ──────────────────────────────────────────────────────
 
 describe('createScaffoldAgent', () => {
-  it('returns an agent with the correct name', () => {
-    // Arrange & Act
-    const agent = createScaffoldAgent();
-
-    // Assert
-    expect(agent.name).toBe(DEV_AGENT_NAMES.SCAFFOLD);
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('returns an agent with name matching "scaffold-agent"', () => {
-    // Arrange & Act
+  it('returns an agent with the correct name', () => {
     const agent = createScaffoldAgent();
-
-    // Assert
+    expect(agent.name).toBe(DEV_AGENT_NAMES.SCAFFOLD);
     expect(agent.name).toBe('scaffold-agent');
   });
 
@@ -110,8 +96,8 @@ describe('SCAFFOLD_AGENT_PROMPT', () => {
     expect(SCAFFOLD_AGENT_PROMPT).toContain('Zod');
   });
 
-  it('mentions no any types', () => {
-    expect(SCAFFOLD_AGENT_PROMPT).toContain('any');
+  it('prohibits any types', () => {
+    expect(SCAFFOLD_AGENT_PROMPT.toLowerCase()).toContain('no `any` types');
   });
 
   it('mentions conventional commit messages', () => {

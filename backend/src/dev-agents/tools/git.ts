@@ -12,6 +12,12 @@ import { Logger } from '../../utils/logger.js';
 
 const logger = new Logger({ serviceName: 'DevTools:Git' });
 
+/** Branches that dev agents must never checkout or overwrite. */
+const PROTECTED_BRANCHES = new Set(['main', 'master', 'dev', 'develop', 'production', 'staging']);
+
+/** Required prefix for any new branch created by dev agents. */
+const DEV_AGENT_BRANCH_PREFIX = 'dev-agent/';
+
 /**
  * git_status - Show the working tree status.
  */
@@ -127,6 +133,12 @@ export const gitBranchTool = tool(
         if (!name) {
           return JSON.stringify({ success: false, error: 'Branch name is required for create action' });
         }
+        if (!name.startsWith(DEV_AGENT_BRANCH_PREFIX)) {
+          return JSON.stringify({
+            success: false,
+            error: `Branch name must start with "${DEV_AGENT_BRANCH_PREFIX}". Got: "${name}"`,
+          });
+        }
         const result = await execFileNoThrow('git', ['checkout', '-b', name]);
         if (result.exitCode !== 0) {
           return JSON.stringify({ success: false, error: result.stderr });
@@ -137,6 +149,12 @@ export const gitBranchTool = tool(
       case 'checkout': {
         if (!name) {
           return JSON.stringify({ success: false, error: 'Branch name is required for checkout action' });
+        }
+        if (PROTECTED_BRANCHES.has(name)) {
+          return JSON.stringify({
+            success: false,
+            error: `Checkout of protected branch "${name}" is not allowed. Dev agents must stay on their working branch.`,
+          });
         }
         const result = await execFileNoThrow('git', ['checkout', name]);
         if (result.exitCode !== 0) {

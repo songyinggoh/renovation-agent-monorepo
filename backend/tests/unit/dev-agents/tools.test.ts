@@ -305,3 +305,49 @@ describe('individual tool names', () => {
     expect(gitBranchTool.name).toBe('git_branch');
   });
 });
+
+// ── git_branch protection guard ─────────────────────────────────────────────
+
+describe('git_branch protection guard', () => {
+  it('blocks checkout of main branch', async () => {
+    const result = await gitBranchTool.invoke({ action: 'checkout', name: 'main' });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('protected branch');
+  });
+
+  it('blocks checkout of master branch', async () => {
+    const result = await gitBranchTool.invoke({ action: 'checkout', name: 'master' });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('protected branch');
+  });
+
+  it('blocks checkout of dev branch', async () => {
+    const result = await gitBranchTool.invoke({ action: 'checkout', name: 'dev' });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('protected branch');
+  });
+
+  it('blocks checkout of production branch', async () => {
+    const result = await gitBranchTool.invoke({ action: 'checkout', name: 'production' });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('protected branch');
+  });
+
+  it('blocks branch creation without dev-agent/ prefix', async () => {
+    const result = await gitBranchTool.invoke({ action: 'create', name: 'my-feature' });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('dev-agent/');
+  });
+
+  it('allows branch creation with dev-agent/ prefix (passes guard)', async () => {
+    const result = await gitBranchTool.invoke({ action: 'create', name: 'dev-agent/test-feature' });
+    const parsed = JSON.parse(result);
+    // Guard should not block it — error should NOT mention the prefix requirement
+    expect(parsed.error || '').not.toContain('Branch name must start with');
+  });
+});
