@@ -134,6 +134,11 @@ const envSchema = z.object({
   STABILITY_API_KEY: z.string().optional(),
 
   // ============================================
+  // Anthropic Claude (Dev Agent Framework)
+  // ============================================
+  ANTHROPIC_API_KEY: z.string().optional(),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
