@@ -375,25 +375,214 @@ Individual tools log via structured Logger. No changes needed.
 | Loop breaker | `maxIterations` per graph | Agents stuck in cycles |
 | Agent-level | BullMQ `attempts` + `backoff` | Single agent failing repeatedly |
 
+### Circuit Breaker (Per-Action Rate Limiting)
+
+The kill switch is binary (on/off). A circuit breaker catches subtler runaway behavior — an agent calling a tool 50 times in a loop. Uses a Redis sliding-window counter (INCR + EXPIRE):
+
+```typescript
+interface CircuitBreakerOptions {
+  agentId: string;
+  action: string;          // e.g., 'generate_render', 'bash_exec'
+  maxCalls: number;        // e.g., 5 calls
+  windowSeconds: number;   // e.g., per 60 seconds
+}
+
+async function checkCircuitBreaker(opts: CircuitBreakerOptions): Promise<boolean> {
+  const key = `cb:${opts.agentId}:${opts.action}`;
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, opts.windowSeconds);
+  return count <= opts.maxCalls;
+}
+```
+
+The agent worker harness checks the circuit breaker before each tool invocation. If the breaker trips, the tool call returns an error message instead of executing — the agent can self-correct or the runtime takes a fallback edge.
+
+**Location:** `packages/orchestrator/src/governance/circuit-breaker.ts`
+
+## MCP Tool Server (Framework-Agnostic Tool Exposure)
+
+Tools in the framework are LangChain `StructuredTool` objects. MCP (Model Context Protocol) wraps them in a standard protocol so any MCP-compatible agent framework can discover and call them — not just our orchestrator.
+
+### Architecture
+
+```
+packages/orchestrator
+  └── MCP Server (stdio or HTTP transport)
+        └── Tools registered in AgentRegistry
+              ↑ consumed by
+  ┌────────────────────────────────────────────────┐
+  │  Any MCP-compatible agent                      │
+  │  - Our orchestrator (direct, no MCP overhead)  │
+  │  - Google ADK (native MCP support)             │
+  │  - Amazon Bedrock (native MCP support)         │
+  │  - External partner systems                    │
+  └────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+The MCP server auto-generates tool definitions from the `AgentRegistry`:
+
+```typescript
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+function createMcpServer(registry: AgentRegistry): McpServer {
+  const server = new McpServer({ name: 'orchestrator-tools', version: '1.0.0' });
+
+  for (const agent of registry.getAllAgents()) {
+    for (const tool of agent.tools) {
+      server.tool(tool.name, tool.description, tool.schema, async (input) => {
+        const result = await tool.invoke(input);
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      });
+    }
+  }
+
+  return server;
+}
+```
+
+**Packages required:** `@modelcontextprotocol/sdk` (MIT, free), `@langchain/mcp-adapters` (MIT, free) — both already evaluated in research.
+
+**Location:** `packages/orchestrator/src/interop/mcp-server.ts`
+
+**When to enable:** Optional. Agents within the orchestrator use tools directly (zero overhead). Enable the MCP server only when external frameworks need to call the same tools.
+
+## Cross-Session Memory (PostgresStore)
+
+The event store provides short-term memory (current workflow run). For long-term cross-session memory, the framework integrates `PostgresStore` from `@langchain/langgraph-checkpoint-postgres` (already installed — zero new dependencies).
+
+### Two-Layer Memory Architecture
+
+| Layer | Storage | Scope | Use for |
+|---|---|---|---|
+| Short-term | Event store (workflow_events table) | Current workflow run | Agent context, hand-off data, in-flight state |
+| Long-term | PostgresStore (namespaced key-value) | Cross-run, cross-workflow | User preferences, learned patterns, project conventions |
+
+### How It Works
+
+At workflow completion, a **memory projector** summarizes the run's events into durable long-term entries:
+
+```typescript
+import { PostgresStore } from '@langchain/langgraph-checkpoint-postgres/store';
+
+interface MemoryService {
+  store: PostgresStore;
+
+  /** Save a memory from a completed workflow run */
+  saveMemory(namespace: string[], key: string, value: Record<string, unknown>): Promise<void>;
+
+  /** Retrieve memories for context injection into new workflow runs */
+  getMemories(namespace: string[], options?: { query?: string; limit?: number }): Promise<SearchItem[]>;
+}
+```
+
+Agents receive relevant long-term memories as part of their context when dispatched:
+
+```typescript
+// In the agent worker harness, before invoking the agent:
+const memories = await memoryService.getMemories(
+  [workflowRunId, 'context'],
+  { query: agentDefinition.name, limit: 5 }
+);
+// Inject memories into the agent's event context
+```
+
+**Location:** `packages/orchestrator/src/memory/memory-service.ts`
+
+### Namespace Strategy
+
+```
+[userId, 'preferences']     → user style/budget preferences
+[projectId, 'conventions']  → learned project patterns
+[agentName, 'feedback']     → corrections received from reviews
+```
+
+## Event Triggers (Automatic Workflow Spawning)
+
+System events can automatically start new workflow runs without human intervention. A trigger watches the event store for specific patterns and spawns workflows in response.
+
+### Architecture
+
+```
+Event Store ──→ Trigger Listener ──→ matches pattern? ──→ Start new workflow run
+                                                     ──→ (no match, skip)
+```
+
+### Trigger Definition
+
+```typescript
+interface EventTrigger {
+  /** Unique trigger name */
+  name: string;
+  /** Event type pattern to watch for */
+  eventType: string;
+  /** Optional payload filter */
+  payloadMatch?: Record<string, unknown>;
+  /** Which workflow graph to start */
+  workflowGraphId: string;
+  /** How to derive the new workflow's initial events from the triggering event */
+  deriveInput: (triggeringEvent: AgentEvent) => AgentEvent[];
+  /** Cooldown — prevent re-triggering within this window */
+  cooldownMs?: number;
+}
+```
+
+### Example: Render Complete → Update Checklist
+
+```typescript
+const renderCompleteTrigger: EventTrigger = {
+  name: 'render-complete-update-checklist',
+  eventType: 'render_completed',
+  workflowGraphId: 'checklist-update',
+  deriveInput: (event) => [{
+    id: ulid(),
+    workflowRunId: '',  // filled by runtime
+    sourceAgent: 'trigger',
+    type: 'trigger_context',
+    payload: {
+      sessionId: event.payload.sessionId,
+      roomId: event.payload.roomId,
+      assetId: event.payload.assetId,
+      reason: 'render_completed',
+    },
+    timestamp: new Date(),
+  }],
+  cooldownMs: 60_000,  // Don't re-trigger within 1 minute
+};
+```
+
+### How It Works
+
+The trigger listener runs as a BullMQ worker that processes a dedicated `trigger-check` queue. When any agent worker appends events, it also enqueues a trigger check. The listener evaluates all registered triggers against the new events and spawns matching workflows.
+
+**Location:** `packages/orchestrator/src/triggers/event-trigger.ts`
+
+**Use cases:**
+- Render complete → update checklist automatically
+- Test failure → spawn a fix-and-retry workflow
+- New contractor bid → summarize and notify
+- Session idle >24h → re-engagement workflow
+
 ## Checklist Scorecard: 15/15
 
-| # | Item | Mechanism |
-|---|---|---|
-| 1 | Tool-Use (Function Calling) | Agents have tools, use ReAct to decide when/how |
-| 2 | Self-Correction | BullMQ retry + fallback edges in graph |
-| 3 | Planning Capability | ReAct agents + graph structure is itself a plan |
-| 4 | Flexible Topologies | Declarative graph: sequential, branching, cycles, fan-out/fan-in |
-| 5 | Hand-off Mechanism | Runtime dispatches next agent with full event history |
-| 6 | Broadcast vs. Direct | Fan-out edges = broadcast, single edges = direct |
-| 7 | Shared Context Window | Event log — any agent can replay all events from the run |
-| 8 | Persistence | PostgreSQL event store — resume by replaying events |
-| 9 | Memory Tiering | Short-term = current run events. Long-term = cross-run projector |
-| 10 | HITL | HITL nodes pause runtime, human appends event, runtime resumes |
-| 11 | Termination Conditions | Terminal nodes + maxIterations + per-agent retry limits |
-| 12 | Observability | Event log + OTel spans + tool-level logs (3 levels) |
-| 13 | Environment Isolation | Tool subsets → process isolation → Docker sandbox (3 layers) |
-| 14 | Async Support | BullMQ workers = true parallel execution |
-| 15 | Model Agnostic | Capability-based resolver, agents never import providers |
+| # | Item | Mechanism | Augmented by |
+|---|---|---|---|
+| 1 | Tool-Use (Function Calling) | Agents have tools, use ReAct to decide when/how | — |
+| 2 | Self-Correction | BullMQ retry + fallback edges in graph | **Circuit breaker** catches tool-call loops before kill switch needed |
+| 3 | Planning Capability | ReAct agents + graph structure is itself a plan | — |
+| 4 | Flexible Topologies | Declarative graph: sequential, branching, cycles, fan-out/fan-in | — |
+| 5 | Hand-off Mechanism | Runtime dispatches next agent with full event history | — |
+| 6 | Broadcast vs. Direct | Fan-out edges = broadcast, single edges = direct | — |
+| 7 | Shared Context Window | Event log — any agent can replay all events from the run | **Long-term memories** injected as context at dispatch |
+| 8 | Persistence | PostgreSQL event store — resume by replaying events | — |
+| 9 | Memory Tiering | Short-term = current run events. Long-term = cross-run projector | **PostgresStore** provides concrete long-term memory storage |
+| 10 | HITL | HITL nodes pause runtime, human appends event, runtime resumes | — |
+| 11 | Termination Conditions | Terminal nodes + maxIterations + per-agent retry limits | **Circuit breaker** adds per-action rate limiting (4th layer) |
+| 12 | Observability | Event log + OTel spans + tool-level logs (3 levels) | — |
+| 13 | Environment Isolation | Tool subsets → process isolation → Docker sandbox (3 layers) | — |
+| 14 | Async Support | BullMQ workers = true parallel execution | **Event triggers** spawn workflows from system events automatically |
+| 15 | Model Agnostic | Capability-based resolver, agents never import providers | **MCP server** makes tools framework-agnostic too (LangGraph, ADK, Bedrock) |
 
 ## The Litmus Test
 
@@ -417,6 +606,19 @@ export { ModelResolver } from './models/resolver';
 // Workers
 export { createAgentWorker } from './workers/agent-worker';
 export { createTickWorker } from './workers/tick-worker';
+
+// Governance
+export { isAgentEnabled, disableAgent, enableAgent } from './governance/kill-switch';
+export { checkCircuitBreaker, type CircuitBreakerOptions } from './governance/circuit-breaker';
+
+// Memory
+export { MemoryService } from './memory/memory-service';
+
+// Triggers
+export { EventTriggerRegistry, type EventTrigger } from './triggers/event-trigger';
+
+// Interop
+export { createMcpServer } from './interop/mcp-server';
 
 // Observability
 export { type WorkflowTrace } from './observability/types';
@@ -448,3 +650,158 @@ The framework imports nothing from `backend/src/` or `frontend/`. Domain code (d
 - `workflow/sop-graph.ts` (Task 13) — replaced by a declarative WorkflowGraph definition
 - `cli-workflow.ts` (Task 14) — replaced by new CLI with tick-driven resume
 - `workflow/quality-gates.ts` (Task 15) — becomes a regular agent in the framework
+
+---
+
+## Appendix A: Package Directory Structure
+
+```
+packages/orchestrator/
+├── src/
+│   ├── core/           # Graph runtime, event store, projector, workflow engine
+│   ├── agents/         # Agent registry, base agent interface
+│   ├── models/         # Capability-based model resolver, model registry
+│   ├── workers/        # BullMQ agent worker harness, tick worker
+│   ├── governance/     # Kill switch, circuit breaker
+│   ├── memory/         # PostgresStore-backed cross-session memory service
+│   ├── triggers/       # Event trigger registry and listener
+│   ├── interop/        # MCP tool server, future A2A agent cards
+│   ├── observability/  # OTel trace emitter, event logger, workflow trace types
+│   ├── tools/          # Framework-provided tools (e.g., createDockerBashTool)
+│   └── index.ts        # Public API barrel export
+├── package.json
+└── tsconfig.json
+```
+
+## Appendix B: Concrete Model Registry Example
+
+Four models spanning two providers, demonstrating how the resolver picks the cheapest qualifying model:
+
+```typescript
+const modelRegistry: ModelRegistryEntry[] = [
+  {
+    id: 'claude-haiku-4-5',
+    provider: 'anthropic',
+    reasoning: 'low',
+    speed: 'fast',
+    costPer1kTokens: 0.001,
+    capabilities: ['tool-use', 'structured-output'],
+    factory: (apiKey) => new ChatAnthropic({
+      modelName: 'claude-haiku-4-5-20251001',
+      anthropicApiKey: apiKey,
+      temperature: 0,
+      maxTokens: 4096,
+    }),
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    provider: 'anthropic',
+    reasoning: 'medium',
+    speed: 'moderate',
+    costPer1kTokens: 0.003,
+    capabilities: ['vision', 'tool-use', 'structured-output'],
+    factory: (apiKey) => new ChatAnthropic({
+      modelName: 'claude-sonnet-4-6',
+      anthropicApiKey: apiKey,
+      temperature: 0,
+      maxTokens: 8192,
+    }),
+  },
+  {
+    id: 'claude-opus-4-6',
+    provider: 'anthropic',
+    reasoning: 'high',
+    speed: 'slow-ok',
+    costPer1kTokens: 0.015,
+    capabilities: ['vision', 'tool-use', 'structured-output'],
+    factory: (apiKey) => new ChatAnthropic({
+      modelName: 'claude-opus-4-6',
+      anthropicApiKey: apiKey,
+      temperature: 0,
+      maxTokens: 8192,
+    }),
+  },
+  {
+    id: 'gemini-2.5-flash',
+    provider: 'google',
+    reasoning: 'medium',
+    speed: 'fast',
+    costPer1kTokens: 0.0,  // free tier
+    capabilities: ['vision', 'tool-use', 'structured-output'],
+    factory: (apiKey) => new ChatGoogleGenerativeAI({
+      model: 'gemini-2.5-flash',
+      apiKey,
+      temperature: 0,
+      maxOutputTokens: 8192,
+    }),
+  },
+  // Add any new model here — zero agent code changes
+];
+```
+
+## Appendix C: Agent Registration Example
+
+How the existing scaffold agent transforms from a `createReactAgent` wrapper into an `AgentDefinition`. Note: no model import, no provider reference.
+
+```typescript
+import { writeTools } from '../tools/index.js';
+import { SCAFFOLD_AGENT_PROMPT } from './prompt.js';
+import type { AgentDefinition } from '@renovation/orchestrator';
+
+export const scaffoldAgent: AgentDefinition = {
+  name: 'scaffold',
+  description: 'Generates boilerplate following project conventions by reading existing files as templates',
+  tools: writeTools,
+  prompt: SCAFFOLD_AGENT_PROMPT,
+  modelRequirements: {
+    reasoning: 'medium',
+    speed: 'moderate',
+    capabilities: ['tool-use'],
+  },
+  execution: {
+    timeoutMs: 60_000,
+    maxRetries: 2,
+    concurrency: 1,
+    sandbox: 'process',
+  },
+};
+```
+
+## Appendix D: OTel Span Attributes
+
+Each BullMQ agent worker execution produces an OpenTelemetry span with these attributes:
+
+```typescript
+{
+  traceId: "<workflow_run_id>",
+  spanName: "agent:scaffold",
+  attributes: {
+    "agent.name": "scaffold",
+    "workflow.run_id": "wf_01J...",
+    "workflow.node_id": "node_3",
+    "model.resolved": "claude-sonnet-4-6",
+    "model.provider": "anthropic",
+    "model.cost_per_1k_tokens": 0.003,
+    "tools.available": ["file_read", "file_write", "file_edit", "bash_exec", "codebase_search", "file_find", "git_status", "git_diff"],
+    "tools.invoked": ["file_read", "codebase_search", "file_write"],
+    "events.emitted": 3,
+    "events.types": ["file_created", "file_created", "scaffold_completed"],
+    "duration_ms": 14200,
+  }
+}
+```
+
+Integrates with existing `backend/src/config/telemetry.ts` infrastructure — no new tracing backend needed.
+
+## Appendix E: Brainstorming Decision Log
+
+Decisions made during the design session (2026-02-26):
+
+| Question | Options Evaluated | Choice | Why |
+|---|---|---|---|
+| What workload does this serve? | A) Dev agents only, B) Renovation agents only, C) General-purpose agent-agnostic | C | Scores highest on checklist; both dev and renovation agents become "packs" |
+| Execution model? | A) In-process single event loop, B) Worker-based BullMQ, C) Hybrid | B | True parallel, process isolation, crash recovery. Existing BullMQ infra reused |
+| State model? | A) Centralized mutable row, B) Event-sourced append-only log | B | No write conflicts, natural audit trail, observability and memory tiering for free |
+| Routing model? | A) Central supervisor, B) Reactive event-driven, C) Declarative graph + runtime | C | Subsumes A and B. Covers 13/15 checklist items vs 9/15 and 8/15 |
+| LLM abstraction? | A) Multi-provider imports, B) Multi-tier single provider, C) Capability-based resolution | C | Only option where agents never import a provider. True model agnosticism |
+| Package location? | A) Inside backend/src, B) Separate monorepo package, C) Standalone repo | B | Enforces framework boundary. Already have packages/ with shared-types |
