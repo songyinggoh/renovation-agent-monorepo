@@ -69,6 +69,17 @@ interface WorkflowGraph {
   hitlNodes: string[];
   /** Global loop breaker — max times the runtime can tick */
   maxIterations: number;
+  /** Optional cost constraints for the entire workflow run */
+  budget?: WorkflowBudget;
+}
+
+interface WorkflowBudget {
+  /** Halt workflow immediately if exceeded */
+  hardCapUsd?: number;
+  /** Emit warning event but continue */
+  softCapUsd?: number;
+  /** Per-agent cap — skip agent if exceeded, allow others to proceed */
+  perAgentCapUsd?: number;
 }
 
 interface NodeDefinition {
@@ -169,10 +180,17 @@ const devWorkflowProjector: Projector<DevWorkflowState> = {
 };
 ```
 
-### Memory Tiering
+### Memory Tiering (3-Tier Architecture)
 
-- **Short-term**: Events from the current workflow run. Agents receive these as context.
-- **Long-term**: A separate projector summarizes completed workflow runs into a `workflow_memory` table. Future agents can query past patterns (e.g., "what approach worked last time for this type of task").
+| Tier | Storage | Scope | Content |
+|---|---|---|---|
+| 1. Raw Memory Stream | Event store (workflow_events) | Current workflow run | Every agent action, tool result, runtime decision — append-only |
+| 2. Reflections | PostgresStore (namespaced) | Cross-run | Synthesized insights derived from raw memories by a background worker |
+| 3. Retrieval Context | Computed at dispatch time | Per-agent-invocation | Top-K memories scored by `recency + importance + relevance` |
+
+- **Short-term**: Tier 1 events from the current workflow run. Agents receive these as context.
+- **Long-term**: Tier 2 reflections + raw long-term entries in PostgresStore. Future agents query past patterns (e.g., "what approach worked last time for this type of task").
+- **Retrieval**: Tier 3 is computed on-the-fly at agent dispatch. See Memory Reflection/Synthesis section for the scoring formula and synthesis mechanism.
 
 ## Graph Runtime
 
@@ -564,25 +582,418 @@ The trigger listener runs as a BullMQ worker that processes a dedicated `trigger
 - New contractor bid → summarize and notify
 - Session idle >24h → re-engagement workflow
 
+## Token/Cost Accounting & Budget Enforcement
+
+The framework tracks token consumption per-agent and per-workflow, enforces budget limits, and optimizes cost through LLM cascades and caching. Without cost accounting, parallel agent workflows risk 5-6x cost multipliers from redundant processing.
+
+**Sources:** BudgetMLAgent (ACM AIML Systems 2024, 94.2% cost reduction), BAAR (arXiv 2602.21227, Feb 2026), AgentDiet (arXiv 2509.23586, 39-60% input token reduction), Hierarchical Caching (MDPI Jan 2026, 62% cache hit rate)
+
+### Cost Ledger (Event-Sourced)
+
+After every LLM invocation, the agent worker emits a `token_usage` event:
+
+```typescript
+interface TokenUsageEvent {
+  type: 'token_usage';
+  payload: {
+    agentName: string;
+    modelId: string;
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+  };
+}
+```
+
+A `CostProjector` folds these events into per-agent and per-workflow cost state — same projector pattern used for all other state derivation:
+
+```typescript
+const costProjector: Projector<CostState> = {
+  initial: { totalCostUsd: 0, byAgent: {} },
+  reduce(state, event) {
+    if (event.type !== 'token_usage') return state;
+    const { agentName, estimatedCostUsd } = event.payload;
+    const agentCost = state.byAgent[agentName] ?? { totalCostUsd: 0, invocations: 0 };
+    return {
+      totalCostUsd: state.totalCostUsd + estimatedCostUsd,
+      byAgent: {
+        ...state.byAgent,
+        [agentName]: {
+          totalCostUsd: agentCost.totalCostUsd + estimatedCostUsd,
+          invocations: agentCost.invocations + 1,
+        },
+      },
+    };
+  },
+};
+```
+
+### Budget Enforcement in Tick Worker
+
+Before dispatching any agent, the tick worker derives cost state and checks the workflow budget:
+
+```
+Tick worker receives tick:
+  1. Derive cost state from token_usage events
+  2. If totalCostUsd >= hardCapUsd → append "budget_exceeded" event, STOP
+  3. If totalCostUsd >= softCapUsd → append "budget_warning" event, continue
+  4. For each ready agent:
+     a. If agent's totalCostUsd >= perAgentCapUsd → skip this agent
+     b. Pass remainingBudget to ModelResolver (tighten maxCostPer1kTokens)
+     c. Dispatch agent job
+```
+
+Budget-remaining-aware model resolution: as the budget depletes, the resolver dynamically tightens cost constraints, selecting cheaper models — graceful degradation instead of hard failure.
+
+### LLM Cascade (Scout/Sniper Pattern)
+
+The ModelResolver gains an optional cascade mode. A cheap "scout" model attempts the task first; an expensive "sniper" model is invoked only if the scout's confidence is below threshold:
+
+```typescript
+interface CascadeConfig {
+  /** Enable cascade mode — scout tries first, sniper escalates */
+  enableCascade: boolean;
+  /** Confidence threshold below which the sniper is called */
+  confidenceThreshold: number;
+}
+
+// Example cascade chains for the model registry:
+// Research agent:  gemini-2.5-flash (free) → claude-haiku-4-5 ($0.001/1k)
+// Implement agent: claude-haiku-4-5 ($0.001/1k) → claude-sonnet-4-6 ($0.003/1k)
+// Review agent:    No cascade — Opus required for high-reasoning tasks
+```
+
+### Tool-Level Caching
+
+The agent worker harness wraps `tool.invoke()` with a Redis cache. When parallel agents call the same read-only tool with the same input, the tool executes once:
+
+```
+Cache key: tool-cache:{workflowRunId}:{toolName}:{sha256(input)}
+TTLs:      file_read = 300s, codebase_search = 120s, git_status = 30s
+Never cached: file_write, file_edit, bash_exec, git_commit (write tools)
+Invalidation: file_write to path X invalidates file_read cache for path X
+```
+
+**Location:** `packages/orchestrator/src/governance/cost-ledger.ts`, `budget-enforcer.ts`, `tool-cache.ts`
+
+---
+
+## Anomaly Detection (4-Layer Defense)
+
+Governance (kill switch, circuit breaker, maxIterations) **stops** bad behavior. Anomaly detection **identifies** it before it causes damage. The framework implements a 4-layer detection stack, escalating in cost and precision.
+
+**Sources:** MAST taxonomy (arXiv:2503.13657, 14 failure modes, 1,600+ traces), SentinelAgent (arXiv:2505.24201, graph-based detection), Neural Howlround (arXiv:2504.07992), AgentOps Survey (arXiv:2508.02121)
+
+### Anomaly Taxonomy
+
+Two categories of failure, requiring different detection strategies:
+
+**Intra-Agent** (within a single agent):
+| Class | Example | Signal |
+|---|---|---|
+| Reasoning | Hallucinated facts, circular logic | Output contradicts retrieved context |
+| Planning | Incoherent step ordering | Step sequence fails dependency check |
+| Action | Wrong tool called, bad parameters | Tool schema validation failure |
+| Memory | Stale context injection | Retrieved chunk age exceeds threshold |
+
+**Inter-Agent** (only manifest through agent-to-agent dynamics):
+| Class | Example | Signal |
+|---|---|---|
+| Communication | Message storms, excessive messaging | Event rate > threshold per window |
+| Trust | Blindly accepting unverified peer output | Downstream result contradicts upstream evidence |
+| Termination | Infinite delegation, premature stops | Step counter > limit without progress |
+| Emergent | Collective hallucination, collusive delegation | Execution path deviates from known safe templates |
+
+### The 4 Detection Layers
+
+```
+Layer 1 — Structural (free, catches graph cycles):
+  maxIterations + per-node visit counter in derivePosition()
+  → Catches: true infinite loops, runaway tool chains
+
+Layer 2 — Heuristic (free, catches progress stalls):
+  Intention revision counter + active step progress check
+  → Catches: perseverative thinking (revise plan endlessly without executing)
+  → Signal: intentionRevisionCount >= 3 AND activeStep === 0
+
+Layer 3 — Semantic (1 embedding call/step, catches howlround):
+  Cosine similarity across last N agent outputs in sliding window
+  → Catches: neural howlround — semantic lock-in that PASSES structural checks
+  → Signal: avgSimilarity >= 0.95 across last 3 outputs
+
+Layer 4 — HITL Escalation (manual, last resort):
+  Pause workflow, append "anomaly_escalation" event, notify human
+  → Catches: anything layers 1-3 miss; provides training signal for rules
+```
+
+### Neural Howlround Detection
+
+Neural howlround (arXiv:2504.07992) is a self-reinforcing cognitive loop where the agent's outputs converge semantically even though each step terminates normally. It is NOT caught by recursion limits or circuit breakers.
+
+```typescript
+interface HowlroundDetector {
+  windowSize: number;           // e.g., 3 recent outputs
+  similarityThreshold: number;  // e.g., 0.95
+  outputHistory: string[];
+}
+
+async function detectHowlround(
+  detector: HowlroundDetector,
+  newOutput: string,
+  embedFn: (text: string) => Promise<number[]>,
+): Promise<{ isLocked: boolean; avgSimilarity: number }> {
+  const history = detector.outputHistory.slice(-detector.windowSize);
+  if (history.length < 2) {
+    detector.outputHistory.push(newOutput);
+    return { isLocked: false, avgSimilarity: 0 };
+  }
+  const newEmbed = await embedFn(newOutput);
+  const similarities = await Promise.all(
+    history.map(async (prev) => cosineSimilarity(newEmbed, await embedFn(prev))),
+  );
+  const avg = similarities.reduce((a, b) => a + b, 0) / similarities.length;
+  detector.outputHistory.push(newOutput);
+  return { isLocked: avg >= detector.similarityThreshold, avgSimilarity: avg };
+}
+```
+
+When howlround is detected, the agent worker applies **dynamic attenuation** — injecting a counter-prompt that breaks the semantic attractor:
+
+- Mild (similarity 0.85-0.90): "Consider a fundamentally different approach."
+- Moderate (0.90-0.95): "Your recent outputs are converging. Explore an orthogonal strategy."
+- Strong (>0.95): "Discard your current approach. Start from first principles."
+
+If attenuation fails after 2 attempts, the runtime escalates to Layer 4 (HITL).
+
+**Location:** `packages/orchestrator/src/governance/anomaly-detector.ts`
+
+---
+
+## Cognitive State Events (BDI Snapshots)
+
+Events capture **what** an agent did. BDI (Belief-Desire-Intention) snapshots capture **why**. This enables debugging reasoning failures, not just action failures.
+
+**Sources:** BDI Ontology (arXiv:2511.17162), AgentOps Taxonomy (arXiv:2411.05285), OTel GenAI Agent Span Conventions (v1.37+)
+
+### Structured Cognitive Event Types
+
+Agents emit these alongside domain events at node boundaries:
+
+| Event Type | When Emitted | Payload |
+|---|---|---|
+| `beliefs_updated` | After tool results or context injection | `{ retrievedContext, toolResults, environmentState }` |
+| `intent_formed` | After planning step | `{ primaryGoal, subGoals, constraints }` |
+| `plan_committed` | Before execution begins | `{ currentPlan, plannedToolCalls }` |
+| `confidence_reported` | After each output | `{ confidence: 0-1, reasoning: string }` |
+
+### OTel Integration
+
+BDI snapshots are emitted as OpenTelemetry span attributes using the official GenAI semantic conventions (v1.37+):
+
+```typescript
+{
+  // Standard GenAI conventions
+  "gen_ai.agent.name": "implement",
+  // BDI-specific attributes (custom namespace)
+  "agent.bdi.beliefs.context_count": 12,
+  "agent.bdi.beliefs.last_updated_at": 1740600000,
+  "agent.bdi.desires.primary_goal": "Add file_edit tool with search-replace semantics",
+  "agent.bdi.intentions.active_step": 2,
+  "agent.bdi.intentions.plan_depth": 5,
+  "agent.bdi.intentions.revision_count": 0,
+  "agent.bdi.confidence": 0.87,
+}
+```
+
+### Belief-Desire Divergence Detection
+
+BDI snapshots feed anomaly detection Layer 2. When an agent's beliefs contradict its desires for 3+ consecutive steps, the anomaly detector flags it as a misalignment:
+
+| Divergence Pattern | Detection |
+|---|---|
+| Belief-Desire mismatch | Retrieved context contradicts stated goal for 3+ steps |
+| Intention lock | `intentionRevisionCount === 0` for many steps despite failed tool calls |
+| Belief staleness | `beliefs.lastUpdatedAt` delta > threshold with no new retrieval |
+| Plan-Action gap | Agent's committed plan doesn't match its actual tool invocations |
+
+**Location:** Augments `packages/orchestrator/src/observability/bdi-snapshots.ts`
+
+---
+
+## Memory Reflection/Synthesis
+
+The Cross-Session Memory section describes the storage layer (PostgresStore). This section adds the **intelligence layer** — periodic synthesis of raw memories into higher-level insights that prevent cognitive stagnation.
+
+**Sources:** Generative Agents (Park et al. 2023, Stanford), Memory in the Age of AI Agents (arXiv:2512.13564), LangMem (LangChain official)
+
+### The Stagnation Problem
+
+Without reflection, agents can recall "user said they want oak cabinets" but cannot generalize to "this user consistently prefers natural wood finishes." Raw event memories accumulate noise; signal drowns in volume. Each session starts cold.
+
+### Reflection Mechanism
+
+A BullMQ background worker (not inline — zero latency impact on chat) synthesizes patterns from raw memories:
+
+**Trigger**: When the cumulative importance score of recent raw memories exceeds a threshold (e.g., 150), or on a daily cron schedule.
+
+**Process**:
+1. Load the top 100 raw memories by importance score
+2. Ask the LLM: "What are the 5 most important high-level patterns?"
+3. For each pattern, synthesize a one-sentence reflection
+4. Store reflections back in PostgresStore with `isReflection: true` and high importance score
+
+### Importance Scoring
+
+Every memory is scored 1-10 at write time by a cheap LLM call:
+- "User said 'ok'" → importance 2
+- "User wants oak cabinets in the kitchen" → importance 7
+- "User explicitly corrected a prior recommendation" → importance 10
+
+### Retrieval Formula
+
+When the agent worker builds context for dispatch, it retrieves the top-K most relevant memories using:
+
+```
+score = recency + importance + relevance
+
+recency    = 0.99 ^ hours_since_last_access    (exponential decay)
+importance = (llm_score_1_to_10 - 1) / 9       (normalized to 0-1)
+relevance  = cosine_similarity(memory_embedding, task_embedding)
+```
+
+This ensures recent, important, and relevant memories surface first — while 30-day-old high-importance memories still score 0.49 on recency (not forgotten).
+
+### Anti-Stagnation Mechanisms
+
+| Risk | Mitigation |
+|---|---|
+| Old preferences forgotten | Slow recency decay (0.99/hr) |
+| Mundane events dominate | Importance scoring caps their influence |
+| Reflections become self-similar | Prompt forces 5 distinct questions before synthesizing |
+| Memory grows unbounded | Weekly pruning: raw memories older than 90 days with importance < 4 |
+| Wrong conclusions reinforced | User corrections stored with importance 10, override prior reflections |
+
+**Location:** `packages/orchestrator/src/memory/reflection.ts`, `memory-synthesis.worker.ts`
+
+---
+
+## Agent-as-Tool Compositional Primitive
+
+The graph defines **inter-turn** composition (node → edge → node, each in its own BullMQ job). Agent-as-Tool adds **intra-turn** composition — one agent invoking another as a tool within a single execution, with control always returning to the caller.
+
+**Sources:** Google ADK AgentTool, Technical Selection Report (Magnetic pattern)
+
+### Two Composition Modes
+
+| Mode | Mechanism | Control Flow | When to Use |
+|---|---|---|---|
+| Graph routing | Edge dispatches next agent via tick worker | Transfer — next agent takes over | Sequential phase transitions |
+| Agent-as-Tool | Agent invokes another as a tool call | Return — caller synthesizes result | Coordinator needs discrete computation from multiple specialists |
+
+### createAgentTool
+
+Wraps an `AgentDefinition` as a `ToolDefinition`. The coordinator calls it like any other tool; the specialist runs its full ReAct loop in an isolated session; the result is returned as a tool result string.
+
+```typescript
+function createAgentTool(agent: AgentDefinition): ToolDefinition {
+  return {
+    name: agent.name,
+    description: agent.description,
+    schema: z.object({
+      input: z.string().describe('Task description for the specialist'),
+    }),
+    invoke: async ({ input }) => {
+      const model = modelResolver.resolve(agent.modelRequirements);
+      const reactAgent = createReactAgent({
+        llm: model,
+        tools: agent.tools,
+        prompt: agent.prompt,
+      });
+      const result = await reactAgent.invoke({
+        messages: [{ role: 'user', content: input }],
+      });
+      const lastMessage = result.messages[result.messages.length - 1];
+      return lastMessage.content as string;
+    },
+  };
+}
+```
+
+### Example: Coordinator Synthesizing Multiple Specialists
+
+```typescript
+const coordinatorAgent: AgentDefinition = {
+  name: 'coordinator',
+  description: 'Gathers results from specialists and synthesizes a unified plan',
+  tools: [
+    createAgentTool(productSpecialist),    // returns JSON product list
+    createAgentTool(contractorSpecialist),  // returns JSON contractor list
+    savePlanTool,
+  ],
+  modelRequirements: { reasoning: 'medium', speed: 'moderate' },
+  prompt: 'Coordinate renovation planning. Use specialists for domain tasks. Synthesize results into a single coherent plan.',
+  execution: { timeoutMs: 120_000, maxRetries: 2, concurrency: 1, sandbox: 'process' },
+};
+```
+
+Each specialist invocation runs in an **isolated session** — no shared state leakage. The coordinator sees only the specialist's final answer, not its internal reasoning chain.
+
+**Location:** `packages/orchestrator/src/agents/agent-tool.ts`
+
+---
+
+## Durable Execution via Event Replay
+
+The event-sourced design provides Temporal-equivalent crash recovery without a new infrastructure dependency. This section makes the durability guarantee explicit.
+
+**Sources:** Temporal (used by OpenAI Codex), Technical Selection Report, Framework Comparison XLSX
+
+### How It Works
+
+The tick worker replays events to derive the current graph position. If the system crashes mid-workflow:
+
+1. BullMQ marks the in-flight agent job as failed
+2. BullMQ retries the job (or the tick worker re-evaluates)
+3. Tick worker replays the event log — sees which agents have emitted completion events
+4. Agents whose completion events already exist are NOT re-dispatched
+5. Only the agent that was in-flight at crash time is re-run
+
+**Zero wasted LLM calls on crash recovery.** This is architecturally equivalent to Temporal's Event History replay — the event store IS the checkpoint log.
+
+### Comparison to Temporal
+
+| Capability | Event Store + BullMQ | Temporal |
+|---|---|---|
+| Checkpoint storage | PostgreSQL event store (built-in) | Temporal Event History (automatic) |
+| Replay logic | Tick worker derives position from events | Temporal replays workflow code against history |
+| Crash recovery | Re-run only incomplete agents | Re-run only incomplete activities |
+| Sub-workflow | Event triggers spawn child workflow runs | Native child workflows |
+| Long-duration | BullMQ job timeout + retry | Native heartbeating |
+| Audit trail | Event store (append-only, queryable) | Event History (append-only, queryable) |
+
+**Upgrade path:** If workflows grow beyond 10+ steps or require hour-long durations, Temporal is the natural migration. The event store maps cleanly to Temporal's Event History concept.
+
+---
+
 ## Checklist Scorecard: 15/15
 
-| # | Item | Mechanism | Augmented by |
-|---|---|---|---|
-| 1 | Tool-Use (Function Calling) | Agents have tools, use ReAct to decide when/how | — |
-| 2 | Self-Correction | BullMQ retry + fallback edges in graph | **Circuit breaker** catches tool-call loops before kill switch needed |
-| 3 | Planning Capability | ReAct agents + graph structure is itself a plan | — |
-| 4 | Flexible Topologies | Declarative graph: sequential, branching, cycles, fan-out/fan-in | — |
-| 5 | Hand-off Mechanism | Runtime dispatches next agent with full event history | — |
-| 6 | Broadcast vs. Direct | Fan-out edges = broadcast, single edges = direct | — |
-| 7 | Shared Context Window | Event log — any agent can replay all events from the run | **Long-term memories** injected as context at dispatch |
-| 8 | Persistence | PostgreSQL event store — resume by replaying events | — |
-| 9 | Memory Tiering | Short-term = current run events. Long-term = cross-run projector | **PostgresStore** provides concrete long-term memory storage |
-| 10 | HITL | HITL nodes pause runtime, human appends event, runtime resumes | — |
-| 11 | Termination Conditions | Terminal nodes + maxIterations + per-agent retry limits | **Circuit breaker** adds per-action rate limiting (4th layer) |
-| 12 | Observability | Event log + OTel spans + tool-level logs (3 levels) | — |
-| 13 | Environment Isolation | Tool subsets → process isolation → Docker sandbox (3 layers) | — |
-| 14 | Async Support | BullMQ workers = true parallel execution | **Event triggers** spawn workflows from system events automatically |
-| 15 | Model Agnostic | Capability-based resolver, agents never import providers | **MCP server** makes tools framework-agnostic too (LangGraph, ADK, Bedrock) |
+| # | Item | Mechanism | Augmented by (Wave 1) | Augmented by (Wave 2) |
+|---|---|---|---|---|
+| 1 | Tool-Use (Function Calling) | Agents have tools, use ReAct to decide when/how | — | — |
+| 2 | Self-Correction | BullMQ retry + fallback edges in graph | **Circuit breaker** catches tool-call loops | **Anomaly detection** (4-layer: structural → heuristic → semantic → HITL). **Budget-aware routing** degrades to cheaper model instead of failing |
+| 3 | Planning Capability | ReAct agents + graph structure is itself a plan | — | **BDI snapshots** capture agent intent, enabling plan-action gap detection |
+| 4 | Flexible Topologies | Declarative graph: sequential, branching, cycles, fan-out/fan-in | — | **Agent-as-Tool** adds intra-turn composition alongside inter-turn graph routing |
+| 5 | Hand-off Mechanism | Runtime dispatches next agent with full event history | — | **Agent-as-Tool** provides a second hand-off mode: tool invocation with guaranteed return |
+| 6 | Broadcast vs. Direct | Fan-out edges = broadcast, single edges = direct | — | — |
+| 7 | Shared Context Window | Event log — any agent can replay all events from the run | **Long-term memories** injected as context at dispatch | **Memory reflections** surface synthesized patterns, not just raw events |
+| 8 | Persistence | PostgreSQL event store — resume by replaying events | — | **Durable execution** explicitly documented: event replay = Temporal-equivalent crash recovery |
+| 9 | Memory Tiering | Short-term = current run events. Long-term = cross-run projector | **PostgresStore** provides concrete long-term memory storage | **3-tier memory**: raw stream → reflections → retrieval context. Importance scoring + retrieval formula |
+| 10 | HITL | HITL nodes pause runtime, human appends event, runtime resumes | — | **Anomaly Layer 4** escalates to HITL when detection layers 1-3 are insufficient |
+| 11 | Termination Conditions | Terminal nodes + maxIterations + per-agent retry limits | **Circuit breaker** adds per-action rate limiting | **Howlround detector** catches semantic loops that pass structural checks. **Budget hard cap** halts runaway spending |
+| 12 | Observability | Event log + OTel spans + tool-level logs (3 levels) | — | **BDI snapshots** (cognitive state). **Cost ledger** (per-agent token/cost tracking). **Anomaly taxonomy** (intra/inter-agent failure classification) |
+| 13 | Environment Isolation | Tool subsets → process isolation → Docker sandbox (3 layers) | — | **Tool-level caching** adds isolation between parallel agents' read-only tool calls |
+| 14 | Async Support | BullMQ workers = true parallel execution | **Event triggers** spawn workflows from system events | **Reflection synthesis worker** runs as background BullMQ job, never inline |
+| 15 | Model Agnostic | Capability-based resolver, agents never import providers | **MCP server** makes tools framework-agnostic | **LLM cascade** (Scout/Sniper) dynamically routes to cheaper models. **Budget-aware resolution** tightens cost constraints as budget depletes |
 
 ## The Litmus Test
 
@@ -598,9 +1009,9 @@ export { EventStore, type AgentEvent } from './core/event-store';
 export { GraphRuntime, type WorkflowGraph, type NodeDefinition, type EdgeDefinition } from './core/graph-runtime';
 export { deriveState, type Projector } from './core/projector';
 
-// Agents
+// Agents (see also governance section for createAgentTool)
 export { AgentRegistry, type AgentDefinition } from './agents/registry';
-export { type ModelRequirements } from './models/types';
+export { type ModelRequirements, type CascadeConfig } from './models/types';
 export { ModelResolver } from './models/resolver';
 
 // Workers
@@ -610,9 +1021,16 @@ export { createTickWorker } from './workers/tick-worker';
 // Governance
 export { isAgentEnabled, disableAgent, enableAgent } from './governance/kill-switch';
 export { checkCircuitBreaker, type CircuitBreakerOptions } from './governance/circuit-breaker';
+export { CostLedger, CostProjector, type TokenUsageEvent, type CostState } from './governance/cost-ledger';
+export { BudgetEnforcer, type WorkflowBudget } from './governance/budget-enforcer';
+export { AnomalyDetector, type HowlroundDetector } from './governance/anomaly-detector';
+export { ToolCache } from './governance/tool-cache';
+export { createAgentTool } from './agents/agent-tool';
 
 // Memory
 export { MemoryService } from './memory/memory-service';
+export { ReflectionSynthesizer } from './memory/reflection';
+export { createMemorySynthesisWorker } from './memory/memory-synthesis-worker';
 
 // Triggers
 export { EventTriggerRegistry, type EventTrigger } from './triggers/event-trigger';
@@ -622,6 +1040,7 @@ export { createMcpServer } from './interop/mcp-server';
 
 // Observability
 export { type WorkflowTrace } from './observability/types';
+export { emitBDISnapshot, type BDISnapshot } from './observability/bdi-snapshots';
 
 // Tools (reusable)
 export { createDockerBashTool } from './tools/docker-bash';
@@ -658,17 +1077,30 @@ The framework imports nothing from `backend/src/` or `frontend/`. Domain code (d
 ```
 packages/orchestrator/
 ├── src/
-│   ├── core/           # Graph runtime, event store, projector, workflow engine
-│   ├── agents/         # Agent registry, base agent interface
-│   ├── models/         # Capability-based model resolver, model registry
-│   ├── workers/        # BullMQ agent worker harness, tick worker
-│   ├── governance/     # Kill switch, circuit breaker
-│   ├── memory/         # PostgresStore-backed cross-session memory service
-│   ├── triggers/       # Event trigger registry and listener
-│   ├── interop/        # MCP tool server, future A2A agent cards
-│   ├── observability/  # OTel trace emitter, event logger, workflow trace types
-│   ├── tools/          # Framework-provided tools (e.g., createDockerBashTool)
-│   └── index.ts        # Public API barrel export
+│   ├── core/              # Graph runtime, event store, projector, workflow engine
+│   ├── agents/            # Agent registry, base agent interface, agent-tool primitive
+│   │   ├── registry.ts
+│   │   └── agent-tool.ts  # createAgentTool — wraps AgentDefinition as ToolDefinition
+│   ├── models/            # Capability-based model resolver, model registry, cascade config
+│   ├── workers/           # BullMQ agent worker harness, tick worker
+│   ├── governance/        # Kill switch, circuit breaker, cost ledger, budget enforcer, anomaly detector
+│   │   ├── kill-switch.ts
+│   │   ├── circuit-breaker.ts
+│   │   ├── cost-ledger.ts       # CostProjector — folds token_usage events into cost state
+│   │   ├── budget-enforcer.ts   # Pre-dispatch budget check + budget-aware model resolution
+│   │   ├── anomaly-detector.ts  # 4-layer: structural → heuristic → semantic → HITL
+│   │   └── tool-cache.ts        # Redis cache for read-only tool invocations
+│   ├── memory/            # PostgresStore memory service + reflection synthesis
+│   │   ├── memory-service.ts
+│   │   ├── reflection.ts          # Importance scoring + reflection synthesis logic
+│   │   └── memory-synthesis-worker.ts  # BullMQ background worker for reflection
+│   ├── triggers/          # Event trigger registry and listener
+│   ├── interop/           # MCP tool server, future A2A agent cards
+│   ├── observability/     # OTel trace emitter, BDI snapshots, workflow trace types
+│   │   ├── types.ts
+│   │   └── bdi-snapshots.ts  # Cognitive state event emission (beliefs/desires/intentions)
+│   ├── tools/             # Framework-provided tools (e.g., createDockerBashTool)
+│   └── index.ts           # Public API barrel export
 ├── package.json
 └── tsconfig.json
 ```
@@ -805,3 +1237,36 @@ Decisions made during the design session (2026-02-26):
 | Routing model? | A) Central supervisor, B) Reactive event-driven, C) Declarative graph + runtime | C | Subsumes A and B. Covers 13/15 checklist items vs 9/15 and 8/15 |
 | LLM abstraction? | A) Multi-provider imports, B) Multi-tier single provider, C) Capability-based resolution | C | Only option where agents never import a provider. True model agnosticism |
 | Package location? | A) Inside backend/src, B) Separate monorepo package, C) Standalone repo | B | Enforces framework boundary. Already have packages/ with shared-types |
+
+## Appendix F: Wave 2 Augmentation Sources
+
+Research sources that informed the 5 augmentations added to this design:
+
+### Documents Provided
+- "2025-2026 State of AgentOps and Multi-Agent Orchestration: A Comprehensive Review Report" — AgentOps lifecycle, anomaly taxonomy, SRE Filter Pattern, BDI model, MCP security risks
+- "Technical Selection Report: Orchestrating Collaborative Intelligence" — Four orchestration philosophies, BDI cognitive snapshots, memory streams, anomaly taxonomy (intra/inter-agent), token economics
+- "Comparison of AI Agent Orchestration Frameworks" (XLSX) — 21 frameworks compared: LangGraph, CrewAI, Microsoft Agent Framework, Google ADK, Temporal, AutoGPT, Mastra, GraphBit, etc.
+
+### Academic Papers
+| Paper | Topic | Date |
+|---|---|---|
+| MAST (arXiv:2503.13657) | 14 concrete failure modes in multi-agent systems, 1,600+ annotated traces | Mar 2025 |
+| SentinelAgent (arXiv:2505.24201) | Graph-based anomaly detection: node/edge/path level analysis | May 2025 |
+| Neural Howlround (arXiv:2504.07992) | Recursive Internal Salience Misreinforcement — semantic lock-in detection and dynamic attenuation | Apr 2025 |
+| ATrust (arXiv:2506.02546) | Attention-based trust scoring for inter-agent messages | Jun 2025 |
+| AgentOps Survey (arXiv:2508.02121) | Canonical intra/inter-agent anomaly taxonomy | Aug 2025 |
+| BDI Ontology (arXiv:2511.17162) | Formal belief-desire-intention model for LLM agents | Nov 2025 |
+| BudgetMLAgent (ACM AIML Systems 2024) | LLM cascades — 94.2% cost reduction with improved success rate | 2024 |
+| BAAR (arXiv:2602.21227) | Budget-aware agentic routing via boundary-guided training | Feb 2026 |
+| AgentDiet (arXiv:2509.23586) | Trajectory reduction — 39-60% input token reduction | Sep 2025 |
+| Agentic Plan Caching (arXiv:2506.14852) | Plan template caching — 50.31% cost reduction (NeurIPS 2025) | Jun 2025 |
+| Observation Pruning (arXiv:2510.26585) | LLM-free adaptive context filtering — 29.45% token reduction | Oct 2025 |
+| Hierarchical Caching (MDPI Jan 2026) | Tool-level + workflow-level caching — 62% hit rate | Jan 2026 |
+| Generative Agents (Park et al. 2023) | 3-tier memory stream architecture: raw → reflections → retrieval | 2023 |
+| Memory in the Age of AI Agents (arXiv:2512.13564) | Memory architecture survey for agentic systems | Dec 2025 |
+
+### Framework Documentation
+- Google ADK: AgentTool vs sub_agents comparison, multi-agent patterns
+- Temporal: Durable execution for AI agents (used by OpenAI Codex)
+- OTel GenAI Agent Span Conventions (v1.37+): Standardized agent observability attributes
+- LangMem (LangChain official): Long-term memory management for LangGraph agents
