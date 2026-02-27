@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import type { BudgetState, SessionBudget } from '../../../src/agents/types.js';
 
 describe('budget-enforcer', () => {
+  it('should export DEFAULT_SESSION_BUDGET with correct values', async () => {
+    const { DEFAULT_SESSION_BUDGET } = await import('../../../src/agents/budget-enforcer.js');
+    expect(DEFAULT_SESSION_BUDGET.hardCapUsd).toBe(5.0);
+    expect(DEFAULT_SESSION_BUDGET.softCapUsd).toBe(3.0);
+    expect(DEFAULT_SESSION_BUDGET.perPhaseCapUsd).toBe(2.0);
+  });
+
   it('should allow dispatch when under budget', async () => {
     const { checkBudget } = await import('../../../src/agents/budget-enforcer.js');
     const budget: SessionBudget = { hardCapUsd: 1.0, softCapUsd: 0.8 };

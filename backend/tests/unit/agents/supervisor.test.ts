@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { END } from '@langchain/langgraph';
+import type { BudgetState } from '../../../src/agents/types.js';
+import { createInitialBudgetState } from '../../../src/agents/types.js';
 
 // Mock all external dependencies
 vi.mock('../../../src/config/gemini.js', () => ({
@@ -54,5 +57,89 @@ describe('supervisor', () => {
     expect(routeByPhase('INTAKE')).toBe('intake_worker');
     expect(routeByPhase('CHECKLIST')).toBe('checklist_worker');
     expect(routeByPhase('RENDER')).toBe('render_worker');
+  });
+
+  describe('supervisorNode budget checks', () => {
+    it('should set exceeded=true when budget hard cap exceeded', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: {
+          totalCostUsd: 6.0, // Exceeds hardCapUsd: 5.0
+          byPhase: {},
+          warnings: [],
+          exceeded: false,
+        },
+      };
+
+      const result = supervisorNode(state);
+      expect(result.budgetState?.exceeded).toBe(true);
+    });
+
+    it('should add warning when budget soft cap exceeded', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: {
+          totalCostUsd: 3.5, // Between softCapUsd (3.0) and hardCapUsd (5.0)
+          byPhase: {},
+          warnings: [],
+          exceeded: false,
+        },
+      };
+
+      const result = supervisorNode(state);
+      expect(result.budgetState?.warnings).toHaveLength(1);
+      expect(result.budgetState?.warnings?.[0]).toContain('soft cap');
+    });
+
+    it('should pass through when under budget', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      const result = supervisorNode(state);
+      expect(result.budgetState).toBeUndefined();
+    });
+  });
+
+  describe('phaseRouter budget checks', () => {
+    it('should return END when budget exceeded', async () => {
+      const { phaseRouter } = await import('../../../src/agents/supervisor.js');
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: {
+          totalCostUsd: 6.0,
+          byPhase: {},
+          warnings: [],
+          exceeded: true,
+        } satisfies BudgetState,
+      };
+
+      const result = await phaseRouter(state);
+      expect(result).toBe(END);
+    });
   });
 });

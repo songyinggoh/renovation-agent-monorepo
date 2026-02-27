@@ -16,7 +16,7 @@ import {
   extractTokenUsage,
   recordTokenUsage,
 } from '../utils/ai-tracing.js';
-import { createSupervisorGraph, getPhaseCapability } from '../agents/index.js';
+import { createSupervisorGraph, getPhaseCapability, DEFAULT_SESSION_BUDGET } from '../agents/index.js';
 import type { RenovationPhase, MessageAttachment } from '@renovation/shared-types';
 import { MessageService } from './message.service.js';
 import { AssetService } from './asset.service.js';
@@ -200,7 +200,10 @@ export class ChatService {
           let reactIterations = 0;
 
           const config = {
-            configurable: { thread_id: sessionId },
+            configurable: {
+              thread_id: sessionId,
+              sessionBudget: DEFAULT_SESSION_BUDGET,
+            },
             streamMode: 'messages' as const,
             recursionLimit: phaseCapability.maxTurns * 2, // Each tool cycle = 2 steps (call_model + tools)
           };

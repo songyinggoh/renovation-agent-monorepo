@@ -1,9 +1,22 @@
 import { StateGraph, START, END } from '@langchain/langgraph';
+import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import type { RenovationPhase } from '@renovation/shared-types';
 import { RenovationAnnotation, type RenovationState } from './state.js';
 import { isPhaseEnabled } from './kill-switch.js';
+import { checkBudget } from './budget-enforcer.js';
+import { DEFAULT_SESSION_BUDGET } from './budget-enforcer.js';
 import { getCheckpointer } from '../services/checkpointer.service.js';
 import { createPhaseWorker } from './worker-factory.js';
+import type { SessionBudget } from './types.js';
+
+/**
+ * Configurable side-channel data passed via config.configurable.
+ * Standard LangGraph pattern to avoid polluting graph state.
+ */
+export interface OrchestratorConfigurable {
+  thread_id: string;
+  sessionBudget?: SessionBudget;
+}
 
 /**
  * Convert a phase name to its worker node name.
@@ -14,19 +27,50 @@ export function routeByPhase(phase: RenovationPhase | string): string {
 
 /**
  * Supervisor node — deterministic routing based on currentPhase.
- * No LLM call here; phase is known from the database.
+ * Performs budget check before routing to phase worker.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function supervisorNode(state: RenovationState): Partial<RenovationState> {
-  // Supervisor is a pass-through — routing is handled by conditional edges
+export function supervisorNode(
+  state: RenovationState,
+  config?: LangGraphRunnableConfig,
+): Partial<RenovationState> {
+  const configurable = config?.configurable as OrchestratorConfigurable | undefined;
+  const budget = configurable?.sessionBudget ?? DEFAULT_SESSION_BUDGET;
+  const phase = state.currentPhase;
+
+  // Budget check
+  const budgetResult = checkBudget(state.budgetState, budget, phase);
+
+  if (!budgetResult.allowed) {
+    return {
+      budgetState: {
+        ...state.budgetState,
+        exceeded: true,
+      },
+    };
+  }
+
+  if (budgetResult.warning) {
+    return {
+      budgetState: {
+        ...state.budgetState,
+        warnings: [...state.budgetState.warnings, budgetResult.warning],
+      },
+    };
+  }
+
   return {};
 }
 
 /**
  * Phase router — returns the worker node name based on currentPhase.
- * Checks kill switch before routing.
+ * Checks budget exceeded and kill switch before routing.
  */
-async function phaseRouter(state: RenovationState): Promise<string> {
+export async function phaseRouter(state: RenovationState): Promise<string> {
+  // Budget exceeded — end immediately
+  if (state.budgetState.exceeded) {
+    return END;
+  }
+
   const phase = state.currentPhase;
 
   // Kill switch check
@@ -41,15 +85,17 @@ async function phaseRouter(state: RenovationState): Promise<string> {
 /**
  * Transition check node — pass-through that stores state for routing.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function transitionCheckNode(state: RenovationState): Partial<RenovationState> {
+export function transitionCheckNode(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  state: RenovationState,
+): Partial<RenovationState> {
   return {};
 }
 
 /**
  * Transition router — decides whether to loop back to supervisor or end.
  */
-function transitionRouter(state: RenovationState): string {
+export function transitionRouter(state: RenovationState): string {
   if (state.transitionRequested && state.targetPhase) {
     return 'supervisor';
   }

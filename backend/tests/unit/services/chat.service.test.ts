@@ -103,6 +103,7 @@ vi.mock('../../../src/agents/index.js', () => ({
     };
     return caps[phase] ?? { maxTurns: 10 };
   }),
+  DEFAULT_SESSION_BUDGET: { hardCapUsd: 5.0, softCapUsd: 3.0, perPhaseCapUsd: 2.0 },
 }));
 
 // Mock LangGraph (still needed for GraphRecursionError)

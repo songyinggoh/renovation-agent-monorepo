@@ -2,6 +2,15 @@ import type { BudgetState, SessionBudget } from './types.js';
 
 export { createInitialBudgetState } from './types.js';
 
+/**
+ * Default budget for a session when no custom budget is provided.
+ */
+export const DEFAULT_SESSION_BUDGET: SessionBudget = {
+  hardCapUsd: 5.0,
+  softCapUsd: 3.0,
+  perPhaseCapUsd: 2.0,
+};
+
 export interface BudgetCheckResult {
   allowed: boolean;
   reason?: string;
