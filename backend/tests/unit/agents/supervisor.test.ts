@@ -38,6 +38,14 @@ vi.mock('../../../src/config/prompts.js', () => ({
   getSystemPrompt: vi.fn().mockReturnValue('You are a renovation assistant.'),
 }));
 
+vi.mock('../../../src/utils/logger.js', () => ({
+  Logger: vi.fn().mockImplementation(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  })),
+}));
+
 describe('supervisor', () => {
   it('should export createSupervisorGraph function', async () => {
     const { createSupervisorGraph } = await import('../../../src/agents/supervisor.js');
@@ -212,6 +220,122 @@ describe('supervisor', () => {
       expect(() => transitionCheckNode(state, {
         configurable: { thread_id: 'test', emitter: null },
       } as never)).not.toThrow();
+    });
+  });
+
+  describe('phase transitions', () => {
+    it('supervisorNode should apply transition (set currentPhase, clear flags)', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: true,
+        targetPhase: 'CHECKLIST' as const,
+        phaseResult: 'Intake complete',
+        budgetState: createInitialBudgetState(),
+      };
+
+      const result = supervisorNode(state);
+
+      expect(result.currentPhase).toBe('CHECKLIST');
+      expect(result.transitionRequested).toBe(false);
+      expect(result.targetPhase).toBeNull();
+    });
+
+    it('supervisorNode should emit agent:phase_transition on transition', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+      const mockEmit = vi.fn();
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: true,
+        targetPhase: 'CHECKLIST' as const,
+        phaseResult: 'Intake complete',
+        budgetState: createInitialBudgetState(),
+      };
+
+      supervisorNode(state, {
+        configurable: { thread_id: 'test', emitter: { emit: mockEmit } },
+      } as never);
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'agent:phase_transition',
+          from: 'INTAKE',
+          to: 'CHECKLIST',
+        }),
+      );
+    });
+
+    it('supervisorNode should skip transition when not requested', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      const result = supervisorNode(state);
+
+      expect(result.currentPhase).toBeUndefined();
+      expect(result.transitionRequested).toBeUndefined();
+    });
+
+    it('transitionRouter should return supervisor for valid transition (INTAKE→CHECKLIST)', async () => {
+      const { transitionRouter } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: true,
+        targetPhase: 'CHECKLIST' as const,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      expect(transitionRouter(state)).toBe('supervisor');
+    });
+
+    it('transitionRouter should return END for invalid transition (INTAKE→RENDER)', async () => {
+      const { transitionRouter } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: true,
+        targetPhase: 'RENDER' as const,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      expect(transitionRouter(state)).toBe(END);
+    });
+
+    it('transitionRouter should return END when no transition requested', async () => {
+      const { transitionRouter } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      expect(transitionRouter(state)).toBe(END);
     });
   });
 });

@@ -7,8 +7,12 @@ import { checkBudget } from './budget-enforcer.js';
 import { DEFAULT_SESSION_BUDGET } from './budget-enforcer.js';
 import { getCheckpointer } from '../services/checkpointer.service.js';
 import { createPhaseWorker } from './worker-factory.js';
+import { getPhaseCapability } from './phase-registry.js';
+import { Logger } from '../utils/logger.js';
 import type { SessionBudget } from './types.js';
 import type { AgentEventEmitter } from './agent-event-emitter.js';
+
+const logger = new Logger({ serviceName: 'Supervisor' });
 
 /**
  * Configurable side-channel data passed via config.configurable.
@@ -38,13 +42,32 @@ export function supervisorNode(
   const configurable = config?.configurable as OrchestratorConfigurable | undefined;
   const budget = configurable?.sessionBudget ?? DEFAULT_SESSION_BUDGET;
   const emitter = configurable?.emitter;
-  const phase = state.currentPhase;
+
+  // Apply pending phase transition (on loop-back from transition_check)
+  const updates: Partial<RenovationState> = {};
+  let phase = state.currentPhase;
+
+  if (state.transitionRequested && state.targetPhase) {
+    const fromPhase = state.currentPhase;
+    phase = state.targetPhase;
+    updates.currentPhase = phase;
+    updates.transitionRequested = false;
+    updates.targetPhase = null;
+
+    emitter?.emit({
+      type: 'agent:phase_transition',
+      from: fromPhase,
+      to: phase,
+      summary: state.phaseResult,
+    });
+  }
 
   // Budget check
   const budgetResult = checkBudget(state.budgetState, budget, phase);
 
   if (!budgetResult.allowed) {
     return {
+      ...updates,
       budgetState: {
         ...state.budgetState,
         exceeded: true,
@@ -59,6 +82,7 @@ export function supervisorNode(
       limitUsd: budget.softCapUsd,
     });
     return {
+      ...updates,
       budgetState: {
         ...state.budgetState,
         warnings: [...state.budgetState.warnings, budgetResult.warning],
@@ -73,7 +97,7 @@ export function supervisorNode(
     sessionId: state.sessionId,
   });
 
-  return {};
+  return updates;
 }
 
 /**
@@ -118,12 +142,25 @@ export function transitionCheckNode(
 
 /**
  * Transition router — decides whether to loop back to supervisor or end.
+ * Validates that the requested transition is allowed before looping.
  */
 export function transitionRouter(state: RenovationState): string {
-  if (state.transitionRequested && state.targetPhase) {
-    return 'supervisor';
+  if (!state.transitionRequested || !state.targetPhase) {
+    return END;
   }
-  return END;
+
+  // Validate transition is allowed
+  const capability = getPhaseCapability(state.currentPhase);
+  if (!capability.canTransitionTo.includes(state.targetPhase)) {
+    logger.warn('Invalid phase transition requested', undefined, {
+      from: state.currentPhase,
+      to: state.targetPhase,
+      allowedTransitions: capability.canTransitionTo,
+    });
+    return END;
+  }
+
+  return 'supervisor';
 }
 
 /**
