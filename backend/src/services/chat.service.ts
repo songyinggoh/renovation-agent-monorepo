@@ -16,8 +16,7 @@ import {
   extractTokenUsage,
   recordTokenUsage,
 } from '../utils/ai-tracing.js';
-import { MAX_REACT_ITERATIONS } from '../utils/agent-guards.js';
-import { createSupervisorGraph } from '../agents/index.js';
+import { createSupervisorGraph, getPhaseCapability } from '../agents/index.js';
 import type { RenovationPhase, MessageAttachment } from '@renovation/shared-types';
 import { MessageService } from './message.service.js';
 import { AssetService } from './asset.service.js';
@@ -137,13 +136,18 @@ export class ChatService {
         'ai.prompt.history_size': 0, // Updated after history load
       },
       async (parentSpan) => {
+        let phase = 'INTAKE';
+        let phaseCapability = getPhaseCapability(phase as RenovationPhase);
+
         try {
           // Step 1: Load message history BEFORE saving the new message
           // to avoid duplicating the user message in context
-          const [phase, history] = await Promise.all([
+          const [loadedPhase, history] = await Promise.all([
             this.getSessionPhase(sessionId),
             this.messageService.getRecentMessages(sessionId, 20),
           ]);
+          phase = loadedPhase;
+          phaseCapability = getPhaseCapability(phase as RenovationPhase);
 
           parentSpan.setAttribute('ai.prompt.phase', phase);
           parentSpan.setAttribute('ai.prompt.history_size', history.length);
@@ -198,7 +202,7 @@ export class ChatService {
           const config = {
             configurable: { thread_id: sessionId },
             streamMode: 'messages' as const,
-            recursionLimit: MAX_REACT_ITERATIONS * 2, // Each tool cycle = 2 steps (call_model + tools)
+            recursionLimit: phaseCapability.maxTurns * 2, // Each tool cycle = 2 steps (call_model + tools)
           };
 
           const streamTrace = startAIStreamSpan('ai.langgraph.stream', {
@@ -343,10 +347,12 @@ export class ChatService {
             callback.onComplete(fallback);
             logger.warn('Agent hit recursion limit (GraphRecursionError)', undefined, {
               sessionId,
-              limit: MAX_REACT_ITERATIONS * 2,
+              phase,
+              limit: phaseCapability.maxTurns * 2,
             });
             parentSpan.addEvent('agent.recursion_limit_hit', {
-              'ai.react_loop.max_iterations': MAX_REACT_ITERATIONS,
+              'ai.react_loop.max_iterations': phaseCapability.maxTurns,
+              'ai.prompt.phase': phase,
             });
 
             // Save the fallback message

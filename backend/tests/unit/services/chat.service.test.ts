@@ -45,7 +45,6 @@ vi.mock('../../../src/utils/agent-guards.js', () => ({
   createSafeShouldContinue: vi.fn().mockReturnValue(
     vi.fn().mockReturnValue('END')
   ),
-  MAX_REACT_ITERATIONS: 10,
 }));
 
 // Mock database
@@ -92,6 +91,18 @@ const { mockCompiledGraph } = vi.hoisted(() => ({
 // Mock the agents module to return our mock compiled graph
 vi.mock('../../../src/agents/index.js', () => ({
   createSupervisorGraph: vi.fn().mockReturnValue(mockCompiledGraph),
+  getPhaseCapability: vi.fn().mockImplementation((phase: string) => {
+    const caps: Record<string, { maxTurns: number }> = {
+      INTAKE: { maxTurns: 20 },
+      CHECKLIST: { maxTurns: 8 },
+      PLAN: { maxTurns: 8 },
+      RENDER: { maxTurns: 3 },
+      PAYMENT: { maxTurns: 2 },
+      COMPLETE: { maxTurns: 2 },
+      ITERATE: { maxTurns: 20 },
+    };
+    return caps[phase] ?? { maxTurns: 10 };
+  }),
 }));
 
 // Mock LangGraph (still needed for GraphRecursionError)
@@ -665,6 +676,75 @@ describe('ChatService', () => {
           currentPhase: 'INTAKE',
         }),
         expect.any(Object),
+      );
+    });
+
+    it('should use phase-specific recursionLimit for INTAKE (maxTurns=20 → limit=40)', async () => {
+      const sessionId = 'test-session';
+
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([{ phase: 'INTAKE' }]);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'intake_worker' }];
+      });
+
+      await chatService.processMessage(sessionId, 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ recursionLimit: 40 }),
+      );
+    });
+
+    it('should use phase-specific recursionLimit for RENDER (maxTurns=3 → limit=6)', async () => {
+      const sessionId = 'test-session';
+
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([{ phase: 'RENDER' }]);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'render_worker' }];
+      });
+
+      await chatService.processMessage(sessionId, 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ recursionLimit: 6 }),
+      );
+    });
+
+    it('should use phase-specific recursionLimit for PAYMENT (maxTurns=2 → limit=4)', async () => {
+      const sessionId = 'test-session';
+
+      const mockDb = (await import('../../../src/db/index.js')).db;
+      vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([{ phase: 'PAYMENT' }]);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'payment_worker' }];
+      });
+
+      await chatService.processMessage(sessionId, 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ recursionLimit: 4 }),
       );
     });
   });
