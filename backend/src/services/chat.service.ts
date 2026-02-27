@@ -6,12 +6,9 @@ import {
   ToolMessage,
   type AIMessageChunk,
 } from '@langchain/core/messages';
-import { StateGraph, START, MessagesAnnotation, GraphRecursionError } from '@langchain/langgraph';
-import { ToolNode } from '@langchain/langgraph/prebuilt';
+import { GraphRecursionError } from '@langchain/langgraph';
 import { eq } from 'drizzle-orm';
 import { createStreamingModel, type TracedModel } from '../config/gemini.js';
-import { getSystemPrompt } from '../config/prompts.js';
-import { renovationTools } from '../tools/index.js';
 import { Logger } from '../utils/logger.js';
 import {
   traceAICall,
@@ -19,14 +16,14 @@ import {
   extractTokenUsage,
   recordTokenUsage,
 } from '../utils/ai-tracing.js';
-import { createSafeShouldContinue, MAX_REACT_ITERATIONS } from '../utils/agent-guards.js';
+import { MAX_REACT_ITERATIONS } from '../utils/agent-guards.js';
+import { createSupervisorGraph } from '../agents/index.js';
+import type { RenovationPhase, MessageAttachment } from '@renovation/shared-types';
 import { MessageService } from './message.service.js';
 import { AssetService } from './asset.service.js';
-import { getCheckpointer } from './checkpointer.service.js';
 import { db } from '../db/index.js';
 import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { type ChatMessage } from '../db/schema/messages.schema.js';
-import type { MessageAttachment } from '@renovation/shared-types';
 
 const logger = new Logger({ serviceName: 'ChatService' });
 
@@ -60,46 +57,8 @@ export class ChatService {
     this.model = createStreamingModel();
     this.messageService = new MessageService();
     this.assetService = new AssetService();
-    this.graph = this.createReActAgent();
-    logger.info('ChatService initialized with ReAct agent');
-  }
-
-  /**
-   * Create the ReAct agent graph with tool calling
-   *
-   * Graph: START → call_model → shouldContinue? → tools → call_model (loop)
-   *                                             → END (no tool calls)
-   *
-   * @returns Compiled StateGraph with tool calling and checkpointer
-   */
-  private createReActAgent() {
-    const modelWithTools = this.model.bindTools(renovationTools);
-
-    const toolNode = new ToolNode(renovationTools);
-
-    // Secondary guard: tool whitelist + iteration logging (primary is recursionLimit at stream time)
-    const shouldContinue = createSafeShouldContinue();
-
-    const workflow = new StateGraph(MessagesAnnotation)
-      .addNode('call_model', async (state) => {
-        logger.info('ReAct: Invoking model', {
-          messageCount: state.messages.length,
-        });
-        const response = await modelWithTools.invoke(
-          state.messages as BaseMessage[]
-        );
-        return { messages: [response] };
-      })
-      .addNode('tools', toolNode)
-      .addEdge(START, 'call_model')
-      .addConditionalEdges('call_model', shouldContinue)
-      .addEdge('tools', 'call_model');
-
-    const checkpointer = getCheckpointer();
-    const graph = workflow.compile({ checkpointer });
-
-    logger.info('ReAct agent compiled with tool calling and checkpointer');
-    return graph;
+    this.graph = createSupervisorGraph();
+    logger.info('ChatService initialized with supervisor graph');
   }
 
   /**
@@ -163,7 +122,7 @@ export class ChatService {
     callback: StreamCallback,
     attachments?: MessageAttachment[]
   ): Promise<void> {
-    logger.info('Processing user message with ReAct agent', {
+    logger.info('Processing user message with supervisor graph', {
       sessionId,
       messageLength: userMessage.length,
       attachmentCount: attachments?.length ?? 0,
@@ -208,8 +167,7 @@ export class ChatService {
             ...(hasImages ? { imageUrl: imageUrls.join(',') } : {}),
           });
 
-          // Step 4: Build phase-aware system prompt and input messages
-          const systemPrompt = getSystemPrompt(phase, sessionId);
+          // Step 4: Build input messages (system prompt is injected by phase worker)
           const historicalMessages = this.convertHistoryToMessages(history);
 
           // Build multipart HumanMessage when images are attached
@@ -228,12 +186,11 @@ export class ChatService {
           }
 
           const inputMessages: BaseMessage[] = [
-            new SystemMessage(systemPrompt),
             ...historicalMessages,
             currentMessage,
           ];
 
-          // Step 5: Stream response from ReAct agent with AI tracing
+          // Step 5: Stream response from supervisor graph with AI tracing
           let fullResponse = '';
           const emittedToolCalls = new Set<string>();
           let reactIterations = 0;
@@ -249,25 +206,30 @@ export class ChatService {
             'ai.prompt.phase': phase,
           });
 
-          const stream = await this.graph.stream(
-            { messages: inputMessages as BaseMessage[] },
-            config
-          );
-
           let firstTokenEmitted = false;
           let tokenUsageRecorded = false;
           let streamError: Error | undefined;
 
           try {
+            const stream = await this.graph.stream(
+              {
+                messages: inputMessages as BaseMessage[],
+                sessionId,
+                currentPhase: phase as RenovationPhase,
+              },
+              config
+            );
+
             for await (const chunk of stream) {
               const [message, metadata] = chunk as [
                 BaseMessage,
                 Record<string, unknown>,
               ];
               const nodeId = metadata?.langgraph_node as string | undefined;
+              const isWorkerNode = nodeId?.endsWith('_worker') || nodeId === 'call_model';
 
-              // Tool execution results (from 'tools' node)
-              if (nodeId === 'tools' && message) {
+              // Tool execution results (ToolMessage from any node)
+              if (message && message._getType?.() === 'tool') {
                 const toolMsg = message as unknown as ToolMessage;
                 const toolName = toolMsg.name ?? 'unknown';
                 const toolResult =
@@ -289,8 +251,8 @@ export class ChatService {
                 continue;
               }
 
-              // Model output (from 'call_model' node)
-              if (nodeId === 'call_model' && message) {
+              // Model output (from phase worker nodes or legacy call_model)
+              if (isWorkerNode && message) {
                 const aiChunk = message as unknown as AIMessageChunk;
 
                 // Track token usage from response metadata (IA doc 1.4)
@@ -353,7 +315,7 @@ export class ChatService {
           parentSpan.setAttribute('ai.react_loop.iterations', reactIterations);
           parentSpan.setAttribute('ai.tool.calls_count', emittedToolCalls.size);
 
-          logger.info('ReAct agent response completed', {
+          logger.info('Supervisor graph response completed', {
             sessionId,
             responseLength: fullResponse.length,
             toolCallCount: emittedToolCalls.size,
@@ -398,7 +360,7 @@ export class ChatService {
             return;
           }
 
-          logger.error('Error processing message with ReAct agent', error as Error, {
+          logger.error('Error processing message with supervisor graph', error as Error, {
             sessionId,
           });
           callback.onError(error as Error);
