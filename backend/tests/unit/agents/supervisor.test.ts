@@ -142,4 +142,76 @@ describe('supervisor', () => {
       expect(result).toBe(END);
     });
   });
+
+  describe('emitter integration', () => {
+    it('supervisorNode should emit agent:start when budget OK', async () => {
+      const { supervisorNode } = await import('../../../src/agents/supervisor.js');
+      const mockEmit = vi.fn();
+      const emitter = { emit: mockEmit };
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      supervisorNode(state, {
+        configurable: { thread_id: 'test', emitter },
+      } as never);
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'agent:start', phase: 'INTAKE', sessionId: 'test-session' }),
+      );
+    });
+
+    it('transitionCheckNode should emit agent:complete', async () => {
+      const { transitionCheckNode } = await import('../../../src/agents/supervisor.js');
+      const mockEmit = vi.fn();
+      const emitter = { emit: mockEmit };
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: 'done',
+        budgetState: createInitialBudgetState(),
+      };
+
+      transitionCheckNode(state, {
+        configurable: { thread_id: 'test', emitter },
+      } as never);
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'agent:complete', phase: 'INTAKE', result: 'done' }),
+      );
+    });
+
+    it('should not throw when emitter is null', async () => {
+      const { supervisorNode, transitionCheckNode } = await import('../../../src/agents/supervisor.js');
+
+      const state = {
+        messages: [],
+        sessionId: 'test-session',
+        currentPhase: 'INTAKE' as const,
+        transitionRequested: false,
+        targetPhase: null,
+        phaseResult: '',
+        budgetState: createInitialBudgetState(),
+      };
+
+      expect(() => supervisorNode(state, {
+        configurable: { thread_id: 'test', emitter: null },
+      } as never)).not.toThrow();
+
+      expect(() => transitionCheckNode(state, {
+        configurable: { thread_id: 'test', emitter: null },
+      } as never)).not.toThrow();
+    });
+  });
 });

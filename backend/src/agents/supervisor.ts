@@ -8,6 +8,7 @@ import { DEFAULT_SESSION_BUDGET } from './budget-enforcer.js';
 import { getCheckpointer } from '../services/checkpointer.service.js';
 import { createPhaseWorker } from './worker-factory.js';
 import type { SessionBudget } from './types.js';
+import type { AgentEventEmitter } from './agent-event-emitter.js';
 
 /**
  * Configurable side-channel data passed via config.configurable.
@@ -16,6 +17,7 @@ import type { SessionBudget } from './types.js';
 export interface OrchestratorConfigurable {
   thread_id: string;
   sessionBudget?: SessionBudget;
+  emitter?: AgentEventEmitter | null;
 }
 
 /**
@@ -35,6 +37,7 @@ export function supervisorNode(
 ): Partial<RenovationState> {
   const configurable = config?.configurable as OrchestratorConfigurable | undefined;
   const budget = configurable?.sessionBudget ?? DEFAULT_SESSION_BUDGET;
+  const emitter = configurable?.emitter;
   const phase = state.currentPhase;
 
   // Budget check
@@ -50,6 +53,11 @@ export function supervisorNode(
   }
 
   if (budgetResult.warning) {
+    emitter?.emit({
+      type: 'agent:budget_warning',
+      currentCostUsd: state.budgetState.totalCostUsd,
+      limitUsd: budget.softCapUsd,
+    });
     return {
       budgetState: {
         ...state.budgetState,
@@ -57,6 +65,13 @@ export function supervisorNode(
       },
     };
   }
+
+  // Emit agent:start when budget is OK and we're about to dispatch
+  emitter?.emit({
+    type: 'agent:start',
+    phase,
+    sessionId: state.sessionId,
+  });
 
   return {};
 }
@@ -83,12 +98,21 @@ export async function phaseRouter(state: RenovationState): Promise<string> {
 }
 
 /**
- * Transition check node — pass-through that stores state for routing.
+ * Transition check node — emits agent:complete and stores state for routing.
  */
 export function transitionCheckNode(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   state: RenovationState,
+  config?: LangGraphRunnableConfig,
 ): Partial<RenovationState> {
+  const configurable = config?.configurable as OrchestratorConfigurable | undefined;
+  const emitter = configurable?.emitter;
+
+  emitter?.emit({
+    type: 'agent:complete',
+    phase: state.currentPhase,
+    result: state.phaseResult,
+  });
+
   return {};
 }
 

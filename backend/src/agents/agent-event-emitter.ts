@@ -22,7 +22,7 @@ export class AgentEventEmitter {
 
   emit(event: AgentEvent): void {
     // 1. Socket.io -> frontend (session room)
-    this.io.to(this.sessionId).emit(event.type, event);
+    this.io.to(`session:${this.sessionId}`).emit(event.type, event);
 
     // 2. Logger -> structured logs (error events at error level)
     if (event.type === 'agent:error') {

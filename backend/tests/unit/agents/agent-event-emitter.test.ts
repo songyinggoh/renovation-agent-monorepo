@@ -28,7 +28,7 @@ describe('AgentEventEmitter', () => {
     const event: AgentEvent = { type: 'agent:start', phase: 'INTAKE' as never, sessionId: 'session-123' };
     emitter.emit(event);
 
-    expect(mockTo).toHaveBeenCalledWith('session-123');
+    expect(mockTo).toHaveBeenCalledWith('session:session-123');
     expect(mockEmit).toHaveBeenCalledWith('agent:start', event);
   });
 

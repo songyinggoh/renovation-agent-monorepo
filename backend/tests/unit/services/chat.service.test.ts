@@ -79,6 +79,15 @@ vi.mock('../../../src/config/redis.js', () => ({
   redis: { get: vi.fn().mockResolvedValue(null), status: 'ready' },
 }));
 
+// Mock socket emitter utility
+const { mockGetSocketServer } = vi.hoisted(() => ({
+  mockGetSocketServer: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('../../../src/utils/socket-emitter.js', () => ({
+  getSocketServer: mockGetSocketServer,
+}));
+
 // Hoist the mock graph so it's available in vi.mock factories
 const { mockCompiledGraph } = vi.hoisted(() => ({
   mockCompiledGraph: {
@@ -104,6 +113,9 @@ vi.mock('../../../src/agents/index.js', () => ({
     return caps[phase] ?? { maxTurns: 10 };
   }),
   DEFAULT_SESSION_BUDGET: { hardCapUsd: 5.0, softCapUsd: 3.0, perPhaseCapUsd: 2.0 },
+  AgentEventEmitter: vi.fn().mockImplementation(() => ({
+    emit: vi.fn(),
+  })),
 }));
 
 // Mock LangGraph (still needed for GraphRecursionError)
@@ -746,6 +758,57 @@ describe('ChatService', () => {
       expect(mockGraph.stream).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({ recursionLimit: 4 }),
+      );
+    });
+  });
+
+  describe('emitter wiring', () => {
+    it('should pass emitter in config when Socket.io is available', async () => {
+      const mockIo = { to: vi.fn().mockReturnValue({ emit: vi.fn() }) };
+      mockGetSocketServer.mockReturnValue(mockIo);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'intake_worker' }];
+      });
+
+      await chatService.processMessage('test-session', 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            emitter: expect.objectContaining({ emit: expect.any(Function) }),
+          }),
+        }),
+      );
+    });
+
+    it('should pass null emitter when Socket.io is unavailable', async () => {
+      mockGetSocketServer.mockReturnValue(null);
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'intake_worker' }];
+      });
+
+      await chatService.processMessage('test-session', 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          configurable: expect.objectContaining({
+            emitter: null,
+          }),
+        }),
       );
     });
   });

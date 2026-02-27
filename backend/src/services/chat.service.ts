@@ -16,7 +16,8 @@ import {
   extractTokenUsage,
   recordTokenUsage,
 } from '../utils/ai-tracing.js';
-import { createSupervisorGraph, getPhaseCapability, DEFAULT_SESSION_BUDGET } from '../agents/index.js';
+import { createSupervisorGraph, getPhaseCapability, DEFAULT_SESSION_BUDGET, AgentEventEmitter } from '../agents/index.js';
+import { getSocketServer } from '../utils/socket-emitter.js';
 import type { RenovationPhase, MessageAttachment } from '@renovation/shared-types';
 import { MessageService } from './message.service.js';
 import { AssetService } from './asset.service.js';
@@ -199,10 +200,15 @@ export class ChatService {
           const emittedToolCalls = new Set<string>();
           let reactIterations = 0;
 
+          // Create emitter for agent event fan-out (null-safe when io unavailable)
+          const io = getSocketServer();
+          const emitter = io ? new AgentEventEmitter(io, logger, sessionId) : null;
+
           const config = {
             configurable: {
               thread_id: sessionId,
               sessionBudget: DEFAULT_SESSION_BUDGET,
+              emitter,
             },
             streamMode: 'messages' as const,
             recursionLimit: phaseCapability.maxTurns * 2, // Each tool cycle = 2 steps (call_model + tools)
