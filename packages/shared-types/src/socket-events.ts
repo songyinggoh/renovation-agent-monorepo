@@ -100,36 +100,6 @@ export interface RenderProgressPayload {
   stage: RenderStage;
 }
 
-// Agent orchestrator event payloads
-export interface AgentStartPayload {
-  sessionId: string;
-  phase: string;
-}
-
-export interface AgentPhaseTransitionPayload {
-  sessionId: string;
-  from: string;
-  to: string;
-  summary: string;
-}
-
-export interface AgentBudgetWarningPayload {
-  sessionId: string;
-  currentCostUsd: number;
-  limitUsd: number;
-}
-
-export interface AgentErrorPayload {
-  sessionId: string;
-  error: string;
-  phase: string;
-}
-
-export interface AgentCompletePayload {
-  sessionId: string;
-  phase: string;
-}
-
 export type DocGenerationStage = 'queued' | 'fetching_data' | 'rendering_html' | 'generating_pdf' | 'uploading' | 'finalizing';
 
 export interface DocStartedPayload {
@@ -181,10 +151,4 @@ export interface ServerToClientEvents {
   'render:progress': (data: RenderProgressPayload) => void;
   'render:failed': (data: RenderFailedPayload) => void;
   'doc:generated': (data: DocGeneratedPayload) => void;
-  // Agent orchestrator events
-  'agent:start': (data: AgentStartPayload) => void;
-  'agent:phase_transition': (data: AgentPhaseTransitionPayload) => void;
-  'agent:budget_warning': (data: AgentBudgetWarningPayload) => void;
-  'agent:error': (data: AgentErrorPayload) => void;
-  'agent:complete': (data: AgentCompletePayload) => void;
 }
