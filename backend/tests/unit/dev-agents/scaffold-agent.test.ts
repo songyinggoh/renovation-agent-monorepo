@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock external dependencies before importing modules under test
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: vi.fn((opts: Record<string, unknown>) => opts),
+vi.mock('langchain', () => ({
+  createAgent: vi.fn((opts: Record<string, unknown>) => opts),
+  toolCallLimitMiddleware: vi.fn(() => ({ name: 'tool_call_limit' })),
+  modelCallLimitMiddleware: vi.fn(() => ({ name: 'model_call_limit' })),
+  modelFallbackMiddleware: vi.fn(() => ({ name: 'model_fallback' })),
+  createMiddleware: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 vi.mock('../../../src/config/claude.js', () => ({
@@ -37,20 +41,20 @@ describe('createScaffoldAgent', () => {
   });
 
   it('passes writeTools to the agent (8 tools)', () => {
-    // Arrange & Act
     const agent = createScaffoldAgent();
-
-    // Assert
     expect(agent.tools).toHaveLength(8);
     expect(agent.tools).toBe(writeTools);
   });
 
   it('passes the scaffold prompt to the agent', () => {
-    // Arrange & Act
     const agent = createScaffoldAgent();
+    expect(agent.systemPrompt).toBe(SCAFFOLD_AGENT_PROMPT);
+  });
 
-    // Assert
-    expect(agent.prompt).toBe(SCAFFOLD_AGENT_PROMPT);
+  it('includes middleware stack', () => {
+    const agent = createScaffoldAgent();
+    expect(agent.middleware).toBeDefined();
+    expect(agent.middleware).toHaveLength(4);
   });
 });
 

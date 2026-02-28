@@ -1,8 +1,9 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { createDevModel } from '../../config/claude.js';
 import { devTools } from '../tools/index.js';
 import { DEV_AGENT_NAMES } from '../types.js';
 import { TEST_AGENT_PROMPT } from './prompt.js';
+import { createDevAgentMiddleware } from '../middleware.js';
 
 /**
  * Create the test specialist agent.
@@ -11,10 +12,11 @@ import { TEST_AGENT_PROMPT } from './prompt.js';
  * diagnose failures, apply fixes, and verify regressions.
  */
 export function createTestAgent() {
-  return createReactAgent({
-    llm: createDevModel(),
+  return createAgent({
+    model: createDevModel(),
     tools: devTools,
     name: DEV_AGENT_NAMES.TEST,
-    prompt: TEST_AGENT_PROMPT,
+    systemPrompt: TEST_AGENT_PROMPT,
+    middleware: createDevAgentMiddleware(DEV_AGENT_NAMES.TEST),
   });
 }

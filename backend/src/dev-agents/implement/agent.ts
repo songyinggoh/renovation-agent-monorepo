@@ -5,17 +5,19 @@
  * run quality gates, and commit changes.
  */
 
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { createDevModel } from '../../config/claude.js';
 import { devTools } from '../tools/index.js';
 import { DEV_AGENT_NAMES } from '../types.js';
 import { IMPLEMENT_AGENT_PROMPT } from './prompt.js';
+import { createDevAgentMiddleware } from '../middleware.js';
 
 export function createImplementAgent() {
-  return createReactAgent({
-    llm: createDevModel(),
+  return createAgent({
+    model: createDevModel(),
     tools: devTools,
     name: DEV_AGENT_NAMES.IMPLEMENT,
-    prompt: IMPLEMENT_AGENT_PROMPT,
+    systemPrompt: IMPLEMENT_AGENT_PROMPT,
+    middleware: createDevAgentMiddleware(DEV_AGENT_NAMES.IMPLEMENT),
   });
 }

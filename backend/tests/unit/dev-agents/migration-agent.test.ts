@@ -11,13 +11,12 @@ vi.mock('../../../src/utils/logger.js', () => ({
   })),
 }));
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: vi.fn((opts: Record<string, unknown>) => ({
-    name: opts.name,
-    tools: opts.tools,
-    prompt: opts.prompt,
-    llm: opts.llm,
-  })),
+vi.mock('langchain', () => ({
+  createAgent: vi.fn((opts: Record<string, unknown>) => opts),
+  toolCallLimitMiddleware: vi.fn(() => ({ name: 'tool_call_limit' })),
+  modelCallLimitMiddleware: vi.fn(() => ({ name: 'model_call_limit' })),
+  modelFallbackMiddleware: vi.fn(() => ({ name: 'model_fallback' })),
+  createMiddleware: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 vi.mock('../../../src/config/claude.js', () => ({
@@ -26,7 +25,7 @@ vi.mock('../../../src/config/claude.js', () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────────
 
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { createMigrationAgent } from '../../../src/dev-agents/migration/agent.js';
 import { MIGRATION_AGENT_PROMPT } from '../../../src/dev-agents/migration/prompt.js';
 import { writeTools } from '../../../src/dev-agents/tools/index.js';
@@ -45,9 +44,9 @@ describe('MigrationAgent', () => {
       expect(agent.name).toBe(DEV_AGENT_NAMES.MIGRATION);
     });
 
-    it('passes writeTools to createReactAgent', () => {
+    it('passes writeTools to createAgent', () => {
       createMigrationAgent();
-      expect(createReactAgent).toHaveBeenCalledWith(
+      expect(createAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           tools: writeTools,
         }),
@@ -60,18 +59,24 @@ describe('MigrationAgent', () => {
       expect(tools).toHaveLength(8);
     });
 
-    it('passes the migration prompt', () => {
+    it('passes the migration prompt as systemPrompt', () => {
       createMigrationAgent();
-      expect(createReactAgent).toHaveBeenCalledWith(
+      expect(createAgent).toHaveBeenCalledWith(
         expect.objectContaining({
-          prompt: MIGRATION_AGENT_PROMPT,
+          systemPrompt: MIGRATION_AGENT_PROMPT,
         }),
       );
     });
 
-    it('calls createReactAgent exactly once', () => {
+    it('calls createAgent exactly once', () => {
       createMigrationAgent();
-      expect(createReactAgent).toHaveBeenCalledTimes(1);
+      expect(createAgent).toHaveBeenCalledTimes(1);
+    });
+
+    it('includes middleware stack', () => {
+      const agent = createMigrationAgent();
+      expect(agent.middleware).toBeDefined();
+      expect(agent.middleware).toHaveLength(4);
     });
   });
 

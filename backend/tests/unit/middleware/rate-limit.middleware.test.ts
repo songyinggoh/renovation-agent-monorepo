@@ -3,10 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 import { RateLimiterRes } from 'rate-limiter-flexible';
 
 // ── Hoisted mocks (must precede vi.mock) ──────────────────────
-const { mockConsume, mockPoints, mockKeyPrefix } = vi.hoisted(() => ({
+const { mockConsume } = vi.hoisted(() => ({
   mockConsume: vi.fn(),
-  mockPoints: 100,
-  mockKeyPrefix: 'api',
 }));
 
 vi.mock('rate-limiter-flexible', async (importOriginal) => {
