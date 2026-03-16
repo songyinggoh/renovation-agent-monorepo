@@ -20,6 +20,7 @@ import styleRoutes from './routes/style.routes.js';
 import productRoutes from './routes/product.routes.js';
 import assetRoutes from './routes/asset.routes.js';
 import renderRoutes from './routes/render.routes.js';
+import documentRoutes from './routes/document.routes.js';
 
 const logger = new Logger({ serviceName: 'App' });
 
@@ -115,6 +116,7 @@ export function createApp(): Application {
   app.use('/api', productRoutes);
   app.use('/api', assetRoutes);
   app.use('/api', renderRoutes);
+  app.use('/api', documentRoutes);
 
   // ============================================
   // Bull Board (dev/staging only)
