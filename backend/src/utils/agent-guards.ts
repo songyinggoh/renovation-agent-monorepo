@@ -22,6 +22,8 @@ export const ALLOWED_TOOLS = [
   'save_product_recommendation',
   'generate_render',
   'save_renders_state',
+  'save_plan_state',
+  'generate_document',
 ] as const;
 
 export type AllowedToolName = (typeof ALLOWED_TOOLS)[number];
