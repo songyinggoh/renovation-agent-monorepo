@@ -15,6 +15,10 @@
     "db:seed": "pnpm --filter renovation-agent-backend db:seed",
     "verify:render": "npx tsx e2e/scripts/verify-render-pipeline.ts",
     "test:e2e": "npx playwright test --config e2e/playwright.config.ts",
+    "dev:agent": "tsx backend/src/dev-agents/cli.ts",
+    "dev:workflow": "tsx backend/src/dev-agents/cli-workflow.ts",
+    "dev:workflow:resume": "tsx backend/src/dev-agents/cli-workflow.ts --resume",
+    "dev:workflow:approve": "tsx backend/src/dev-agents/cli-workflow.ts --approve",
     "prepare": "husky"
   },
   "devDependencies": {
