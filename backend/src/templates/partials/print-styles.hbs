@@ -1,0 +1,63 @@
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 15mm;
+  }
+  @page :first {
+    margin-top: 25mm;
+  }
+  :root {
+    --color-primary: #b85c38;
+    --color-secondary: #5c8a6e;
+    --color-text: #1a1a1a;
+    --color-muted: #6b7280;
+    --color-border: #e5e7eb;
+    --color-bg-light: #f9fafb;
+    --font-body: 10pt;
+    --font-heading: 14pt;
+    --font-small: 8pt;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-size: var(--font-body);
+    line-height: 1.6;
+    color: var(--color-text);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  h1 { font-family: 'DM Serif Display', Georgia, serif; font-size: 22pt; color: var(--color-primary); margin-bottom: 8pt; }
+  h2 { font-family: 'DM Serif Display', Georgia, serif; font-size: var(--font-heading); color: var(--color-primary); margin-top: 16pt; margin-bottom: 8pt; border-bottom: 1.5pt solid var(--color-primary); padding-bottom: 4pt; }
+  h3 { font-size: 12pt; color: var(--color-text); margin-top: 12pt; margin-bottom: 6pt; }
+  p { margin-bottom: 6pt; }
+  .section { break-before: page; }
+  .no-break { break-inside: avoid; page-break-inside: avoid; }
+  .keep-together { break-inside: avoid; page-break-inside: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; }
+  th { background: var(--color-primary); color: white; text-align: left; padding: 6pt 8pt; font-size: var(--font-small); text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 6pt 8pt; border-bottom: 0.5pt solid var(--color-border); font-size: var(--font-body); }
+  tr:nth-child(even) td { background: var(--color-bg-light); }
+  .badge { display: inline-block; padding: 2pt 6pt; border-radius: 3pt; font-size: var(--font-small); font-weight: 600; }
+  .badge-critical { background: #fef2f2; color: #991b1b; }
+  .badge-high { background: #fef3c7; color: #92400e; }
+  .badge-medium { background: #ecfdf5; color: #065f46; }
+  .badge-low { background: #f0f9ff; color: #1e40af; }
+  .badge-must-have { background: #fef2f2; color: #991b1b; }
+  .badge-nice-to-have { background: #fef3c7; color: #92400e; }
+  .badge-optional { background: #f0f9ff; color: #1e40af; }
+  .budget-callout { background: var(--color-bg-light); border-left: 3pt solid var(--color-primary); padding: 10pt 12pt; margin: 10pt 0; }
+  .budget-callout strong { font-size: 16pt; color: var(--color-primary); }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10pt; margin: 12pt 0; }
+  .summary-card { background: var(--color-bg-light); border: 0.5pt solid var(--color-border); border-radius: 4pt; padding: 10pt; text-align: center; }
+  .summary-card .value { font-size: 18pt; font-weight: 700; color: var(--color-primary); }
+  .summary-card .label { font-size: var(--font-small); color: var(--color-muted); text-transform: uppercase; }
+  .footer { margin-top: 20pt; padding-top: 8pt; border-top: 0.5pt solid var(--color-border); font-size: var(--font-small); color: var(--color-muted); text-align: center; }
+  .checklist-item { display: flex; align-items: flex-start; gap: 6pt; padding: 4pt 0; }
+  .checklist-box { width: 12pt; height: 12pt; border: 1pt solid var(--color-muted); border-radius: 2pt; flex-shrink: 0; margin-top: 2pt; }
+  .checklist-box.completed { background: var(--color-secondary); border-color: var(--color-secondary); }
+  .contractor-card { border: 0.5pt solid var(--color-border); border-radius: 4pt; padding: 8pt 10pt; margin: 6pt 0; }
+  .warning-box { background: #fef3c7; border-left: 3pt solid #f59e0b; padding: 8pt 10pt; margin: 8pt 0; font-size: var(--font-small); }
+</style>
