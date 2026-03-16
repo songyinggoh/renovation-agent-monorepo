@@ -22,7 +22,7 @@ import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpoi
 import { createAdapter } from '@socket.io/redis-adapter';
 import { startEmailWorker } from './workers/email.worker.js';
 import { startImageWorker } from './workers/image.worker.js';
-import { startDocWorker } from './workers/doc.worker.js';
+import { startDocWorker, documentService } from './workers/doc.worker.js';
 import { startRenderWorker } from './workers/render.worker.js';
 import { closeQueues } from './config/queue.js';
 import {
@@ -693,6 +693,16 @@ function setupGracefulShutdown(): void {
       if (renderWorker) await renderWorker.close();
     },
     timeout: 95_000,
+  });
+
+  // DocumentService Puppeteer browser pool cleanup
+  // Must close BEFORE BullMQ workers to prevent orphaned Chromium subprocesses
+  shutdownManager.registerResource({
+    name: 'DocumentService Browser Pool',
+    cleanup: async () => {
+      await documentService.close();
+    },
+    timeout: 10_000, // 10s for Puppeteer browser.close() + process kill
   });
 
   // Other workers + all queues
