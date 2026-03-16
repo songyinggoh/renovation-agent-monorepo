@@ -46,11 +46,6 @@ export {
   type RenderStage,
   type RenderFailedPayload,
   type DocGeneratedPayload,
-  type AgentStartPayload,
-  type AgentPhaseTransitionPayload,
-  type AgentBudgetWarningPayload,
-  type AgentErrorPayload,
-  type AgentCompletePayload,
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from './socket-events.js';

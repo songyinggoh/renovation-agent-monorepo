@@ -4,17 +4,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockCreateDevModel,
   mockCreateDevReviewModel,
-  mockCreateReactAgent,
+  mockCreateAgent,
 } = vi.hoisted(() => ({
   mockCreateDevModel: vi.fn(() => ({ modelName: 'mock-sonnet' })),
   mockCreateDevReviewModel: vi.fn(() => ({ modelName: 'mock-opus' })),
-  mockCreateReactAgent: vi.fn(
-    (config: { llm: unknown; tools: unknown[]; name: string; prompt: string }) => ({
-      name: config.name,
-      tools: config.tools,
-      llm: config.llm,
-      prompt: config.prompt,
-    })
+  mockCreateAgent: vi.fn(
+    (config: Record<string, unknown>) => config
   ),
 }));
 
@@ -38,9 +33,13 @@ vi.mock('../../../src/config/claude.js', () => ({
   },
 }));
 
-// Mock createReactAgent to capture the config passed to it
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mockCreateReactAgent,
+// Mock langchain to capture the config passed to createAgent
+vi.mock('langchain', () => ({
+  createAgent: mockCreateAgent,
+  toolCallLimitMiddleware: vi.fn(() => ({ name: 'tool_call_limit' })),
+  modelCallLimitMiddleware: vi.fn(() => ({ name: 'model_call_limit' })),
+  modelFallbackMiddleware: vi.fn(() => ({ name: 'model_fallback' })),
+  createMiddleware: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 import { createReviewAgent } from '../../../src/dev-agents/review/agent.js';
@@ -73,23 +72,31 @@ describe('createReviewAgent', () => {
     expect(mockCreateDevModel).not.toHaveBeenCalled();
   });
 
-  it('passes REVIEW_AGENT_PROMPT to createReactAgent', () => {
+  it('passes REVIEW_AGENT_PROMPT as systemPrompt', () => {
     createReviewAgent();
-    expect(mockCreateReactAgent).toHaveBeenCalledWith(
+    expect(mockCreateAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: REVIEW_AGENT_PROMPT,
+        systemPrompt: REVIEW_AGENT_PROMPT,
       })
     );
   });
 
-  it('passes all required config to createReactAgent', () => {
+  it('passes all required config to createAgent', () => {
     createReviewAgent();
-    expect(mockCreateReactAgent).toHaveBeenCalledWith({
-      llm: { modelName: 'mock-opus' },
-      tools: readOnlyTools,
-      name: DEV_AGENT_NAMES.REVIEW,
-      prompt: REVIEW_AGENT_PROMPT,
-    });
+    expect(mockCreateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { modelName: 'mock-opus' },
+        tools: readOnlyTools,
+        name: DEV_AGENT_NAMES.REVIEW,
+        systemPrompt: REVIEW_AGENT_PROMPT,
+      })
+    );
+  });
+
+  it('includes middleware stack', () => {
+    const agent = createReviewAgent();
+    expect(agent.middleware).toBeDefined();
+    expect(agent.middleware).toHaveLength(4);
   });
 });
 
@@ -107,7 +114,6 @@ describe('REVIEW_AGENT_PROMPT', () => {
 
   it('mentions "any" types review criterion', () => {
     expect(REVIEW_AGENT_PROMPT).toContain('any');
-    // Specifically check for the type safety standard
     expect(REVIEW_AGENT_PROMPT).toMatch(/[Nn]o\s+`any`\s+types/);
   });
 

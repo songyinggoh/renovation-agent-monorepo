@@ -1,8 +1,9 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { createDevReviewModel } from '../../config/claude.js';
 import { readOnlyTools } from '../tools/index.js';
 import { DEV_AGENT_NAMES } from '../types.js';
 import { REVIEW_AGENT_PROMPT } from './prompt.js';
+import { createDevAgentMiddleware } from '../middleware.js';
 
 /**
  * Create the review specialist agent.
@@ -15,10 +16,11 @@ import { REVIEW_AGENT_PROMPT } from './prompt.js';
  * (all read-only — no write or execute tools).
  */
 export function createReviewAgent() {
-  return createReactAgent({
-    llm: createDevReviewModel(),
+  return createAgent({
+    model: createDevReviewModel(),
     tools: readOnlyTools,
     name: DEV_AGENT_NAMES.REVIEW,
-    prompt: REVIEW_AGENT_PROMPT,
+    systemPrompt: REVIEW_AGENT_PROMPT,
+    middleware: createDevAgentMiddleware(DEV_AGENT_NAMES.REVIEW),
   });
 }

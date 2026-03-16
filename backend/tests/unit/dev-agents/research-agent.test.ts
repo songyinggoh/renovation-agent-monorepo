@@ -2,11 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Hoisted mocks (survive vi.mock hoisting) ────────────────────────────────
 
-const { mockCreateReactAgent } = vi.hoisted(() => ({
-  mockCreateReactAgent: vi.fn().mockReturnValue({
-    name: 'research-agent',
-    tools: [],
-  }),
+const { mockCreateAgent } = vi.hoisted(() => ({
+  mockCreateAgent: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 // ── Mocks (must come before imports) ─────────────────────────────────────────
@@ -20,8 +17,12 @@ vi.mock('../../../src/utils/logger.js', () => ({
   })),
 }));
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mockCreateReactAgent,
+vi.mock('langchain', () => ({
+  createAgent: mockCreateAgent,
+  toolCallLimitMiddleware: vi.fn(() => ({ name: 'tool_call_limit' })),
+  modelCallLimitMiddleware: vi.fn(() => ({ name: 'model_call_limit' })),
+  modelFallbackMiddleware: vi.fn(() => ({ name: 'model_fallback' })),
+  createMiddleware: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 vi.mock('../../../src/config/claude.js', () => ({
@@ -40,10 +41,6 @@ import { DEV_AGENT_NAMES } from '../../../src/dev-agents/types.js';
 describe('Research Agent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateReactAgent.mockReturnValue({
-      name: DEV_AGENT_NAMES.RESEARCH,
-      tools: readOnlyTools,
-    });
   });
 
   it('createResearchAgent returns an agent with name = DEV_AGENT_NAMES.RESEARCH', () => {
@@ -52,42 +49,48 @@ describe('Research Agent', () => {
     expect(agent.name).toBe('research-agent');
   });
 
-  it('passes readOnlyTools (5 tools) to createReactAgent', () => {
+  it('passes readOnlyTools (5 tools) to createAgent', () => {
     createResearchAgent();
 
-    expect(mockCreateReactAgent).toHaveBeenCalledOnce();
-    const callArgs = mockCreateReactAgent.mock.calls[0]?.[0] as {
+    expect(mockCreateAgent).toHaveBeenCalledOnce();
+    const callArgs = mockCreateAgent.mock.calls[0]?.[0] as {
       tools: unknown[];
     };
     expect(callArgs.tools).toHaveLength(5);
     expect(callArgs.tools).toBe(readOnlyTools);
   });
 
-  it('passes RESEARCH_AGENT_PROMPT to createReactAgent', () => {
+  it('passes RESEARCH_AGENT_PROMPT as systemPrompt', () => {
     createResearchAgent();
 
-    const callArgs = mockCreateReactAgent.mock.calls[0]?.[0] as {
-      prompt: string;
+    const callArgs = mockCreateAgent.mock.calls[0]?.[0] as {
+      systemPrompt: string;
     };
-    expect(callArgs.prompt).toBe(RESEARCH_AGENT_PROMPT);
+    expect(callArgs.systemPrompt).toBe(RESEARCH_AGENT_PROMPT);
   });
 
   it('passes DEV_AGENT_NAMES.RESEARCH as agent name', () => {
     createResearchAgent();
 
-    const callArgs = mockCreateReactAgent.mock.calls[0]?.[0] as {
+    const callArgs = mockCreateAgent.mock.calls[0]?.[0] as {
       name: string;
     };
     expect(callArgs.name).toBe(DEV_AGENT_NAMES.RESEARCH);
   });
 
-  it('calls createDevModel for the LLM', () => {
+  it('calls createDevModel for the model', () => {
     createResearchAgent();
 
-    const callArgs = mockCreateReactAgent.mock.calls[0]?.[0] as {
-      llm: { modelName: string };
+    const callArgs = mockCreateAgent.mock.calls[0]?.[0] as {
+      model: { modelName: string };
     };
-    expect(callArgs.llm).toEqual({ modelName: 'mock-model' });
+    expect(callArgs.model).toEqual({ modelName: 'mock-model' });
+  });
+
+  it('includes middleware stack', () => {
+    const agent = createResearchAgent();
+    expect(agent.middleware).toBeDefined();
+    expect(agent.middleware).toHaveLength(4);
   });
 });
 

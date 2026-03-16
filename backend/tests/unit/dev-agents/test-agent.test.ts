@@ -2,13 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Hoisted mock references ────────────────────────────────────────────────
 
-const { mockCreateReactAgent, mockModel } = vi.hoisted(() => {
-  const mockCreateReactAgent = vi.fn().mockReturnValue({
-    name: 'test-agent',
-    invoke: vi.fn(),
-  });
+const { mockCreateAgent, mockModel } = vi.hoisted(() => {
+  const mockCreateAgent = vi.fn((opts: Record<string, unknown>) => opts);
   const mockModel = { modelName: 'claude-sonnet-4-20250514' };
-  return { mockCreateReactAgent, mockModel };
+  return { mockCreateAgent, mockModel };
 });
 
 // ── Mocks (BEFORE imports) ─────────────────────────────────────────────────
@@ -28,8 +25,12 @@ vi.mock('../../../src/config/env.js', () => ({
   },
 }));
 
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: mockCreateReactAgent,
+vi.mock('langchain', () => ({
+  createAgent: mockCreateAgent,
+  toolCallLimitMiddleware: vi.fn(() => ({ name: 'tool_call_limit' })),
+  modelCallLimitMiddleware: vi.fn(() => ({ name: 'model_call_limit' })),
+  modelFallbackMiddleware: vi.fn(() => ({ name: 'model_fallback' })),
+  createMiddleware: vi.fn((opts: Record<string, unknown>) => opts),
 }));
 
 vi.mock('../../../src/config/claude.js', () => ({
@@ -56,25 +57,33 @@ describe('Test Specialist Agent', () => {
       expect(agent.name).toBe(DEV_AGENT_NAMES.TEST);
     });
 
-    it('calls createReactAgent with correct parameters', () => {
+    it('calls createAgent with correct parameters', () => {
       createTestAgent();
 
-      expect(mockCreateReactAgent).toHaveBeenCalledOnce();
-      expect(mockCreateReactAgent).toHaveBeenCalledWith({
-        llm: mockModel,
-        tools: devTools,
-        name: DEV_AGENT_NAMES.TEST,
-        prompt: TEST_AGENT_PROMPT,
-      });
+      expect(mockCreateAgent).toHaveBeenCalledOnce();
+      expect(mockCreateAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: mockModel,
+          tools: devTools,
+          name: DEV_AGENT_NAMES.TEST,
+          systemPrompt: TEST_AGENT_PROMPT,
+        }),
+      );
     });
 
     it('passes all 10 dev tools', () => {
       createTestAgent();
 
-      const callArgs = mockCreateReactAgent.mock.calls[0]?.[0] as
+      const callArgs = mockCreateAgent.mock.calls[0]?.[0] as
         | { tools: unknown[] }
         | undefined;
       expect(callArgs?.tools).toHaveLength(10);
+    });
+
+    it('includes middleware stack', () => {
+      const agent = createTestAgent();
+      expect(agent.middleware).toBeDefined();
+      expect(agent.middleware).toHaveLength(4);
     });
   });
 
