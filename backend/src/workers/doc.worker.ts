@@ -17,19 +17,19 @@ async function processDocJob(job: Job<DocJobData>): Promise<void> {
   if (!parsed.success) {
     throw new UnrecoverableError(`Invalid job data: ${parsed.error.issues.map(i => i.message).join(', ')}`);
   }
-  const { sessionId, roomId, format } = parsed.data;
+  const { sessionId, documentType, roomId } = parsed.data;
 
   logger.info('Document generation job received (no-op)', {
     jobId: job.id,
     sessionId,
+    documentType,
     roomId,
-    format,
   });
 
   // Phase 3: Puppeteer-based document generation will be implemented here
 
   // Notify client that document generation completed
-  emitToSession(sessionId, 'doc:generated', { sessionId, roomId, format });
+  emitToSession(sessionId, 'doc:generated', { sessionId, documentType, roomId });
 }
 
 /**

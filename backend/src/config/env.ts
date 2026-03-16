@@ -66,6 +66,7 @@ const envSchema = z.object({
   // ============================================
   SUPABASE_STORAGE_BUCKET: z.string().default('room-assets'),
   SUPABASE_STYLE_BUCKET: z.string().default('style-assets'),
+  SUPABASE_DOCUMENTS_BUCKET: z.string().default('renovation-documents'),
 
   // ============================================
   // Redis Configuration (Phase 3: Production Safety)

@@ -28,7 +28,7 @@ export const connection = getRedisConnection();
 export interface JobTypes {
   'image:optimize': { assetId: string; sessionId: string; width?: number; quality?: number };
   'ai:process-message': { sessionId: string; content: string; userId?: string };
-  'doc:generate-plan': { sessionId: string; roomId: string; format: 'pdf' | 'html' };
+  'doc:generate-plan': { sessionId: string; documentType: 'checklist_pdf' | 'plan_pdf'; roomId?: string };
   'email:send-notification': { to: string; subject: string; template: string; data: { html: string } };
   // mode: determines whether to generate from scratch or edit an existing photo
   // baseImageUrl: reference image URL, required when mode is "edit_existing"
