@@ -1,0 +1,1 @@
+ALTER TABLE "renovation_sessions" ADD COLUMN "plan_data" jsonb;

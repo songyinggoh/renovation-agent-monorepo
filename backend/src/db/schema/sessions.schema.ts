@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, numeric, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { profiles } from './users.schema.js';
+import { type RenovationPlan } from '../jsonb-schemas.js';
 
 /**
  * Renovation sessions table
@@ -18,6 +19,9 @@ export const renovationSessions = pgTable('renovation_sessions', {
   totalBudget: numeric('total_budget', { precision: 10, scale: 2 }),
   currency: text('currency').default('USD'),
   stylePreferences: jsonb('style_preferences'),
+
+  // AI-generated structured renovation plan (Phase 3: Documents)
+  planData: jsonb('plan_data').$type<RenovationPlan>(),
 
   // Payment fields (for Phase 9)
   isPaid: boolean('is_paid').default(false),
