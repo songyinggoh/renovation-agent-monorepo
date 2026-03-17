@@ -273,12 +273,12 @@ describe('RenovationPlanSchema', () => {
   });
 
   it('rejects missing rooms array', () => {
-    const { rooms: _rooms, ...withoutRooms } = VALID_PLAN;
+    const { rooms: _rooms, ...withoutRooms } = VALID_PLAN; // eslint-disable-line @typescript-eslint/no-unused-vars
     expect(() => RenovationPlanSchema.parse(withoutRooms)).toThrow();
   });
 
   it('rejects missing generatedAt', () => {
-    const { generatedAt: _g, ...withoutDate } = VALID_PLAN;
+    const { generatedAt: _g, ...withoutDate } = VALID_PLAN; // eslint-disable-line @typescript-eslint/no-unused-vars
     expect(() => RenovationPlanSchema.parse(withoutDate)).toThrow();
   });
 
