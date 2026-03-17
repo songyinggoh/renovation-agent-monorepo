@@ -100,34 +100,39 @@ export interface RenderProgressPayload {
   stage: RenderStage;
 }
 
-export type DocGenerationStage = 'queued' | 'fetching_data' | 'rendering_html' | 'generating_pdf' | 'uploading' | 'finalizing';
-
-export interface DocStartedPayload {
+export interface DocGenerationStartedPayload {
   sessionId: string;
   documentType: string;
-  jobId: string;
+  roomId?: string;
+  jobId?: string;
 }
 
-export interface DocProgressPayload {
+export interface DocGenerationProgressPayload {
   sessionId: string;
   documentType: string;
+  roomId?: string;
   progress: number;
-  stage: DocGenerationStage;
+  stage: string;
+}
+
+export interface DocGenerationCompletePayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  documentId: string;
+  storagePath: string;
+}
+
+export interface DocGenerationFailedPayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  error: string;
 }
 
 export interface DocGeneratedPayload {
   sessionId: string;
-  documentId: string;
-  documentType: string;
-  filename: string;
-  pageCount?: number;
-  fileSize?: number;
-}
-
-export interface DocFailedPayload {
-  sessionId: string;
-  documentType: string;
-  error: string;
+  roomId?: string;
 }
 
 export interface ClientToServerEvents {
@@ -150,5 +155,9 @@ export interface ServerToClientEvents {
   'render:complete': (data: RenderCompletePayload) => void;
   'render:progress': (data: RenderProgressPayload) => void;
   'render:failed': (data: RenderFailedPayload) => void;
+  'doc:generation_started': (data: DocGenerationStartedPayload) => void;
+  'doc:generation_complete': (data: DocGenerationCompletePayload) => void;
+  'doc:generation_progress': (data: DocGenerationProgressPayload) => void;
+  'doc:generation_failed': (data: DocGenerationFailedPayload) => void;
   'doc:generated': (data: DocGeneratedPayload) => void;
 }
