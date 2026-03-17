@@ -41,7 +41,7 @@ export const generateDocument = asyncHandler(async (req: Request, res: Response)
   logger.info('Document generation requested via REST', { sessionId, documentType, roomId });
 
   const queue = getDocQueue();
-  const job = await queue.add('doc:generate', {
+  const job = await queue.add('doc:generate-plan', {
     sessionId,
     documentType,
     ...(roomId ? { roomId } : {}),

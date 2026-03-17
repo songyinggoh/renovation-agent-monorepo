@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listRenders, requestRender, approveRender } from '../controllers/render.controller.js';
+import { requestRender, listRenders, approveRender } from '../controllers/render.controller.js';
 import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { verifySessionOwnership, verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 
@@ -7,17 +7,6 @@ const router = Router({ mergeParams: true });
 
 // All render routes support optional authentication (Phases 1-7)
 router.use(optionalAuthMiddleware);
-
-/**
- * @route GET /api/sessions/:sessionId/rooms/:roomId/renders
- * @desc List all renders for a room
- */
-router.get(
-  '/:sessionId/rooms/:roomId/renders',
-  verifySessionOwnership,
-  verifyRoomOwnership,
-  listRenders
-);
 
 /**
  * @route POST /api/sessions/:sessionId/rooms/:roomId/renders
@@ -31,8 +20,19 @@ router.post(
 );
 
 /**
+ * @route GET /api/sessions/:sessionId/rooms/:roomId/renders
+ * @desc List all renders for a room
+ */
+router.get(
+  '/:sessionId/rooms/:roomId/renders',
+  verifySessionOwnership,
+  verifyRoomOwnership,
+  listRenders
+);
+
+/**
  * @route PATCH /api/sessions/:sessionId/rooms/:roomId/renders/:assetId
- * @desc Approve or reject a render
+ * @desc Update render metadata (approval, caption)
  */
 router.patch(
   '/:sessionId/rooms/:roomId/renders/:assetId',

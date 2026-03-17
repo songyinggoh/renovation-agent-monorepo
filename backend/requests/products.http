@@ -1,0 +1,14 @@
+@baseUrl = http://localhost:3000/api
+@roomId = YOUR_ROOM_ID
+
+### Search products with filters
+GET {{baseUrl}}/products/search?q=countertop&style=modern&category=surfaces&maxPrice=5000
+
+### Search products by room type
+GET {{baseUrl}}/products/search?roomType=kitchen
+
+### Search products by style only
+GET {{baseUrl}}/products/search?style=minimalist
+
+### Get product recommendations for a room
+GET {{baseUrl}}/rooms/{{roomId}}/products

@@ -35,6 +35,11 @@ export interface AssetMetadata {
   style?: string;
   prompt?: string;
   modelVersion?: string;
+  seed?: number;
+  renderType?: 'from_scratch' | 'edit_existing';
+  basedOnAssetId?: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  generationTimeMs?: number;
   thumbnailGenerated?: boolean;
   compressionApplied?: boolean;
   originalSize?: number;

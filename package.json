@@ -24,7 +24,7 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7"
+    "lint-staged": "^16.4.0"
   },
   "lint-staged": {
     "backend/src/**/*.ts": "pnpm --filter renovation-agent-backend lint",

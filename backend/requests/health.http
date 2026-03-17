@@ -1,0 +1,13 @@
+@baseUrl = http://localhost:3000
+
+### Basic health check
+GET {{baseUrl}}/health
+
+### Liveness probe
+GET {{baseUrl}}/health/live
+
+### Readiness probe (checks DB + Redis)
+GET {{baseUrl}}/health/ready
+
+### Detailed status with metrics
+GET {{baseUrl}}/health/status

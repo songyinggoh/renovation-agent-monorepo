@@ -6,8 +6,11 @@ import { renovationRooms } from './rooms.schema.js';
  * Document types for system-generated artifacts
  */
 export const DOCUMENT_TYPES = [
-  'checklist_pdf',      // AI-generated checklist PDF (Phase 2 CHECKLIST)
-  'plan_pdf',           // Renovation plan PDF (Phase 3 PLAN)
+  'checklist',          // AI-generated checklist (Phase 2 CHECKLIST)
+  'plan',               // Renovation plan (Phase 3 PLAN)
+  'shopping_list',      // Materials shopping list (Phase 2/3)
+  'checklist_pdf',      // AI-generated checklist PDF
+  'plan_pdf',           // Renovation plan PDF
   'estimate_pdf',       // Cost estimate PDF
   'contract_draft',     // Contract template draft
   'progress_report',    // Progress report PDF

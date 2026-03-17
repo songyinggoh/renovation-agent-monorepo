@@ -37,6 +37,19 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Install Chromium and dependencies for Puppeteer
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+
+# Set Puppeteer environment variables
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Remove npm, corepack, and yarn — only node is needed at runtime.
 # This eliminates CVEs from npm's bundled transitive deps (cross-spawn,
 # glob, tar, minimatch) that Trivy would otherwise flag.

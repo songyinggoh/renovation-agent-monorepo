@@ -9,3 +9,5 @@ export { BeforeAfterSlider } from './before-after-slider';
 export { PhaseTransition } from './phase-transition';
 export { RenderCard } from './render-card';
 export { RenderGallery } from './render-gallery';
+export { DocumentCard } from './document-card';
+export { DocumentList } from './document-list';

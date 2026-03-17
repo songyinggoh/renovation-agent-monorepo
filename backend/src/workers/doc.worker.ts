@@ -101,12 +101,14 @@ async function processDocJob(job: Job<DocJobData>): Promise<void> {
         timeoutMs,
         `checklist PDF for session ${sessionId}`
       );
-    } else {
+    } else if (documentType === 'plan_pdf' || documentType === 'plan') {
       result = await withTimeout(
         documentService.generatePlan(sessionId),
         timeoutMs,
         `plan PDF for session ${sessionId}`
       );
+    } else {
+      throw new UnrecoverableError(`Unsupported document type: ${documentType}`);
     }
 
     // Emit completion event
