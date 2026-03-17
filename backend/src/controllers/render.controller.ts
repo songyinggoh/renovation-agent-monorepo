@@ -1,18 +1,15 @@
-import { Request, Response } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import { RenderService } from '../services/render.service.js';
 import { Logger } from '../utils/logger.js';
-import { asyncHandler } from '../utils/async.js';
 
 const logger = new Logger({ serviceName: 'RenderController' });
 const renderService = new RenderService();
 
 const requestRenderSchema = z.object({
-  prompt: z.string().min(10).max(1000),
-  sessionId: z.string().uuid(),
-  /** "edit_existing" modifies a room photo, "from_scratch" generates from prompt only. */
-  mode: z.enum(['edit_existing', 'from_scratch']),
-  /** URL of the room photo — required when mode is "edit_existing". */
+  sessionId: z.string().uuid('sessionId must be a valid UUID'),
+  prompt: z.string().min(10, 'Prompt must be at least 10 characters').max(1000, 'Prompt is too long'),
+  mode: z.enum(['from_scratch', 'edit_existing']),
   baseImageUrl: z.string().url().optional(),
 });
 
@@ -21,71 +18,68 @@ const approveRenderSchema = z.object({
 });
 
 /**
- * List all renders for a room.
- * GET /api/rooms/:roomId/renders
+ * List all renders for a room
+ * GET /api/sessions/:sessionId/rooms/:roomId/renders
  */
-export const listRenders = asyncHandler(async (req: Request, res: Response) => {
-  const { roomId } = req.params;
-
-  logger.info('Listing renders', { roomId });
-
-  const renders = await renderService.getRenders(roomId);
-
-  res.json({ renders });
-});
+export async function listRenders(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { roomId } = req.params;
+    const renders = await renderService.getRenders(roomId);
+    res.json({ renders });
+  } catch (error) {
+    next(error);
+  }
+}
 
 /**
- * Request a new AI render for a room.
- * POST /api/rooms/:roomId/renders
+ * Request a new AI render for a room
+ * POST /api/sessions/:sessionId/rooms/:roomId/renders
  */
-export const requestRender = asyncHandler(async (req: Request, res: Response) => {
-  const { roomId } = req.params;
+export async function requestRender(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { roomId } = req.params;
 
-  const parsed = requestRenderSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      error: 'Validation Error',
-      details: parsed.error.issues.map(i => ({
-        field: i.path.join('.'),
-        message: i.message,
-      })),
-    });
-    return;
+    const parsed = requestRenderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'Validation Error',
+        details: parsed.error.issues.map((i) => i.message).join(', '),
+      });
+      return;
+    }
+
+    const { sessionId, prompt, mode, baseImageUrl } = parsed.data;
+    const result = await renderService.requestRender({ sessionId, roomId, mode, prompt, baseImageUrl });
+
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
   }
-
-  const { prompt, sessionId, mode, baseImageUrl } = parsed.data;
-
-  logger.info('Requesting render via REST', { roomId, sessionId, mode, promptLength: prompt.length });
-
-  const result = await renderService.requestRender({ sessionId, roomId, mode, prompt, baseImageUrl });
-
-  res.status(201).json(result);
-});
+}
 
 /**
- * Approve or reject a render.
- * PATCH /api/rooms/:roomId/renders/:assetId
+ * Approve or reject a render
+ * PATCH /api/sessions/:sessionId/rooms/:roomId/renders/:assetId
  */
-export const approveRender = asyncHandler(async (req: Request, res: Response) => {
-  const { roomId, assetId } = req.params;
+export async function approveRender(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { assetId } = req.params;
 
-  const parsed = approveRenderSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      error: 'Validation Error',
-      details: parsed.error.issues.map(i => ({
-        field: i.path.join('.'),
-        message: i.message,
-      })),
-    });
-    return;
+    const parsed = approveRenderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'Validation Error',
+        details: parsed.error.issues.map((i) => i.message).join(', '),
+      });
+      return;
+    }
+
+    await renderService.updateApproval(assetId, parsed.data.approvalStatus);
+
+    res.json({ assetId, approvalStatus: parsed.data.approvalStatus });
+  } catch (error) {
+    next(error);
   }
+}
 
-  const { approvalStatus } = parsed.data;
-
-  logger.info('Updating render approval', { roomId, assetId, approvalStatus });
-
-  await renderService.updateApproval(assetId, approvalStatus);
-
-  res.json({ assetId, approvalStatus });
-});
+logger.info('RenderController loaded');
