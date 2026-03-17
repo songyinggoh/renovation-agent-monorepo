@@ -94,29 +94,67 @@ describe('job.validators', () => {
   });
 
   describe('docGeneratePlanJobSchema', () => {
-    it('should accept valid doc job data', () => {
+    it('should accept checklist_pdf without roomId', () => {
       const result = docGeneratePlanJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
-        roomId: '660e8400-e29b-41d4-a716-446655440000',
-        format: 'pdf',
+        documentType: 'checklist_pdf',
       });
       expect(result.success).toBe(true);
     });
 
-    it('should accept html format', () => {
+    it('should accept checklist_pdf with optional roomId', () => {
       const result = docGeneratePlanJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        documentType: 'checklist_pdf',
         roomId: '660e8400-e29b-41d4-a716-446655440000',
-        format: 'html',
       });
       expect(result.success).toBe(true);
     });
 
-    it('should reject invalid format', () => {
+    it('should accept plan_pdf without roomId', () => {
       const result = docGeneratePlanJobSchema.safeParse({
         sessionId: '550e8400-e29b-41d4-a716-446655440000',
-        roomId: '660e8400-e29b-41d4-a716-446655440000',
-        format: 'docx',
+        documentType: 'plan_pdf',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject missing documentType', () => {
+      const result = docGeneratePlanJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject old format field (docx)', () => {
+      const result = docGeneratePlanJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        documentType: 'docx',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject old format field (pdf)', () => {
+      const result = docGeneratePlanJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        documentType: 'pdf',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject non-UUID sessionId', () => {
+      const result = docGeneratePlanJobSchema.safeParse({
+        sessionId: 'not-a-uuid',
+        documentType: 'checklist_pdf',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject non-UUID roomId', () => {
+      const result = docGeneratePlanJobSchema.safeParse({
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        documentType: 'checklist_pdf',
+        roomId: 'not-a-uuid',
       });
       expect(result.success).toBe(false);
     });

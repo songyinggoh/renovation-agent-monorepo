@@ -195,6 +195,126 @@ describe('ProductCatalogMetadataSchema', () => {
 });
 
 // ---------------------------------------------------------------------------
+// RenovationPlanSchema (and nested schemas added in 3A-01)
+// ---------------------------------------------------------------------------
+import {
+  RenovationTaskSchema,
+  RenovationPlanSchema,
+} from '../../../src/db/jsonb-schemas.js';
+
+const VALID_TASK = {
+  id: 'task-1',
+  description: 'Install new cabinets',
+  estimatedCost: 10000,
+  duration: 5,
+  tradeCategory: 'carpentry' as const,
+};
+
+const VALID_PLAN = {
+  summary: 'Complete kitchen renovation',
+  totalBudget: 25000,
+  totalDays: 21,
+  generatedAt: '2026-03-16T00:00:00Z',
+  rooms: [{
+    roomId: 'room-uuid-1',
+    roomName: 'Kitchen',
+    estimatedCost: 25000,
+    estimatedDays: 21,
+    tasks: [VALID_TASK],
+  }],
+};
+
+describe('RenovationTaskSchema', () => {
+  it('accepts a valid task', () => {
+    expect(RenovationTaskSchema.parse(VALID_TASK)).toMatchObject(VALID_TASK);
+  });
+
+  it('accepts $0 estimatedCost (nonnegative)', () => {
+    expect(() => RenovationTaskSchema.parse({ ...VALID_TASK, estimatedCost: 0 })).not.toThrow();
+  });
+
+  it('rejects negative estimatedCost', () => {
+    expect(() => RenovationTaskSchema.parse({ ...VALID_TASK, estimatedCost: -1 })).toThrow();
+  });
+
+  it('rejects invalid tradeCategory', () => {
+    expect(() => RenovationTaskSchema.parse({ ...VALID_TASK, tradeCategory: 'masonry' })).toThrow();
+  });
+
+  it('rejects non-integer duration', () => {
+    expect(() => RenovationTaskSchema.parse({ ...VALID_TASK, duration: 2.5 })).toThrow();
+  });
+
+  it('passes through unknown extra keys', () => {
+    const result = RenovationTaskSchema.parse({ ...VALID_TASK, legacyField: 'old' });
+    expect(result).toHaveProperty('legacyField', 'old');
+  });
+
+  it('defaults priority to medium when omitted', () => {
+    const result = RenovationTaskSchema.parse(VALID_TASK);
+    expect(result.priority).toBe('medium');
+  });
+
+  it('defaults dependencies to empty array when omitted', () => {
+    const result = RenovationTaskSchema.parse(VALID_TASK);
+    expect(result.dependencies).toEqual([]);
+  });
+});
+
+describe('RenovationPlanSchema', () => {
+  it('accepts a valid full plan', () => {
+    const result = RenovationPlanSchema.parse(VALID_PLAN);
+    expect(result.totalBudget).toBe(25000);
+    expect(result.rooms).toHaveLength(1);
+  });
+
+  it('accepts $0 totalBudget (nonnegative)', () => {
+    expect(() => RenovationPlanSchema.parse({ ...VALID_PLAN, totalBudget: 0 })).not.toThrow();
+  });
+
+  it('rejects missing rooms array', () => {
+    const { rooms: _rooms, ...withoutRooms } = VALID_PLAN;
+    expect(() => RenovationPlanSchema.parse(withoutRooms)).toThrow();
+  });
+
+  it('rejects missing generatedAt', () => {
+    const { generatedAt: _g, ...withoutDate } = VALID_PLAN;
+    expect(() => RenovationPlanSchema.parse(withoutDate)).toThrow();
+  });
+
+  it('rejects non-integer totalDays', () => {
+    expect(() => RenovationPlanSchema.parse({ ...VALID_PLAN, totalDays: 3.5 })).toThrow();
+  });
+
+  it('defaults contractors to empty array when omitted', () => {
+    const result = RenovationPlanSchema.parse(VALID_PLAN);
+    expect(result.contractors).toEqual([]);
+  });
+
+  it('defaults warnings to empty array when omitted', () => {
+    const result = RenovationPlanSchema.parse(VALID_PLAN);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('passes through unknown extra keys for forward DB compatibility', () => {
+    const result = RenovationPlanSchema.parse({ ...VALID_PLAN, futureField: 'value' });
+    expect(result).toHaveProperty('futureField', 'value');
+  });
+
+  it('rejects invalid task tradeCategory in nested room', () => {
+    const badPlan = {
+      ...VALID_PLAN,
+      rooms: [{ ...VALID_PLAN.rooms[0], tasks: [{ ...VALID_TASK, tradeCategory: 'magic' }] }],
+    };
+    expect(() => RenovationPlanSchema.parse(badPlan)).toThrow();
+  });
+
+  it('accepts non-strict ISO strings for generatedAt (agent may omit milliseconds)', () => {
+    expect(() => RenovationPlanSchema.parse({ ...VALID_PLAN, generatedAt: '2026-03-16' })).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateJsonb / validateJsonbOptional helpers
 // ---------------------------------------------------------------------------
 describe('validateJsonb', () => {

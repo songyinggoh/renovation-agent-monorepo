@@ -81,6 +81,10 @@ vi.mock('../../../src/routes/render.routes.js', async () => {
   const { Router } = await import('express');
   return { default: Router() };
 });
+vi.mock('../../../src/routes/document.routes.js', async () => {
+  const { Router } = await import('express');
+  return { default: Router() };
+});
 
 // Bull Board + queues (dev-only UI)
 vi.mock('@bull-board/api', () => ({
