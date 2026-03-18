@@ -3,13 +3,23 @@
 ## Current Position
 
 Phase: phase-4-payment (IN PROGRESS)
-Plan: 4-02 of 5 complete
-Status: Wave 2 backend core complete. Payment service, controller, routes, and app.ts webhook wiring done.
-Last activity: 2026-03-18 - Completed 4-02-PLAN.md (payment service, controller, routes, webhook mounting)
+Plan: 4-03 of 5 complete
+Status: Wave 3 security hardening complete. Rate limiter, entitlement gates, and comprehensive unit tests done.
+Last activity: 2026-03-18 - Completed 4-03-PLAN.md (checkoutLimiter, isPaid gates, 18 new tests)
 
-Progress: ██░░░░░░░░░░░░░░ (40% Phase 4 execution — 2/5 plans complete)
+Progress: ███░░░░░░░░░░░░░ (60% Phase 4 execution — 3/5 plans complete)
 
 ## Completed (Recent)
+
+- **Phase 4 Plan 4-03 (Wave 3 — Security Hardening):**
+  - backend/src/middleware/rate-limit.middleware.ts: checkoutLimiter (5 req/10 min per IP)
+  - backend/src/routes/payment.routes.ts: checkoutLimiter wired to POST /payments/checkout
+  - backend/src/services/render.service.ts: isPaid entitlement gate in requestRender()
+  - backend/src/services/document.service.ts: isPaid gate in generateChecklist() + generatePlan()
+  - backend/tests/unit/payment/payment.service.test.ts: 7 tests (idempotency, fulfillment, dev bypass)
+  - backend/tests/unit/payment/payment-security.test.ts: 11 tests (phase gate, webhook, B1/B4, S3 audit, entitlement)
+  - 974 total tests passing (65 test files)
+  - Summary: .planning/phases/phase-4-payment/4-03-SUMMARY.md
 
 - **Phase 4 Plan 4-02 (Wave 2 — Backend Core):**
   - backend/src/services/payment.service.ts: createCheckoutSession, fulfillPayment (idempotent), devCompletePayment, getPaymentStatus
@@ -35,8 +45,6 @@ Progress: ██░░░░░░░░░░░░░░ (40% Phase 4 executio
 
 ## Next Steps
 
-- Execute Plan 4-03 (Wave 3): security hardening, rate limiter, entitlement gates
-- Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
 - Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
 - Execute Plan 4-05 (Wave 5): integration tests, prompt, CSP, runbook
 
@@ -47,7 +55,10 @@ Progress: ██░░░░░░░░░░░░░░ (40% Phase 4 executio
 | Webhook route on app directly (not in payment router) | Plan 4-02 app.ts | Ensures it is always registered before global express.json(); router mounting order not guaranteed |
 | Dev-complete gated at route registration in NODE_ENV block | Plan 4-02 app.ts (B1) | Route does not exist in production routing table — not just guarded in handler |
 | emitToSession() for Socket.io events in payment service | Plan 4-02 | Matches render/doc pattern; handles null io gracefully |
-|----------|---------|-----------|
+| checkoutLimiter: 5 req/10 min per IP | Plan 4-03 (E1) | Stricter than authLimiter; limits Stripe API cost abuse; allows retry after cancellation |
+| PAID_REQUIRED_PHASES = ['PAYMENT','COMPLETE','ITERATE'] | Plan 4-03 entitlement | PLAN/RENDER are free preview; gate activates at PAYMENT transition |
+| Entitlement gate in service layer not controller | Plan 4-03 | Cannot be bypassed via alternative API paths; consistent with S3 audit |
+| Dev-complete B4 test via static analysis not dynamic import | Plan 4-03 | vi.resetModules() caused test isolation pollution; readFileSync is reliable |
 | Stripe v18.5.0 installed (not v20.x) | Plan 4-01 execution | npm registry serves v18 as current major; v18 pins API version automatically, same behavior as v20 described in plan |
 | One-time payment per session (not subscription) | Phase 4 payment model | isPaid column already exists; session-based pricing matches product; subscriptions deferred to future |
 | Stripe Checkout hosted redirect (not embedded) | Phase 4 checkout UI | Complexity 2/5 vs 3-4/5; no PCI scope; no @stripe/stripe-js needed |
@@ -72,7 +83,7 @@ Progress: ██░░░░░░░░░░░░░░ (40% Phase 4 executio
 ## Session Continuity
 
 Last session: 2026-03-18
-Stopped at: Completed Plan 4-02 (backend core: payment service, controller, routes, webhook mounting)
+Stopped at: Completed Plan 4-03 (security hardening: checkoutLimiter, entitlement gates, 18 tests)
 Resume file: None
 
 ## Completed Plans
@@ -85,6 +96,7 @@ Resume file: None
 | 3A-04 | Doc worker (Puppeteer), REST API (generate/list/download), graceful shutdown browser pool |
 | 4-01 | Stripe SDK v18, getStripe() lazy singleton, STRIPE_PRICE_AMOUNT_CENTS env var, PaymentCompletedPayload shared-types, DB unique constraint |
 | 4-02 | Payment service (createCheckoutSession/fulfillPayment/devCompletePayment/getPaymentStatus), controller (4 handlers), routes (checkout+status), app.ts (webhook raw body before json, dev-complete NODE_ENV gate) |
+| 4-03 | checkoutLimiter (5/10 min, E1), isPaid entitlement gates in render.service + document.service, 18 new unit tests (idempotency/phase gate/B1B4/S3 audit/entitlement), 974 tests passing |
 
 ## Phase 4 Plans
 
