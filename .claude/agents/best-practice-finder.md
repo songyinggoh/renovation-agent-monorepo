@@ -1,6 +1,7 @@
 ---
 name: best-practice-finder
 description: Use this agent when you need to research industry best practices, development standards, or proven methodologies. Call this agent when implementing new processes, improving existing systems, or ensuring adherence to industry standards.
+tools: Glob, Grep, Read, WebFetch, WebSearch
 
 Examples:
 <example>
@@ -9,6 +10,15 @@ user: "I'm building a financial application and need to ensure I'm following sec
 assistant: "I'll research financial application security best practices including data encryption, transaction security, compliance requirements, and industry standards."
 <commentary>
 Since the user needs industry-specific security best practices research, use the Task tool to launch the best-practice-finder agent.
+</commentary>
+</example>
+
+<example>
+Context: The user is planning a payment integration.
+user: "What are the best practices for planning a Stripe payment integration in a monorepo SaaS app?"
+assistant: "I'll research payment integration planning best practices including wave-based implementation, webhook reliability patterns, testing strategies, and security checklists."
+<commentary>
+Since the user needs implementation planning best practices, use the Task tool to launch the best-practice-finder agent.
 </commentary>
 </example>
 
