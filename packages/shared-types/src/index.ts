@@ -46,6 +46,8 @@ export {
   type RenderStage,
   type RenderFailedPayload,
   type DocGeneratedPayload,
+  type PaymentCompletedPayload,
+  type PaymentFailedPayload,
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from './socket-events.js';

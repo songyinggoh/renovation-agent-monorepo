@@ -135,6 +135,15 @@ export interface DocGeneratedPayload {
   roomId?: string;
 }
 
+export interface PaymentCompletedPayload {
+  sessionId: string;
+}
+
+export interface PaymentFailedPayload {
+  sessionId: string;
+  reason?: string;
+}
+
 export interface ClientToServerEvents {
   'chat:join_session': (data: ChatJoinSessionPayload) => void;
   'chat:user_message': (data: ChatUserMessagePayload) => void;
@@ -160,4 +169,6 @@ export interface ServerToClientEvents {
   'doc:generation_progress': (data: DocGenerationProgressPayload) => void;
   'doc:generation_failed': (data: DocGenerationFailedPayload) => void;
   'doc:generated': (data: DocGeneratedPayload) => void;
+  'payment:completed': (data: PaymentCompletedPayload) => void;
+  'payment:failed': (data: PaymentFailedPayload) => void;
 }
