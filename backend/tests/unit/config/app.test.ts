@@ -11,6 +11,8 @@ vi.mock('../../../src/config/env.js', () => ({
     FRONTEND_URL: 'http://localhost:3001',
     SENTRY_DSN: undefined,
   },
+  isAuthEnabled: vi.fn(() => false),
+  isPaymentsEnabled: vi.fn(() => false),
 }));
 
 vi.mock('../../../src/utils/logger.js', () => ({
@@ -25,6 +27,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
 vi.mock('../../../src/middleware/rate-limit.middleware.js', () => ({
   apiLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   chatLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  checkoutLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 // Request ID middleware — passthrough
@@ -82,6 +85,10 @@ vi.mock('../../../src/routes/render.routes.js', async () => {
   return { default: Router() };
 });
 vi.mock('../../../src/routes/document.routes.js', async () => {
+  const { Router } = await import('express');
+  return { default: Router() };
+});
+vi.mock('../../../src/routes/payment.routes.js', async () => {
   const { Router } = await import('express');
   return { default: Router() };
 });
