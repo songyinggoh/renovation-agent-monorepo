@@ -3,13 +3,21 @@
 ## Current Position
 
 Phase: phase-4-payment (IN PROGRESS)
-Plan: 4-01 of 5 complete
-Status: Wave 1 infrastructure complete. Ready for Wave 2 (backend core).
-Last activity: 2026-03-18 - Completed 4-01-PLAN.md (Stripe SDK, env schema, shared types, config singleton)
+Plan: 4-02 of 5 complete
+Status: Wave 2 backend core complete. Payment service, controller, routes, and app.ts webhook wiring done.
+Last activity: 2026-03-18 - Completed 4-02-PLAN.md (payment service, controller, routes, webhook mounting)
 
-Progress: █░░░░░░░░░░░░░░░ (20% Phase 4 execution — 1/5 plans complete)
+Progress: ██░░░░░░░░░░░░░░ (40% Phase 4 execution — 2/5 plans complete)
 
 ## Completed (Recent)
+
+- **Phase 4 Plan 4-02 (Wave 2 — Backend Core):**
+  - backend/src/services/payment.service.ts: createCheckoutSession, fulfillPayment (idempotent), devCompletePayment, getPaymentStatus
+  - backend/src/controllers/payment.controller.ts: handleCreateCheckout (phase gate), handleStripeWebhook (raw body + async), handleDevComplete, handleGetPaymentStatus
+  - backend/src/routes/payment.routes.ts: checkout + status with optionalAuthMiddleware + verifySessionOwnership
+  - backend/src/app.ts: express.raw webhook (line 100) BEFORE express.json (line 107), paymentRoutes at /api, dev-complete inside NODE_ENV guard
+  - All SECURITY-CHECKLIST controls W1-W8, E4-E6, B1, B3, B5, B6, D1-D3, S3-S4 satisfied
+  - Summary: .planning/phases/phase-4-payment/4-02-SUMMARY.md
 
 - **Phase 4 Plan 4-01 (Wave 1 — Infrastructure):**
   - stripe ^18.5.0 installed in backend
@@ -27,14 +35,18 @@ Progress: █░░░░░░░░░░░░░░░ (20% Phase 4 executio
 
 ## Next Steps
 
-- Execute Plan 4-02 (Wave 2): payment service, controller, routes, webhook mounting
 - Execute Plan 4-03 (Wave 3): security hardening, rate limiter, entitlement gates
+- Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
 - Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
 - Execute Plan 4-05 (Wave 5): integration tests, prompt, CSP, runbook
 
 ## Accumulated Decisions
 
 | Decision | Context | Rationale |
+|----------|---------|-----------|
+| Webhook route on app directly (not in payment router) | Plan 4-02 app.ts | Ensures it is always registered before global express.json(); router mounting order not guaranteed |
+| Dev-complete gated at route registration in NODE_ENV block | Plan 4-02 app.ts (B1) | Route does not exist in production routing table — not just guarded in handler |
+| emitToSession() for Socket.io events in payment service | Plan 4-02 | Matches render/doc pattern; handles null io gracefully |
 |----------|---------|-----------|
 | Stripe v18.5.0 installed (not v20.x) | Plan 4-01 execution | npm registry serves v18 as current major; v18 pins API version automatically, same behavior as v20 described in plan |
 | One-time payment per session (not subscription) | Phase 4 payment model | isPaid column already exists; session-based pricing matches product; subscriptions deferred to future |
@@ -60,7 +72,7 @@ Progress: █░░░░░░░░░░░░░░░ (20% Phase 4 executio
 ## Session Continuity
 
 Last session: 2026-03-18
-Stopped at: Completed Plan 4-01 (infrastructure: Stripe SDK, env schema, shared types, config singleton)
+Stopped at: Completed Plan 4-02 (backend core: payment service, controller, routes, webhook mounting)
 Resume file: None
 
 ## Completed Plans
@@ -72,6 +84,7 @@ Resume file: None
 | 3A-03 | LangGraph tools: save_plan_state + generate_document, ALLOWED_TOOLS, phase prompts |
 | 3A-04 | Doc worker (Puppeteer), REST API (generate/list/download), graceful shutdown browser pool |
 | 4-01 | Stripe SDK v18, getStripe() lazy singleton, STRIPE_PRICE_AMOUNT_CENTS env var, PaymentCompletedPayload shared-types, DB unique constraint |
+| 4-02 | Payment service (createCheckoutSession/fulfillPayment/devCompletePayment/getPaymentStatus), controller (4 handlers), routes (checkout+status), app.ts (webhook raw body before json, dev-complete NODE_ENV gate) |
 
 ## Phase 4 Plans
 
