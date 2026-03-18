@@ -229,10 +229,18 @@ export class DocumentService {
 
     // Query session
     const [session] = await db
-      .select({ id: renovationSessions.id, title: renovationSessions.title })
+      .select({ id: renovationSessions.id, title: renovationSessions.title, phase: renovationSessions.phase, isPaid: renovationSessions.isPaid })
       .from(renovationSessions)
       .where(eq(renovationSessions.id, sessionId));
     if (!session) throw new NotFoundError(`Session not found: ${sessionId}`);
+
+    // Entitlement model: renders/docs generated during PLAN/RENDER phases are the "free preview".
+    // After the session enters PAYMENT phase, new generation requires isPaid=true.
+    // See docs/notion/Project roadmap and phases.md Phase 4 DoD.
+    const PAID_REQUIRED_PHASES = ['PAYMENT', 'COMPLETE', 'ITERATE'];
+    if (PAID_REQUIRED_PHASES.includes(session.phase) && !session.isPaid) {
+      throw new Error('Payment required to generate documents in this phase');
+    }
 
     // Query rooms (filtered by roomId if provided)
     const roomQuery = roomId
@@ -329,11 +337,22 @@ export class DocumentService {
         id: renovationSessions.id,
         title: renovationSessions.title,
         planData: renovationSessions.planData,
+        phase: renovationSessions.phase,
+        isPaid: renovationSessions.isPaid,
       })
       .from(renovationSessions)
       .where(eq(renovationSessions.id, sessionId));
 
     if (!session) throw new NotFoundError(`Session not found: ${sessionId}`);
+
+    // Entitlement model: renders/docs generated during PLAN/RENDER phases are the "free preview".
+    // After the session enters PAYMENT phase, new generation requires isPaid=true.
+    // See docs/notion/Project roadmap and phases.md Phase 4 DoD.
+    const PAID_REQUIRED_PHASES = ['PAYMENT', 'COMPLETE', 'ITERATE'];
+    if (PAID_REQUIRED_PHASES.includes(session.phase) && !session.isPaid) {
+      throw new Error('Payment required to generate documents in this phase');
+    }
+
     if (!session.planData)
       throw new BadRequestError(
         'No plan data found. The agent must call save_plan_state first.'

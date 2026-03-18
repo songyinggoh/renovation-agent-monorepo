@@ -2,6 +2,7 @@ import { eq, and, gte, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { roomAssets, type RoomAsset } from '../db/schema/assets.schema.js';
 import { renovationRooms } from '../db/schema/rooms.schema.js';
+import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { getRenderQueue } from '../config/queue.js';
 import { env, isStorageEnabled } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -59,6 +60,25 @@ export class RenderService {
     // Guard: edit mode requires a reference image URL
     if (mode === 'edit_existing' && !baseImageUrl) {
       throw new BadRequestError('baseImageUrl is required when mode is "edit_existing"');
+    }
+
+    // Entitlement model: renders/docs generated during PLAN/RENDER phases are the "free preview".
+    // After the session enters PAYMENT phase, new generation requires isPaid=true.
+    // See docs/notion/Project roadmap and phases.md Phase 4 DoD.
+    const [sessionRecord] = await db
+      .select({ phase: renovationSessions.phase, isPaid: renovationSessions.isPaid })
+      .from(renovationSessions)
+      .where(eq(renovationSessions.id, sessionId));
+
+    if (!sessionRecord) {
+      throw new Error('Session not found');
+    }
+
+    // Renders are free during PLAN and RENDER phases (the preview).
+    // After RENDER phase, renders require payment.
+    const PAID_REQUIRED_PHASES = ['PAYMENT', 'COMPLETE', 'ITERATE'];
+    if (PAID_REQUIRED_PHASES.includes(sessionRecord.phase) && !sessionRecord.isPaid) {
+      throw new Error('Payment required to generate renders in this phase');
     }
 
     // Validate room exists
