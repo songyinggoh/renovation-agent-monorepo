@@ -2,13 +2,23 @@
 
 ## Current Position
 
-Phase: phase-4-payment (PLANNED)
-Status: Research complete, 5 plans created across 5 waves. Ready for execution.
-Last activity: 2026-03-19 - Created Phase 4 plans (PLAN-4-01 through PLAN-4-05).
+Phase: phase-4-payment (IN PROGRESS)
+Plan: 4-01 of 5 complete
+Status: Wave 1 infrastructure complete. Ready for Wave 2 (backend core).
+Last activity: 2026-03-18 - Completed 4-01-PLAN.md (Stripe SDK, env schema, shared types, config singleton)
 
-Progress: ░░░░░░░░░░░░░░░░ (0% Phase 4 execution)
+Progress: █░░░░░░░░░░░░░░░ (20% Phase 4 execution — 1/5 plans complete)
 
 ## Completed (Recent)
+
+- **Phase 4 Plan 4-01 (Wave 1 — Infrastructure):**
+  - stripe ^18.5.0 installed in backend
+  - STRIPE_PRICE_AMOUNT_CENTS added to env Zod schema (default 4900)
+  - backend/src/config/stripe.ts: lazy getStripe() singleton with isPaymentsEnabled() guard
+  - PaymentCompletedPayload + PaymentFailedPayload added to shared-types socket-events
+  - payment:completed + payment:failed added to ServerToClientEvents
+  - Migration 0009: UNIQUE constraint on stripe_payment_intent_id
+  - Summary: .planning/phases/phase-4-payment/4-01-SUMMARY.md
 
 - **Phase 4 Research:**
   - RESEARCH.md: Full Stripe Checkout Session architecture, 6 code patterns, anti-patterns, pitfalls
@@ -17,13 +27,16 @@ Progress: ░░░░░░░░░░░░░░░░ (0% Phase 4 execution
 
 ## Next Steps
 
-- Execute Phase 4 plans in wave order (Wave 1 through Wave 5)
-- Wave 4 has a human-verify checkpoint (visual payment flow verification)
+- Execute Plan 4-02 (Wave 2): payment service, controller, routes, webhook mounting
+- Execute Plan 4-03 (Wave 3): security hardening, rate limiter, entitlement gates
+- Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
+- Execute Plan 4-05 (Wave 5): integration tests, prompt, CSP, runbook
 
 ## Accumulated Decisions
 
 | Decision | Context | Rationale |
 |----------|---------|-----------|
+| Stripe v18.5.0 installed (not v20.x) | Plan 4-01 execution | npm registry serves v18 as current major; v18 pins API version automatically, same behavior as v20 described in plan |
 | One-time payment per session (not subscription) | Phase 4 payment model | isPaid column already exists; session-based pricing matches product; subscriptions deferred to future |
 | Stripe Checkout hosted redirect (not embedded) | Phase 4 checkout UI | Complexity 2/5 vs 3-4/5; no PCI scope; no @stripe/stripe-js needed |
 | price_data inline (not pre-created Stripe Price) | Phase 4 checkout | Simpler dev setup; no Stripe Dashboard config required |
@@ -46,8 +59,8 @@ Progress: ░░░░░░░░░░░░░░░░ (0% Phase 4 execution
 
 ## Session Continuity
 
-Last session: 2026-03-19
-Stopped at: Phase 4 plans created, ready for execution
+Last session: 2026-03-18
+Stopped at: Completed Plan 4-01 (infrastructure: Stripe SDK, env schema, shared types, config singleton)
 Resume file: None
 
 ## Completed Plans
@@ -58,6 +71,7 @@ Resume file: None
 | 3A-02 | DocumentService + Handlebars templates for checklist and plan PDFs |
 | 3A-03 | LangGraph tools: save_plan_state + generate_document, ALLOWED_TOOLS, phase prompts |
 | 3A-04 | Doc worker (Puppeteer), REST API (generate/list/download), graceful shutdown browser pool |
+| 4-01 | Stripe SDK v18, getStripe() lazy singleton, STRIPE_PRICE_AMOUNT_CENTS env var, PaymentCompletedPayload shared-types, DB unique constraint |
 
 ## Phase 4 Plans
 
