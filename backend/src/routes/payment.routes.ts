@@ -5,6 +5,7 @@ import {
 } from '../controllers/payment.controller.js';
 import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
 import { verifySessionOwnership } from '../middleware/ownership.middleware.js';
+import { checkoutLimiter } from '../middleware/rate-limit.middleware.js';
 
 const router = Router();
 
@@ -29,6 +30,7 @@ const router = Router();
 // ============================================
 router.post(
   '/payments/checkout/:sessionId',
+  checkoutLimiter,
   optionalAuthMiddleware,
   verifySessionOwnership,
   handleCreateCheckout

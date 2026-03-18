@@ -117,3 +117,13 @@ export const authLimiter: RequestHandler = createMiddleware(
   createLimiter({ keyPrefix: 'auth', points: 10, duration: 15 * 60 }),
   'Too many authentication attempts, please try again later',
 );
+
+/**
+ * Strict rate limiter for payment checkout — 5 requests per 10 minutes per IP
+ * Prevents Stripe API abuse (each call creates a Checkout Session on Stripe's servers).
+ * SECURITY-CHECKLIST E1
+ */
+export const checkoutLimiter: RequestHandler = createMiddleware(
+  createLimiter({ keyPrefix: 'checkout', points: 5, duration: 10 * 60 }),
+  'Too many checkout attempts, please try again later',
+);
