@@ -23,9 +23,9 @@ export const renovationSessions = pgTable('renovation_sessions', {
   // AI-generated structured renovation plan (Phase 3: Documents)
   planData: jsonb('plan_data').$type<RenovationPlan>(),
 
-  // Payment fields (for Phase 9)
+  // Payment fields (Phase 4)
   isPaid: boolean('is_paid').default(false),
-  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  stripePaymentIntentId: text('stripe_payment_intent_id').unique(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

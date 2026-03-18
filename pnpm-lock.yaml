@@ -145,6 +145,9 @@ importers:
       socket.io:
         specifier: ^4.8.3
         version: 4.8.3
+      stripe:
+        specifier: ^18.5.0
+        version: 18.5.0(@types/node@20.19.37)
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -12835,6 +12838,12 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  stripe@18.5.0(@types/node@20.19.37):
+    dependencies:
+      qs: 6.14.2
+    optionalDependencies:
+      '@types/node': 20.19.37
 
   stripe@18.5.0(@types/node@24.12.0):
     dependencies:

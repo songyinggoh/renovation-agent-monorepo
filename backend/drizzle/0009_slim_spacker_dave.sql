@@ -1,0 +1,1 @@
+ALTER TABLE "renovation_sessions" ADD CONSTRAINT "renovation_sessions_stripe_payment_intent_id_unique" UNIQUE("stripe_payment_intent_id");
