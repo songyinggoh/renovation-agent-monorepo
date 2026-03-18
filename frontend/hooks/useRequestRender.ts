@@ -17,6 +17,11 @@ interface RequestRenderResponse {
   status: string;
 }
 
+interface RequestRenderContext {
+  previousRenders: unknown;
+  roomId: string;
+}
+
 /**
  * Mutation hook to request a new AI render for a room.
  * Uses optimistic UI to show the 'processing' state immediately.
@@ -24,7 +29,7 @@ interface RequestRenderResponse {
 export function useRequestRender() {
   const queryClient = useQueryClient();
 
-  return useMutation<RequestRenderResponse, Error, RequestRenderParams>({
+  return useMutation<RequestRenderResponse, Error, RequestRenderParams, RequestRenderContext>({
     mutationFn: async ({ sessionId, roomId, prompt, baseAssetId }) => {
       return fetchWithAuth(`/api/sessions/${sessionId}/rooms/${roomId}/renders`, {
         method: 'POST',

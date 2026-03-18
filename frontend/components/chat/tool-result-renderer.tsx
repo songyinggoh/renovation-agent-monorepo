@@ -1,13 +1,16 @@
 'use client';
 
+import type { RefObject } from 'react';
+import type { Socket } from 'socket.io-client';
+import { cn } from '@/lib/utils';
 import { Message } from '@/types/chat';
 import { RenderCard } from '@/components/renovation';
 import { useRenderState } from '@/hooks/useRenderState';
 import { useDocumentState, type DocumentGenerationEntry } from '@/hooks/useDocumentState';
-import { useSocket } from '@/hooks/useSocket';
 
 interface ToolResultRendererProps {
   message: Message;
+  socketRef?: RefObject<Socket | null>;
 }
 
 /** Human-readable labels for tool names */
@@ -40,7 +43,7 @@ interface Product {
  * Renders tool results as styled cards in the chat UI
  * Each tool type gets a specialized visual treatment
  */
-export function ToolResultRenderer({ message }: ToolResultRendererProps) {
+export function ToolResultRenderer({ message, socketRef }: ToolResultRendererProps) {
   const toolName = message.tool_name ?? 'unknown';
   const data = message.tool_data ?? {};
   const label = TOOL_LABELS[toolName] ?? toolName;
@@ -54,7 +57,7 @@ export function ToolResultRenderer({ message }: ToolResultRendererProps) {
             {label}
           </span>
         </div>
-        <ToolContent toolName={toolName} data={data} />
+        <ToolContent toolName={toolName} data={data} socketRef={socketRef} />
       </div>
     </div>
   );
@@ -73,7 +76,7 @@ function ToolIcon({ toolName }: { toolName: string }) {
   return <span className="text-base">{iconMap[toolName] ?? '\u{1F527}'}</span>;
 }
 
-function ToolContent({ toolName, data }: { toolName: string; data: Record<string, unknown> }) {
+function ToolContent({ toolName, data, socketRef }: { toolName: string; data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
   switch (toolName) {
     case 'get_style_examples':
       return <StyleResult data={data} />;
@@ -86,9 +89,9 @@ function ToolContent({ toolName, data }: { toolName: string; data: Record<string
     case 'save_product_recommendation':
       return <ProductSavedResult data={data} />;
     case 'generate_render':
-      return <RenderRequestedResult data={data} />;
+      return <RenderRequestedResult data={data} socketRef={socketRef} />;
     case 'generate_document':
-      return <DocumentRequestedResult data={data} />;
+      return <DocumentRequestedResult data={data} socketRef={socketRef} />;
     default:
       return (
         <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
@@ -252,15 +255,15 @@ function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function RenderRequestedResult({ data }: { data: Record<string, unknown> }) {
+function RenderRequestedResult({ data, socketRef }: { data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
   const success = typeof data.success === 'boolean' ? data.success : undefined;
   const error = typeof data.error === 'string' ? data.error : undefined;
   const assetId = typeof data.assetId === 'string' ? data.assetId : undefined;
   const roomId = typeof data.roomId === 'string' ? data.roomId : undefined;
   const prompt = typeof data.prompt === 'string' ? data.prompt : undefined;
 
-  const { socketRef } = useSocket();
-  const { activeRenders } = useRenderState(socketRef);
+  const nullRef = { current: null } as RefObject<Socket | null>;
+  const { activeRenders } = useRenderState(socketRef ?? nullRef);
 
   if (success === false || error) {
     return (
@@ -339,15 +342,15 @@ function ChecklistSavedResult({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function DocumentRequestedResult({ data }: { data: Record<string, unknown> }) {
+function DocumentRequestedResult({ data, socketRef }: { data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
   const success = typeof data.success === 'boolean' ? data.success : undefined;
   const error = typeof data.error === 'string' ? data.error : undefined;
   const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
   const documentType = typeof data.documentType === 'string' ? data.documentType as DocumentGenerationEntry['documentType'] : undefined;
   const roomId = typeof data.roomId === 'string' ? data.roomId : undefined;
 
-  const { socketRef } = useSocket();
-  const { activeDocuments } = useDocumentState(socketRef);
+  const nullRef = { current: null } as RefObject<Socket | null>;
+  const { activeDocuments } = useDocumentState(socketRef ?? nullRef);
 
   if (success === false || error) {
     return (

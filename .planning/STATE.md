@@ -13,8 +13,9 @@ Progress: ████████████████ (100% Phase 3 complet
 
 - **Phase 3 Wave 4 (Frontend UI):**
   - Implemented `RenderCard` and `RenderGallery` with real-time Socket.io progress.
+  - Implemented `BeforeAfterSlider` and `ComparisonDialog` for render comparisons.
+  - Integrated comparison UI into `SessionPageClient`.
   - Implemented `DocumentCard` and `DocumentList` for PDF deliverables.
-  - Added `useRequestRender` hook with optimistic UI updates.
   - Added `useDocuments` and `useDocumentState` hooks.
   - Integrated real-time generation feedback into `ToolResultRenderer` for both renders and documents.
 

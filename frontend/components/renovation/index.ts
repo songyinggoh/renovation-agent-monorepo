@@ -6,6 +6,7 @@ export { ContractorCard } from './contractor-card';
 export { TimelineView, type TimelineItem } from './timeline-view';
 export { TrustBadge } from './trust-badge';
 export { BeforeAfterSlider } from './before-after-slider';
+export { ComparisonDialog } from './comparison-dialog';
 export { PhaseTransition } from './phase-transition';
 export { RenderCard } from './render-card';
 export { RenderGallery } from './render-gallery';

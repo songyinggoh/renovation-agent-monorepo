@@ -47,11 +47,13 @@ export function RenderCard({
   const config = STATUS_CONFIG[render.status];
   const prompt = typeof render.metadata?.prompt === 'string' ? render.metadata.prompt : undefined;
   const approvalStatus = typeof render.metadata?.approvalStatus === 'string' ? render.metadata.approvalStatus : undefined;
+  const baseImageUrl = typeof render.metadata?.baseImageUrl === 'string' ? render.metadata.baseImageUrl : undefined;
   const progress = activeRender?.progress;
   const stage = activeRender?.stage;
 
   return (
     <div
+      data-testid="render-card"
       className={cn(
         'group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all hover:shadow-md',
         'ring-1 ring-transparent hover:ring-[hsl(var(--phase-render))]',
@@ -112,7 +114,7 @@ export function RenderCard({
         {/* Actions */}
         {render.status === 'ready' && (
           <div className="flex items-center gap-1.5">
-            {onCompare && (
+            {onCompare && baseImageUrl && (
               <button
                 onClick={onCompare}
                 className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

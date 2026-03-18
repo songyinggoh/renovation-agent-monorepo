@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { RefObject } from 'react';
+import type { Socket } from 'socket.io-client';
 import { Message } from '@/types/chat';
 import { EmptyState } from './empty-state';
 import { SuggestionBubbles } from './suggestion-bubbles';
@@ -23,6 +25,7 @@ interface MessageListProps {
   isLoadingHistory?: boolean;
   phase?: RenovationPhase;
   onSuggestionSelect?: (suggestion: string) => void;
+  socketRef?: RefObject<Socket | null>;
 }
 
 function formatTime(dateString: string): string {
@@ -33,7 +36,7 @@ function formatTime(dateString: string): string {
 }
 
 
-export function MessageList({ messages, isAssistantTyping, isLoadingHistory, phase, onSuggestionSelect }: MessageListProps) {
+export function MessageList({ messages, isAssistantTyping, isLoadingHistory, phase, onSuggestionSelect, socketRef }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
           return (
             <div key={message.id} className="animate-slide-up">
               <ToolErrorBoundary key={message.id} messageId={message.id}>
-                <ToolResultRenderer message={message} />
+                <ToolResultRenderer message={message} socketRef={socketRef} />
               </ToolErrorBoundary>
             </div>
           );

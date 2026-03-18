@@ -9,7 +9,9 @@ import { useRoomRenders } from '@/hooks/useRoomRenders';
 import { ChatView } from '@/components/chat/chat-view';
 import { SessionSidebar } from '@/components/session/session-sidebar';
 import { RenderGallery } from '@/components/renovation/render-gallery';
+import { ComparisonDialog } from '@/components/renovation/index';
 import { PHASE_INDEX, type RenovationPhase } from '@/lib/design-tokens';
+import { useState } from 'react';
 
 interface SessionPageClientProps {
   sessionId: string;
@@ -29,6 +31,13 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
     selectRoom,
   } = useSessionRooms(sessionId);
 
+  // Comparison state
+  const [comparison, setComparison] = useState<{
+    beforeUrl: string;
+    afterUrl: string;
+    roomName?: string;
+  } | null>(null);
+
   // Lift useChat here so we can share socketRef with useSocketQuerySync
   const chat = useChat(sessionId);
 
@@ -43,6 +52,27 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
 
   const phase = session?.phase ?? 'INTAKE';
   const showRenders = isRenderPhase(phase) && !!selectedRoomId && renders.length > 0;
+
+  const handleCompare = (renderId: string) => {
+    const render = renders.find((r) => r.id === renderId);
+    if (!render || !render.storagePath) return;
+
+    const baseImageUrl = render.metadata?.baseImageUrl as string | undefined;
+    if (!baseImageUrl) {
+      // If no base image, we can't show the slider comparison
+      // but maybe we can just show the render?
+      // For now, only support comparison if baseImageUrl exists
+      return;
+    }
+
+    const room = rooms.find((r) => r.id === selectedRoomId);
+
+    setComparison({
+      beforeUrl: baseImageUrl,
+      afterUrl: render.storagePath,
+      roomName: room?.name,
+    });
+  };
 
   return (
     <div className="flex h-[calc(100vh-10rem)]">
@@ -67,6 +97,7 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
           error={chat.error}
           isAssistantTyping={chat.isAssistantTyping}
           isLoadingHistory={chat.isLoadingHistory}
+          socketRef={chat.socketRef}
         />
       </div>
       {showRenders && (
@@ -77,9 +108,21 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
             sessionId={sessionId}
             renders={renders}
             activeRenders={activeRenders}
+            onCompare={handleCompare}
           />
         </aside>
+      )}
+
+      {comparison && (
+        <ComparisonDialog
+          open={!!comparison}
+          onOpenChange={(open) => !open && setComparison(null)}
+          beforeImageUrl={comparison.beforeUrl}
+          afterImageUrl={comparison.afterUrl}
+          roomName={comparison.roomName}
+        />
       )}
     </div>
   );
 }
+

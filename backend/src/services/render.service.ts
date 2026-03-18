@@ -9,6 +9,7 @@ import { buildStoragePath } from './asset.service.js';
 import { Logger } from '../utils/logger.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import type { ImageGenerationResult } from './image-generation.service.js';
+import { testRedisConnection } from '../config/redis.js';
 
 const logger = new Logger({ serviceName: 'RenderService' });
 
@@ -113,32 +114,56 @@ export class RenderService {
       throw new Error('Failed to create render asset record');
     }
 
+    let jobId: string | undefined;
+
     // Enqueue BullMQ job — the worker picks this up asynchronously
     // and emits Socket.io events (started → progress → complete/failed).
-    const queue = getRenderQueue();
-    const job = await queue.add(
-      'render:generate',
-      {
+    // If Redis is unavailable, run inline (for dev/test without Redis).
+    const redisOk = await testRedisConnection();
+    if (redisOk) {
+      const queue = getRenderQueue();
+      const job = await queue.add(
+        'render:generate',
+        {
+          sessionId,
+          roomId,
+          mode,
+          prompt,
+          assetId: asset.id,
+          ...(baseImageUrl ? { baseImageUrl } : {}),
+        },
+      );
+      jobId = job.id;
+      logger.info('Render job enqueued', {
+        assetId: asset.id,
+        jobId,
+        sessionId,
+        roomId,
+        mode,
+      });
+    } else {
+      logger.warn('Redis unavailable, running render job inline', undefined, { assetId: asset.id });
+      // Import lazily to avoid circular dependency
+      const { runRenderJobInline } = await import('../workers/render.worker.js');
+      
+      // Run in background (do not await)
+      runRenderJobInline({
         sessionId,
         roomId,
         mode,
         prompt,
         assetId: asset.id,
         ...(baseImageUrl ? { baseImageUrl } : {}),
-      },
-    );
-
-    logger.info('Render job enqueued', {
-      assetId: asset.id,
-      jobId: job.id,
-      sessionId,
-      roomId,
-      mode,
-    });
+      }).catch(err => {
+        logger.error('Inline render job failed', err instanceof Error ? err : new Error(String(err)), { assetId: asset.id });
+      });
+      
+      jobId = `inline-${asset.id}`;
+    }
 
     return {
       assetId: asset.id,
-      jobId: job.id ?? asset.id,
+      jobId: jobId ?? asset.id,
     };
   }
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requestRender, listRenders, approveRender } from '../controllers/render.controller.js';
 import { optionalAuthMiddleware } from '../middleware/auth.middleware.js';
-import { verifySessionOwnership, verifyRoomOwnership } from '../middleware/ownership.middleware.js';
+import { verifyRoomOwnership } from '../middleware/ownership.middleware.js';
 
 const router = Router({ mergeParams: true });
 
@@ -9,34 +9,31 @@ const router = Router({ mergeParams: true });
 router.use(optionalAuthMiddleware);
 
 /**
- * @route POST /api/sessions/:sessionId/rooms/:roomId/renders
+ * @route POST /api/rooms/:roomId/renders
  * @desc Request a new AI render for a room
  */
 router.post(
-  '/:sessionId/rooms/:roomId/renders',
-  verifySessionOwnership,
+  '/rooms/:roomId/renders',
   verifyRoomOwnership,
   requestRender
 );
 
 /**
- * @route GET /api/sessions/:sessionId/rooms/:roomId/renders
+ * @route GET /api/rooms/:roomId/renders
  * @desc List all renders for a room
  */
 router.get(
-  '/:sessionId/rooms/:roomId/renders',
-  verifySessionOwnership,
+  '/rooms/:roomId/renders',
   verifyRoomOwnership,
   listRenders
 );
 
 /**
- * @route PATCH /api/sessions/:sessionId/rooms/:roomId/renders/:assetId
+ * @route PATCH /api/rooms/:roomId/renders/:assetId
  * @desc Update render metadata (approval, caption)
  */
 router.patch(
-  '/:sessionId/rooms/:roomId/renders/:assetId',
-  verifySessionOwnership,
+  '/rooms/:roomId/renders/:assetId',
   verifyRoomOwnership,
   approveRender
 );
