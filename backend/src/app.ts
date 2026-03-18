@@ -11,6 +11,8 @@ import { getDLQ } from './config/dead-letter.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestIdMiddleware } from './middleware/request-id.middleware.js';
 import { apiLimiter, chatLimiter } from './middleware/rate-limit.middleware.js';
+import { optionalAuthMiddleware } from './middleware/auth.middleware.js';
+import { verifySessionOwnership } from './middleware/ownership.middleware.js';
 import { Logger } from './utils/logger.js';
 import healthRoutes from './routes/health.routes.js';
 import sessionRoutes from './routes/session.routes.js';
@@ -21,6 +23,11 @@ import productRoutes from './routes/product.routes.js';
 import assetRoutes from './routes/asset.routes.js';
 import renderRoutes from './routes/render.routes.js';
 import documentRoutes from './routes/document.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
+import {
+  handleStripeWebhook,
+  handleDevComplete,
+} from './controllers/payment.controller.js';
 
 const logger = new Logger({ serviceName: 'App' });
 
@@ -77,6 +84,24 @@ export function createApp(): Application {
   );
 
   // ============================================
+  // Stripe Webhook Route (MUST be before express.json())
+  //
+  // The Stripe webhook requires the raw request body as a Buffer for signature
+  // verification via stripe.webhooks.constructEvent(). express.json() would parse
+  // the body into a JS object and destroy the raw buffer, causing constructEvent()
+  // to throw SignatureVerificationError on every request.
+  //
+  // SECURITY-CHECKLIST W2, RESEARCH Pitfall 1: This is the #1 Stripe integration failure mode.
+  // express.raw() is applied inline at the route level so all other routes continue
+  // to receive parsed JSON via the global express.json() below.
+  // ============================================
+  app.post(
+    '/api/webhooks/stripe',
+    express.raw({ type: 'application/json' }),
+    handleStripeWebhook
+  );
+
+  // ============================================
   // Body Parsing Middleware
   // ============================================
   app.use(express.json({ limit: '10mb' })); // Support larger JSON payloads for image data
@@ -117,6 +142,7 @@ export function createApp(): Application {
   app.use('/api', assetRoutes);
   app.use('/api', renderRoutes);
   app.use('/api', documentRoutes);
+  app.use('/api', paymentRoutes);
 
   // ============================================
   // Bull Board (dev/staging only)
@@ -136,6 +162,25 @@ export function createApp(): Application {
     });
     app.use('/admin/queues', serverAdapter.getRouter());
     logger.info('Bull Board mounted at /admin/queues');
+
+    // ============================================
+    // Dev-only Payment Bypass (SECURITY-CHECKLIST B1)
+    //
+    // This route directly fulfills a payment without Stripe.
+    // It MUST NOT be registered in production — gating at route registration
+    // time (here, inside the NODE_ENV check) means the route does not exist
+    // in the routing table in production, not just guarded inside the handler.
+    //
+    // Also requires ownership verification (SECURITY-CHECKLIST B3) so even in
+    // dev, an anonymous caller cannot mark another user's session as paid.
+    // ============================================
+    app.post(
+      '/api/payments/dev-complete/:sessionId',
+      optionalAuthMiddleware,
+      verifySessionOwnership,
+      handleDevComplete
+    );
+    logger.warn('DEV BYPASS: /api/payments/dev-complete is mounted. DO NOT USE IN PRODUCTION.');
   }
 
   // ============================================
