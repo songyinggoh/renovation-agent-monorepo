@@ -43,6 +43,7 @@ vi.mock('../../../src/middleware/rate-limit.middleware.js', () => ({
   apiLimiter: (_req: Request, _res: Response, next: NextFunction) => next(),
   chatLimiter: (_req: Request, _res: Response, next: NextFunction) => next(),
   authLimiter: (_req: Request, _res: Response, next: NextFunction) => next(),
+  checkoutLimiter: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 // ── Database mock ──
@@ -63,7 +64,7 @@ const mockPoolConnect = vi.fn().mockResolvedValue(mockClient);
 
 function createDrizzleChain() {
   const chain: Record<string, unknown> = {};
-  const methods = ['select', 'from', 'where', 'orderBy', 'limit', 'insert', 'values', 'returning'];
+  const methods = ['select', 'from', 'where', 'orderBy', 'limit', 'insert', 'values', 'returning', 'update', 'set'];
   for (const method of methods) {
     chain[method] = vi.fn(() => chain);
   }
