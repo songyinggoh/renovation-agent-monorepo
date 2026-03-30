@@ -25,13 +25,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -63,7 +63,7 @@ jobs:
       actions: read
       security-events: write
       contents: read
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.3
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.5
     with:
       scan-args: |-
         --lockfile=pnpm-lock.yaml
@@ -75,7 +75,7 @@ jobs:
       actions: read
       security-events: write
       contents: read
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.3
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.5
     with:
       scan-args: |-
         --lockfile=pnpm-lock.yaml
