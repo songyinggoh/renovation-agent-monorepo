@@ -86,7 +86,7 @@ describe('PaymentPanel', () => {
     const mockLocation = { ...originalLocation, href: '' };
     // @ts-expect-error - mocking window.location
     delete window.location;
-    window.location = mockLocation as unknown as Location;
+    window.location = mockLocation as unknown as Location & string;
 
     const mockMutateAsync = vi.fn().mockResolvedValue({ url: 'https://stripe.com/checkout' });
     vi.mocked(useCreateCheckout).mockReturnValue({
@@ -112,7 +112,7 @@ describe('PaymentPanel', () => {
     // Restore window.location
     // @ts-expect-error - restoring window.location
     delete window.location;
-    window.location = originalLocation;
+    window.location = originalLocation as Location & string;
   });
 
   it('shows cancellation message when returning from cancelled payment', () => {
