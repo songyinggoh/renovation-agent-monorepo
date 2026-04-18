@@ -1,220 +1,216 @@
 # Architecture
 
-**Analysis Date:** 2026-03-01
+**Analysis Date:** 2026-04-17
 
 ## Pattern Overview
 
-**Overall:** Monorepo with layered backend (Express + Socket.io) and Next.js App Router frontend, connected by a shared-types contract package. The AI layer uses a LangGraph ReAct agent with tool calling.
+**Overall:** Layered monolith backend with event-driven async workers, real-time WebSocket streaming, and a React SPA frontend
 
 **Key Characteristics:**
-- pnpm workspace monorepo with 3 packages: backend, frontend, packages/shared-types
-- Backend follows Controller -> Service -> Database layered architecture
-- Real-time communication via Socket.io (not REST) for the chat flow
-- AI agent uses LangGraph StateGraph with tool binding (ReAct loop)
-- Phase-based workflow: sessions progress through 7 phases (INTAKE -> COMPLETE -> ITERATE)
-- Feature flags control optional integrations (auth, payments, storage, email, tracing)
-- BullMQ workers handle async jobs (image processing, renders, email, PDFs)
-- Graceful degradation when Redis or optional services are unavailable
+- Backend is a single Express process that also runs BullMQ workers in-process
+- AI agent is a LangGraph ReAct loop (model → tool calls → model) driven synchronously per Socket.io message
+- Real-time AI token streaming goes directly over Socket.io — no HTTP polling
+- Phase-gated session state machine drives what the AI agent does and what UI is shown
+- Optional feature flags (auth, payments, storage, email) are toggled by env var presence at startup
 
 ## Layers
 
-**HTTP API Layer (Express):**
-- Purpose: REST endpoints for CRUD operations on sessions, rooms, messages, assets, styles, products, renders
-- Location: `backend/src/routes/*.routes.ts` (route definitions) + `backend/src/controllers/*.controller.ts` (handlers)
-- Contains: Route mounting, request validation (Zod via `backend/src/middleware/validate.ts`), auth gating
-- Depends on: Controllers, middleware, validators
-- Used by: Frontend via `frontend/lib/api.ts` (`fetchWithAuth()`)
+**Routes Layer:**
+- Purpose: HTTP routing, middleware chains, request/response shaping
+- Location: `backend/src/routes/`
+- Contains: Express Router files — one per domain (session, message, room, asset, render, document, payment, style, product, health)
+- Depends on: controllers, middleware
+- Used by: `backend/src/app.ts` (all mounted under `/api/`)
 
-**Controller Layer:**
-- Purpose: Request/response handling, input parsing, error throwing
-- Location: `backend/src/controllers/*.controller.ts`
-- Contains: 7 controllers (session, message, room, asset, style, product, render)
-- Depends on: Services, database, validators
-- Pattern: Uses `asyncHandler` wrapper from `backend/src/utils/async.ts` for error propagation
+**Controllers Layer:**
+- Purpose: Request validation, orchestration, HTTP response formatting
+- Location: `backend/src/controllers/`
+- Contains: `session.controller.ts`, `message.controller.ts`, `room.controller.ts`, `asset.controller.ts`, `render.controller.ts`, `document.controller.ts`, `payment.controller.ts`, `product.controller.ts`, `style.controller.ts`
+- Depends on: services, validators, middleware helpers
+- Used by: routes
 
-**Service Layer:**
-- Purpose: Business logic, database queries, external API calls
-- Location: `backend/src/services/*.service.ts`
-- Contains: 11 services (chat, message, room, asset, product, style, style-image, render, image-generation, cache, email, checkpointer)
-- Depends on: Database (Drizzle ORM), external SDKs, config
-- Key service: `ChatService` (`backend/src/services/chat.service.ts`) - orchestrates the ReAct agent
+**Services Layer:**
+- Purpose: Business logic, domain operations, external service calls
+- Location: `backend/src/services/`
+- Contains: `chat.service.ts` (ReAct agent), `render.service.ts` (AI image orchestration), `document.service.ts` (PDF generation), `payment.service.ts` (Stripe), `asset.service.ts` (file uploads), `message.service.ts`, `room.service.ts`, `product.service.ts`, `style.service.ts`, `style-image.service.ts`, `email.service.ts`, `cache.service.ts`, `checkpointer.service.ts`
+- Depends on: db, config (AI models, Stripe, Supabase), utils
+- Used by: controllers, workers, Socket.io handler in `server.ts`
 
 **Database Layer:**
-- Purpose: Schema definitions, connection management, JSONB validation
-- Location: `backend/src/db/` (connection), `backend/src/db/schema/*.ts` (12 schema files)
-- Contains: Drizzle table definitions, relations, barrel exports
-- Connection: `backend/src/db/index.ts` (pg pool with Drizzle wrapper)
-- Validation: `backend/src/db/jsonb-schemas.ts` (Zod), `backend/src/db/jsonb-validators.ts`
+- Purpose: Type-safe PostgreSQL access
+- Location: `backend/src/db/`
+- Contains: `index.ts` (pool + Drizzle instance), `schema/` (12 table definitions), `jsonb-schemas.ts` (Zod schemas for JSONB columns), `jsonb-validators.ts`
+- Depends on: `pg`, `drizzle-orm`
+- Used by: services, Socket.io session ownership checks in `server.ts`
 
-**AI Agent Layer:**
-- Purpose: LangGraph ReAct agent with Gemini model and renovation-specific tools
-- Location: `backend/src/services/chat.service.ts` (agent graph), `backend/src/tools/*.ts` (7 tools), `backend/src/config/gemini.ts` (model factories), `backend/src/config/prompts.ts` (phase-aware system prompts)
-- Contains: StateGraph definition, tool node, streaming logic, message history conversion
-- Pattern: `START -> call_model -> shouldContinue? -> tools -> call_model (loop) | END`
-- Guard: `backend/src/utils/agent-guards.ts` (tool whitelist + iteration logging, recursionLimit)
+**Workers Layer:**
+- Purpose: Async background job processing via BullMQ
+- Location: `backend/src/workers/`
+- Contains: `image.worker.ts` (Sharp image optimization), `render.worker.ts` (Gemini image generation), `doc.worker.ts` (Puppeteer PDF), `email.worker.ts` (Resend)
+- Depends on: services, config/queue, Socket.io global `io` instance for progress events
+- Used by: started during server startup in `backend/src/server.ts`
 
-**Worker Layer:**
-- Purpose: Async job processing via BullMQ
-- Location: `backend/src/workers/*.worker.ts` (4 workers)
-- Contains: Job processors for image optimization, email sending, PDF generation, render generation
-- Depends on: Services (RenderService, EmailService), queue config, socket-emitter
-- Pattern: Validate job data with Zod, process, emit Socket.io events for progress/completion
+**Tools Layer (LangGraph):**
+- Purpose: AI agent tool implementations — callable by the ReAct agent during conversation
+- Location: `backend/src/tools/`
+- Contains: `save-intake-state.tool.ts`, `save-checklist-state.tool.ts`, `save-plan-state.tool.ts`, `save-renders-state.tool.ts`, `save-product-recommendation.tool.ts`, `generate-render.tool.ts`, `generate-document.tool.ts`, `get-style-examples.tool.ts`, `search-products.tool.ts`
+- Depends on: services, db
+- Used by: `ChatService.createReActAgent()` — all tools bound to the model via `model.bindTools(renovationTools)`
 
-**Real-Time Layer (Socket.io):**
-- Purpose: Bidirectional real-time communication for chat and job progress
-- Location: `backend/src/server.ts` (server-side handlers), `frontend/hooks/useChat.ts` (client hook)
-- Contains: Connection auth, room management, message handling, streaming token relay
-- Type contract: `packages/shared-types/src/socket-events.ts` (ClientToServerEvents, ServerToClientEvents)
-- Tracing: `backend/src/middleware/socketio-tracing.middleware.ts`
+**Validators Layer:**
+- Purpose: Zod schema validation for HTTP bodies and Socket.io payloads
+- Location: `backend/src/validators/`
+- Contains: `socket.validators.ts` (chat events + prompt injection detection), `session.validators.ts`, `room.validators.ts`, `render.validators.ts`, `product.validators.ts`, `style.validators.ts`, `checklist.validators.ts`, `job.validators.ts`
+- Depends on: zod
+- Used by: controllers (via `validate` middleware), `server.ts` Socket.io handlers
 
-**Frontend App Layer:**
-- Purpose: Next.js App Router pages and React components
-- Location: `frontend/app/` (pages), `frontend/components/` (UI components), `frontend/hooks/` (custom hooks)
-- Contains: Landing page, dashboard, session/chat view, design system components
-- State: TanStack Query for server state, React useState for local state, Socket.io for real-time
-- Auth: Supabase SSR client with optional anonymous mode
+**Middleware Layer:**
+- Purpose: Cross-cutting request concerns
+- Location: `backend/src/middleware/`
+- Contains: `auth.middleware.ts` (Supabase JWT), `ownership.middleware.ts` (session ownership gate), `rate-limit.middleware.ts` (PostgreSQL-backed limiters), `request-id.middleware.ts` (AsyncLocalStorage request ID), `socketio-tracing.middleware.ts` (OTel spans), `errorHandler.ts`, `validate.ts`
 
-**Dev-Agents Layer (experimental):**
-- Purpose: LangChain-based coding agent framework for automated development tasks
-- Location: `backend/src/dev-agents/` (6 specialist agents + supervisor)
-- Contains: research, scaffold, implement, test, review, migration agents with tool access
-- Middleware: `backend/src/dev-agents/middleware.ts` (tool call limits, model call limits, cost tracking, fallback)
-- Feature flag: `isDevAgentEnabled()` in `backend/src/config/env.ts`
+**Config Layer:**
+- Purpose: External service clients and validated environment
+- Location: `backend/src/config/`
+- Contains: `env.ts` (Zod-validated singleton), `gemini.ts` (model factories), `stripe.ts` (lazy Stripe client), `supabase.ts` (admin client), `redis.ts` (ioredis singleton), `queue.ts` (BullMQ queues + worker factory), `sentry.ts`, `telemetry.ts`, `email.ts`, `claude.ts`, `dead-letter.ts`, `prompts.ts`
+
+**Frontend Layers:**
+- `frontend/app/` — Next.js App Router pages (server components by default)
+- `frontend/components/` — React components organized by domain
+- `frontend/hooks/` — custom React hooks (data fetching, Socket.io, state)
+- `frontend/lib/` — utilities, API client, design tokens, font config
 
 ## Data Flow
 
-**Chat Message Flow:**
+**Chat Message Flow (primary):**
 
 1. User types message in `frontend/components/chat/chat-input.tsx`
-2. `useChat` hook (`frontend/hooks/useChat.ts`) optimistically adds message to state
-3. Socket.io emits `chat:user_message` with `{ sessionId, content, attachments? }`
-4. Server validates payload via Zod (`backend/src/validators/socket.validators.ts`)
-5. Server checks prompt injection severity (3-tier: low/medium/high)
-6. Server checks rate limit (10 tokens/60s per socket)
-7. Server emits `chat:message_ack` back to client
-8. `ChatService.processMessage()` loads history, builds phase-aware system prompt
-9. LangGraph ReAct agent streams response: model calls -> tool calls -> model calls -> END
-10. Each token streamed via `chat:assistant_token` Socket.io event
-11. Tool calls/results emitted via `chat:tool_call` / `chat:tool_result` events
-12. Final response saved to database via `MessageService.saveMessage()`
-13. `chat:assistant_token` with `done: true` signals completion
+2. `useChat` hook (`frontend/hooks/useChat.ts`) emits `chat:user_message` via Socket.io
+3. `server.ts` Socket.io handler validates payload with Zod, checks rate limit, verifies session room membership
+4. Prompt injection check via `sanitizeContent()` in `backend/src/validators/socket.validators.ts`
+5. `ChatService.processMessage()` invoked (`backend/src/services/chat.service.ts`)
+6. LangGraph `StateGraph` runs: loads message history from DB → calls Gemini 2.5 Flash with tools bound → streams tokens back
+7. Each token emitted to Socket.io room via `onToken` callback → `chat:assistant_token` event
+8. If agent calls a tool (e.g. `generate-render`), `onToolCall` / `onToolResult` events emitted
+9. On completion, `MessageService` persists both user and assistant messages to `chat_messages` table
+10. Frontend `useChat` hook assembles streaming tokens into final message, updates React state
 
-**Render Generation Flow:**
+**AI Render Flow:**
 
-1. AI agent calls `generate-render` tool during chat
-2. Tool creates pending asset record + enqueues BullMQ job (`render:generate`)
-3. `render.worker.ts` picks up job, emits `render:started` via Socket.io
-4. Worker calls image generation adapter (Gemini or Stability AI)
-5. Progress events emitted at stages: generating (0%) -> uploading (70%) -> finalizing (95%)
-6. `RenderService.completeRender()` persists image to storage + updates DB
-7. `render:complete` event emitted with asset metadata
-8. Frontend `useRenderState` hook (`frontend/hooks/useRenderState.ts`) tracks in-flight renders
-9. `useSocketQuerySync` hook bridges Socket.io events to TanStack Query cache invalidation
+1. Agent calls `generate-render` tool during chat conversation
+2. Tool calls `RenderService.requestRender()` — creates pending `room_assets` record, enqueues `render:generate` BullMQ job
+3. `render.worker.ts` picks up job: calls `ImageGenerationService` → `GeminiImageAdapter.generate()` → Gemini `gemini-2.5-flash-image`
+4. On success: stores image buffer to Supabase Storage, updates asset record to `ready`, emits `render:complete` Socket.io event to session room
+5. Frontend `useRenderState` hook (`frontend/hooks/useRenderState.ts`) tracks in-flight renders via Socket.io events
+6. `useSocketQuerySync` hook (`frontend/hooks/useSocketQuerySync.ts`) invalidates TanStack Query cache on `render:complete` (500ms delay to avoid race with DB write)
+7. `RenderGallery` component re-fetches and displays the completed render
 
-**Session CRUD Flow:**
+**Document Generation Flow:**
 
-1. Frontend calls `fetchWithAuth('/api/sessions')` from `frontend/lib/api.ts`
-2. Express route hits `optionalAuthMiddleware` -> controller -> direct Drizzle query
-3. Response returns `{ sessions: [...] }` (wrapped, not bare array)
+1. Agent calls `generate-document` tool
+2. Tool enqueues `doc:generate-plan` BullMQ job
+3. `doc.worker.ts` calls `DocumentService.generateDocument()`: loads session data, renders Handlebars template to HTML, converts to PDF via Puppeteer/Chromium
+4. PDF uploaded to Supabase Storage `renovation-documents` bucket
+5. `document_artifacts` record created, `doc:generated` Socket.io event emitted
+6. Frontend `useSocketQuerySync` invalidates documents query cache
 
-**State Management:**
-- Server state: TanStack Query (`@tanstack/react-query`) with `QueryProvider` in `frontend/components/providers/query-provider.tsx`
-- Real-time state: Socket.io events update React state in `useChat`, `useRenderState`, `useAssetProcessingState` hooks
-- Bridge pattern: `useSocketQuerySync` listens to Socket.io events and invalidates TanStack Query cache
-- Local UI state: React `useState` for form inputs, typing indicators, error display
-- Theme: `next-themes` with `ThemeProvider` in `frontend/components/providers/theme-provider.tsx`
+**Payment Flow:**
+
+1. Frontend `PaymentPanel` component calls `POST /api/payments/checkout/:sessionId`
+2. `checkoutLimiter` rate limit applied (5/10min), then `optionalAuthMiddleware` + `verifySessionOwnership`
+3. `PaymentController` gates on session phase (must be PAYMENT phase) and `isPaymentsEnabled()`
+4. `PaymentService.createCheckoutSession()` creates Stripe Checkout Session, returns redirect URL
+5. Frontend redirects user to Stripe hosted checkout page
+6. On payment completion, Stripe sends `checkout.session.completed` webhook to `POST /api/webhooks/stripe`
+7. `handleStripeWebhook` verifies HMAC signature, calls `PaymentService.fulfillPayment()`: sets `isPaid=true`, advances session to COMPLETE phase, emits `payment:completed` Socket.io event
+
+**State Management (Frontend):**
+- Server state: TanStack Query v5 (sessions, rooms, renders, documents, products)
+- Real-time updates: Socket.io events → `useSocketQuerySync` → TanStack Query `invalidateQueries()`
+- Local UI state: React `useState` in components
+- No global client state store (no Redux/Zustand)
 
 ## Key Abstractions
 
-**AppError Hierarchy:**
-- Purpose: Typed HTTP errors with status codes
-- Location: `backend/src/utils/errors.ts`
-- Classes: `AppError` (base, any status), `NotFoundError` (404), `BadRequestError` (400), `ConflictError` (409)
-- Pattern: Throw in controllers/services, caught by `errorHandler` middleware
+**Renovation Session (Phase State Machine):**
+- Purpose: Tracks overall project progress and gates AI behavior
+- Location: `backend/src/db/schema/sessions.schema.ts`
+- Phases (in order): `INTAKE → CHECKLIST → PLAN → RENDER → PAYMENT → COMPLETE → ITERATE`
+- Phase transitions: driven by AI agent tool calls (e.g. `saveChecklistState` moves INTAKE→CHECKLIST)
+- Frontend reads phase to show/hide panels: `PHASE_INDEX` in `frontend/lib/design-tokens.ts`
 
-**Logger:**
-- Purpose: Structured JSON logging with trace correlation
-- Location: `backend/src/utils/logger.ts` (backend), `frontend/lib/logger.ts` (frontend)
-- Pattern: `new Logger({ serviceName: 'X' })` then `logger.info()`, `logger.warn()`, `logger.error()`
-- Auto-includes: timestamp, level, service, requestId (AsyncLocalStorage), trace_id, span_id (OTel)
+**ReAct Agent (ChatService):**
+- Purpose: Conversational AI with tool-calling capability
+- Location: `backend/src/services/chat.service.ts`
+- Pattern: LangGraph `StateGraph` — `START → call_model → shouldContinue? → tools → call_model (loop) → END`
+- Tools registered: 9 tools covering all phase transitions and content generation
+- Iteration guard: `createSafeShouldContinue()` in `backend/src/utils/agent-guards.ts` caps recursion
+- Checkpointing: `@langchain/langgraph-checkpoint-postgres` for durable multi-turn conversation state
 
-**TracedModel:**
-- Purpose: LangChain model with attached OTel trace attributes
-- Location: `backend/src/config/gemini.ts`
-- Type: `ChatGoogleGenerativeAI & { traceAttributes: AISpanAttributes }`
-- Factory functions: `createChatModel()`, `createVisionModel()`, `createStructuredModel()`, `createStreamingModel()`
+**BullMQ Workers:**
+- Purpose: Long-running async jobs (image gen 90s, PDF 120s, email)
+- Location: `backend/src/workers/`
+- Pattern: `createWorker(jobName, processor, profile)` factory in `backend/src/config/queue.ts`
+- Worker profiles: typed `WorkerProfile` configs (concurrency, lock duration, timeout, rate limiter)
+- Dead letter queue: final failures copied to DLQ via `backend/src/config/dead-letter.ts`
+- Error pattern: `throw new UnrecoverableError(msg)` for permanent failures (no retry), `throw new Error(msg)` for retriable
 
-**WorkerProfile:**
-- Purpose: Operational configuration per job queue (concurrency, timeouts, retry policy)
-- Location: `backend/src/config/queue.ts`
-- Pattern: `WORKER_PROFILES` record maps job name to profile with concurrency, lockDuration, timeoutMs, stalledInterval, limiter, defaultJobOptions
+**Shared Types Package:**
+- Purpose: Type-safe contract between frontend and backend for Socket.io events and domain constants
+- Location: `packages/shared-types/src/`
+- Key exports: `ClientToServerEvents`, `ServerToClientEvents` (Socket.io event types), `RenovationPhase`, asset/message/product constants
+- Consumed by: `backend/src/server.ts` (`SocketIOServer<ClientToServerEvents, ServerToClientEvents>`), `frontend/hooks/useChat.ts`
+
+**Dev-Agent Framework:**
+- Purpose: AI-powered developer tooling (separate from product)
+- Location: `backend/src/dev-agents/`
+- Pattern: LangGraph supervisor routing to 6 specialist agents (scaffold, migration, test, review, research, implement)
+- Entry: `backend/src/dev-agents/cli.ts` (CLI), `backend/src/dev-agents/cli-workflow.ts` (workflow)
+- Requires: `ANTHROPIC_API_KEY` (Claude), not used in end-user product
 
 ## Entry Points
 
-**Backend Server:**
+**Backend HTTP Server:**
 - Location: `backend/src/server.ts`
-- Triggers: `tsx watch src/server.ts` (dev) or `node dist/server.js` (prod)
-- Startup sequence: Sentry -> Redis -> Workers (email, image, doc, render) -> DB validation -> LangGraph checkpointer -> Express app -> HTTP server -> Socket.io -> Graceful shutdown setup
-- Guard: `if (!process.env.VITEST)` prevents server start during unit tests
+- Startup order: OTel init → Sentry init → Redis → workers (email, image, doc, render) → DB connection → LangGraph checkpointer → Express app → HTTP server → Socket.io → graceful shutdown setup
+- Exports: `startServer`, `httpServer`, `io`
 
 **Backend Express App:**
 - Location: `backend/src/app.ts`
-- Creates: Express app with middleware stack (Sentry, Helmet, requestId, CORS, body parsing, rate limiting, routes, error handler)
-- Exported as: `createApp()` factory function (testable)
+- Responsibilities: middleware stack (Sentry → Helmet → request ID → CORS → raw body for Stripe → JSON → logging → rate limiting), route mounting, Bull Board (dev only), dev-only bypass routes, error handler
 
-**Frontend Root Layout:**
+**Frontend Root:**
 - Location: `frontend/app/layout.tsx`
-- Contains: ThemeProvider -> QueryProvider -> Header + Main + Footer + Toaster
-- Server component with client provider wrappers
+- Wraps all pages with: `ThemeProvider`, `QueryProvider` (TanStack Query), global header/footer, `Toaster`
 
-**Frontend Pages:**
-- Landing: `frontend/app/page.tsx`
-- Dashboard: `frontend/app/app/page.tsx`
-- Session/Chat: `frontend/app/app/session/[sessionId]/page.tsx` -> `frontend/components/session/session-page-client.tsx`
+**Frontend App Shell:**
+- Location: `frontend/app/app/layout.tsx` — app section layout
+- Key pages: `frontend/app/app/page.tsx` (dashboard), `frontend/app/app/session/[sessionId]/page.tsx` (session chat)
 
 ## Error Handling
 
-**Strategy:** Layered error handling with typed errors, global catch, and Sentry integration
+**Strategy:** Typed error classes propagated through layers, centralized HTTP handler, structured logging everywhere
 
 **Patterns:**
-- Controllers use `asyncHandler` wrapper to propagate async errors to Express error middleware
-- Services throw `AppError` subclasses (NotFoundError, BadRequestError, ConflictError)
-- Global error handler (`backend/src/middleware/errorHandler.ts`): catches all unhandled errors, generates errorId, logs structured error, reports to Sentry, returns JSON `{ success: false, error, errorId }`
-- Special handling for DB connection errors in development (helpful error message with fix instructions)
-- Socket.io errors emitted as `chat:error` events (never crash the connection)
-- BullMQ workers distinguish permanent errors (`UnrecoverableError`) from retriable ones
-- Frontend: `fetchWithAuth` throws on non-OK responses, error boundaries in `frontend/app/error.tsx` and `frontend/app/app/error.tsx`
-- AI agent: `GraphRecursionError` caught and converted to user-friendly fallback message
+- Domain errors extend `AppError` with HTTP status codes: `NotFoundError (404)`, `BadRequestError (400)`, `ConflictError (409)` — all in `backend/src/utils/errors.ts`
+- Express errors caught by `errorHandler` middleware (`backend/src/middleware/errorHandler.ts`) — maps `AppError` to JSON response, forwards to Sentry if configured
+- BullMQ workers: `UnrecoverableError` for permanent failures (Stripe fraud, invalid data), plain `Error` for retriable failures
+- Socket.io errors: emitted back to client as `chat:error` event with `{ error: string }` payload
+- Rate limit errors: 429 with `RateLimit-*` headers and `Retry-After`
+- Frontend: TanStack Query error states in hooks, `react-hot-toast` for user-visible errors
 
 ## Cross-Cutting Concerns
 
-**Logging:** Custom structured JSON logger (`backend/src/utils/logger.ts`) with trace correlation. Use `new Logger({ serviceName })` pattern. Never use `console.log`.
+**Logging:** Structured JSON via `Logger` class (`backend/src/utils/logger.ts`) — never `console.log`. Automatically injects `requestId` (from AsyncLocalStorage), `trace_id`, `span_id`. Level controlled by `LOG_LEVEL` env var.
 
-**Validation:** Zod schemas throughout:
-- Environment: `backend/src/config/env.ts`
-- Socket.io payloads: `backend/src/validators/socket.validators.ts`
-- HTTP request bodies: `backend/src/validators/*.validators.ts` via `validate` middleware
-- Job data: `backend/src/validators/job.validators.ts`
-- JSONB columns: `backend/src/db/jsonb-schemas.ts`
+**Validation:** Zod schemas for all boundaries — env config, HTTP request bodies (via `validate` middleware), Socket.io payloads, JSONB column shapes, BullMQ job payloads
 
-**Authentication:** Optional Supabase JWT verification. `optionalAuthMiddleware` for HTTP, `isAuthEnabled()` guard for Socket.io. Anonymous mode when Supabase env vars not set.
+**Request Tracing:** Every HTTP request gets a UUID from `requestIdMiddleware` (`backend/src/middleware/request-id.middleware.ts`) stored in `AsyncLocalStorage`. Propagated in logs and `X-Request-ID` response header.
 
-**Rate Limiting:**
-- HTTP: `rate-limiter-flexible` in `backend/src/middleware/rate-limit.middleware.ts` (apiLimiter, chatLimiter)
-- Socket.io: In-memory token bucket in `backend/src/server.ts` (10 tokens/60s per socket)
+**Authentication:** `optionalAuthMiddleware` on all API routes — passes through anonymously when Supabase not configured. `verifySessionOwnership` middleware (`backend/src/middleware/ownership.middleware.ts`) gates session-scoped mutations. Socket.io auth in `server.ts` io.use() middleware.
 
-**Security:**
-- Helmet for HTTP headers (`backend/src/app.ts`)
-- CORS restricted to `FRONTEND_URL`
-- Prompt injection detection with 3-tier severity (`backend/src/validators/socket.validators.ts`)
-- UUID validation on all IDs
-- Request ID propagation via AsyncLocalStorage (`backend/src/middleware/request-id.middleware.ts`)
-
-**Observability:**
-- OpenTelemetry: auto-instrumentation for HTTP/DB, manual spans for Socket.io and AI calls
-- Sentry: error capture in error handler middleware
-- Structured logging with requestId and OTel trace correlation
+**Rate Limiting:** PostgreSQL-backed distributed limits via `rate-limiter-flexible` with in-memory insurance fallback. Four limiters: `apiLimiter` (100/15min), `chatLimiter` (20/15min), `authLimiter` (10/15min), `checkoutLimiter` (5/10min). Socket.io has an additional in-memory token bucket (10 tokens/60s per socket).
 
 ---
 
-*Architecture analysis: 2026-03-01*
+*Architecture analysis: 2026-04-17*

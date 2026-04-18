@@ -1,290 +1,284 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-01
+**Analysis Date:** 2026-04-17
 
 ## Directory Layout
 
 ```
 renovation-agent-monorepo/
-├── backend/                    # Express.js API + Socket.io server
+├── backend/                    # Express.js API + Socket.io + AI agent
 │   ├── src/
-│   │   ├── config/             # Environment, AI models, Redis, Sentry, queues, telemetry
-│   │   ├── controllers/        # HTTP request handlers (7 controllers)
-│   │   ├── data/               # Seed data (products, styles, style-images)
-│   │   ├── db/                 # Database connection + schema definitions
-│   │   │   └── schema/         # Drizzle table schemas (12 files)
-│   │   ├── dev-agents/         # LangChain dev-agent framework (experimental)
-│   │   │   ├── implement/      # Implementation agent
-│   │   │   ├── migration/      # Migration agent
-│   │   │   ├── research/       # Research agent
-│   │   │   ├── review/         # Code review agent
-│   │   │   ├── scaffold/       # Scaffolding agent
-│   │   │   ├── test/           # Test writing agent
-│   │   │   └── tools/          # Agent tools (bash, file-ops, git, search)
-│   │   ├── emails/             # Email templates (Handlebars)
-│   │   ├── middleware/         # Express + Socket.io middleware
-│   │   ├── routes/             # Express route definitions (8 route files)
-│   │   ├── services/           # Business logic layer (11 services)
-│   │   ├── tools/              # LangGraph agent tools (7 renovation tools)
-│   │   ├── types/              # TypeScript type declarations
-│   │   ├── utils/              # Shared utilities (logger, errors, tracing, guards)
-│   │   ├── validators/         # Zod validation schemas (7 validator files)
-│   │   ├── workers/            # BullMQ job processors (4 workers)
 │   │   ├── app.ts              # Express app factory (middleware + routes)
-│   │   └── server.ts           # HTTP + Socket.io server startup + shutdown
-│   ├── tests/
-│   │   ├── unit/               # Unit tests mirroring src/ structure
-│   │   ├── integration/        # Integration tests (API + Socket.io)
-│   │   └── ai-regression/      # AI output regression tests
-│   ├── drizzle/                # Database migrations (journal-managed)
-│   │   ├── archive/            # Archived manual migrations
-│   │   ├── meta/               # Drizzle-kit journal metadata
-│   │   └── rollbacks/          # Auto-generated rollback scripts
+│   │   ├── server.ts           # HTTP + Socket.io server startup
+│   │   ├── config/             # External service clients + env validation
+│   │   ├── controllers/        # HTTP request handlers
+│   │   ├── db/                 # Drizzle ORM instance + schema definitions
+│   │   ├── dev-agents/         # LangGraph multi-agent dev tooling (not product)
+│   │   ├── emails/             # Email templates
+│   │   ├── middleware/         # Express + Socket.io middleware
+│   │   ├── routes/             # Express Router definitions
+│   │   ├── services/           # Business logic + external API calls
+│   │   ├── tools/              # LangGraph agent tool implementations
+│   │   ├── types/              # TypeScript type declarations
+│   │   ├── utils/              # Logger, errors, shutdown, tracing helpers
+│   │   ├── validators/         # Zod schemas for requests + socket payloads
+│   │   └── workers/            # BullMQ background job processors
+│   ├── drizzle/                # SQL migration files + drizzle-kit journal
 │   ├── load-tests/             # k6 load test scripts
-│   ├── scripts/                # DB utility scripts + migration safety tools
-│   ├── vitest.config.ts        # Unit test config
-│   ├── vitest.integration.config.ts  # Integration test config
-│   └── vitest.ai-regression.config.ts # AI regression test config
-│
-├── frontend/                   # Next.js 16 App Router
-│   ├── app/                    # Pages (App Router)
+│   ├── scripts/                # Utility scripts (seed, check DB, migration safety)
+│   ├── templates/              # Handlebars HTML templates for PDF generation
+│   ├── tests/                  # Integration + unit tests
+│   ├── drizzle.config.ts       # Drizzle-kit config
+│   ├── tsconfig.json
+│   └── package.json
+├── frontend/                   # Next.js 16 App Router frontend
+│   ├── app/                    # Next.js pages + layouts (App Router)
+│   │   ├── layout.tsx          # Root layout (ThemeProvider, QueryProvider)
 │   │   ├── page.tsx            # Landing page
-│   │   ├── layout.tsx          # Root layout (providers, header, footer)
 │   │   ├── app/                # Authenticated app section
+│   │   │   ├── layout.tsx      # App layout
 │   │   │   ├── page.tsx        # Dashboard (session list)
-│   │   │   └── session/
-│   │   │       └── [sessionId]/
-│   │   │           └── page.tsx # Chat session page
-│   │   ├── auth/callback/      # Supabase auth callback
-│   │   ├── render-test/        # Render testing page
-│   │   └── test-chat/          # Chat testing page
+│   │   │   └── session/[sessionId]/page.tsx  # Session chat page
+│   │   └── auth/callback/      # Supabase OAuth callback route
 │   ├── components/
-│   │   ├── chat/               # Chat UX components (10 files)
-│   │   ├── dashboard/          # Dashboard components (create session, session list)
-│   │   ├── providers/          # React context providers (Query, Theme)
-│   │   ├── renovation/         # Domain-specific components (11 files)
-│   │   ├── session/            # Session page layout (client wrapper, sidebar)
-│   │   └── ui/                 # shadcn/ui base components (9 files)
-│   ├── hooks/                  # Custom React hooks (7 hooks)
-│   ├── lib/                    # Utilities and clients
-│   │   ├── supabase/           # Supabase client (browser, server, middleware)
-│   │   ├── api.ts              # fetchWithAuth helper
-│   │   ├── api-mappers.ts      # API response transformers
-│   │   ├── design-tokens.ts    # Phase config, PHASE_CONFIG, PHASE_INDEX
-│   │   ├── fonts.ts            # Font definitions (Inter, DM Serif, JetBrains Mono)
-│   │   ├── logger.ts           # Frontend structured logger
-│   │   ├── upload.ts           # File upload utilities
-│   │   └── utils.ts            # cn() helper (clsx + tailwind-merge)
-│   ├── types/                  # Frontend-specific types
-│   │   ├── chat.ts             # Message, chat-related types
-│   │   └── renovation.ts       # SessionSummary, RoomSummary interfaces
-│   ├── __tests__/              # Frontend test files
-│   │   ├── components/chat/    # Chat component tests
-│   │   ├── hooks/              # Hook tests
-│   │   └── setup.ts            # Test setup (jsdom)
-│   ├── middleware.ts           # Next.js middleware (Supabase session refresh)
-│   ├── vitest.config.ts        # Frontend test config
-│   └── tailwind.config.ts      # Tailwind + design system config
-│
+│   │   ├── chat/               # Chat UI components
+│   │   ├── dashboard/          # Session list + create button
+│   │   ├── payment/            # Payment panel
+│   │   ├── providers/          # QueryProvider, ThemeProvider
+│   │   ├── renovation/         # Domain components (renders, budgets, rooms, etc.)
+│   │   ├── session/            # Session page client + sidebar
+│   │   └── ui/                 # shadcn/ui primitive components
+│   ├── hooks/                  # Custom React hooks
+│   ├── lib/                    # Utilities (API client, design tokens, fonts, logger)
+│   ├── types/                  # Frontend-specific TypeScript types
+│   ├── __tests__/              # Vitest unit tests
+│   ├── next.config.mjs
+│   ├── tailwind.config.ts
+│   ├── tsconfig.json
+│   └── package.json
 ├── packages/
-│   └── shared-types/           # Shared TypeScript types
-│       ├── src/
-│       │   ├── index.ts        # Barrel export
-│       │   ├── phases.ts       # RenovationPhase type + constants
-│       │   ├── session.ts      # Session-related types
-│       │   ├── assets.ts       # Asset types, statuses, MIME types
-│       │   ├── messages.ts     # Message roles, types
-│       │   ├── socket-events.ts # Socket.io event type contracts
-│       │   └── constants.ts    # Product categories, room types
-│       └── dist/               # Compiled output (tsc)
-│
-├── e2e/                        # Playwright E2E tests
-├── database/                   # Docker init scripts (schema.sql, seed.sql)
-├── supabase/                   # Supabase local dev config
+│   └── shared-types/           # @renovation/shared-types — Socket.io event types + domain constants
+│       └── src/
+│           ├── index.ts        # Barrel exports
+│           ├── socket-events.ts# ClientToServerEvents, ServerToClientEvents
+│           ├── phases.ts       # RenovationPhase, RENOVATION_PHASES
+│           ├── assets.ts       # Asset type constants
+│           ├── messages.ts     # Message role/type constants
+│           ├── session.ts      # SessionStylePreferences, RoomSummary
+│           └── constants.ts    # PRODUCT_CATEGORIES, ROOM_TYPES, etc.
+├── e2e/                        # Playwright end-to-end tests
 ├── .github/workflows/          # CI/CD pipelines (13 workflow files)
-├── .planning/                  # Planning documents + codebase analysis
-├── docker-compose.yml          # Local dev stack (Postgres, Redis, backend, frontend)
-├── pnpm-workspace.yaml         # Workspace package definitions
-├── codecov.yml                 # Coverage configuration
-└── package.json                # Root package.json (workspace scripts)
+├── .planning/                  # Project planning, research, phase docs
+├── docker-compose.yml          # Dev stack: PostgreSQL 15, Redis 7, frontend, backend
+├── pnpm-workspace.yaml
+└── package.json                # Monorepo root (pnpm scripts, husky, lint-staged)
 ```
 
 ## Directory Purposes
 
 **`backend/src/config/`:**
-- Purpose: Application configuration and external service clients
-- Contains: Environment validation (`env.ts`), AI model factories (`gemini.ts`, `claude.ts`), Redis client (`redis.ts`), Sentry init (`sentry.ts`), BullMQ queue config (`queue.ts`), dead letter queue (`dead-letter.ts`), telemetry (`telemetry.ts`), email config (`email.ts`), prompts (`prompts.ts`), Supabase admin client (`supabase.ts`)
-- Key pattern: Each file exports factory functions or singleton instances. Feature flags (`isAuthEnabled()`, etc.) live in `env.ts`.
+- Purpose: All external service clients and app-wide configuration
+- Contains: `env.ts` (Zod schema + singleton), `gemini.ts` (model factories), `stripe.ts`, `supabase.ts`, `redis.ts`, `queue.ts`, `sentry.ts`, `telemetry.ts`, `email.ts`, `claude.ts`, `prompts.ts`, `dead-letter.ts`
+- Key files: `env.ts` is the single source of truth for all environment variables and feature-gate functions
 
-**`backend/src/controllers/`:**
-- Purpose: HTTP request handlers (thin layer between routes and services)
-- Contains: 7 controllers - `session.controller.ts`, `message.controller.ts`, `room.controller.ts`, `asset.controller.ts`, `style.controller.ts`, `product.controller.ts`, `render.controller.ts`
-- Pattern: Export named handler functions wrapped in `asyncHandler()`. Each function receives `(req, res)`.
-
-**`backend/src/services/`:**
-- Purpose: Business logic, database operations, external API orchestration
-- Contains: 11 services covering chat, messages, rooms, assets, products, styles, renders, image generation, caching, email, checkpointer
-- Key file: `chat.service.ts` - Creates and runs the ReAct agent graph
-- Pattern: Class-based services instantiated in controllers or server.ts. Constructor initializes dependencies.
+**`backend/src/db/schema/`:**
+- Purpose: Drizzle table definitions — one file per domain table
+- Key files: `sessions.schema.ts`, `rooms.schema.ts`, `assets.schema.ts`, `messages.schema.ts`, `users.schema.ts`, `products.schema.ts`, `contractors.schema.ts`, `styles.schema.ts`, `style-images.schema.ts`, `asset-variants.schema.ts`, `document-artifacts.schema.ts`, `products-catalog.schema.ts`
+- All exported through `backend/src/db/schema/index.ts` barrel
 
 **`backend/src/tools/`:**
-- Purpose: LangGraph agent tools that the AI can call during conversation
-- Contains: 7 tools - `save-intake-state`, `save-checklist-state`, `save-product-recommendation`, `save-renders-state`, `search-products`, `get-style-examples`, `generate-render`
-- Barrel export: `backend/src/tools/index.ts` exports `renovationTools` array
-- Pattern: Each tool is a LangChain `DynamicStructuredTool` with Zod input schema
-
-**`backend/src/validators/`:**
-- Purpose: Zod schemas for runtime validation
-- Contains: Socket.io payload validation (`socket.validators.ts`), HTTP body schemas (`session.validators.ts`, `room.validators.ts`, `style.validators.ts`, `product.validators.ts`, `checklist.validators.ts`), job data validation (`job.validators.ts`), shared constants (`constants.ts`)
-- Key file: `socket.validators.ts` includes prompt injection detection (3-tier severity classification)
-
-**`backend/src/workers/`:**
-- Purpose: BullMQ job processor functions
-- Contains: 4 workers - `image.worker.ts` (thumbnails/WebP/AVIF), `email.worker.ts` (Resend), `doc.worker.ts` (PDF via Puppeteer), `render.worker.ts` (AI image generation)
-- Pattern: Each exports `startXxxWorker()` function called from `server.ts`
+- Purpose: LangGraph tool implementations — the AI agent's action set
+- All tools registered in `backend/src/tools/index.ts` as `renovationTools` array
+- Each tool file exports a single structured tool with Zod input schema
 
 **`backend/src/dev-agents/`:**
-- Purpose: Experimental LangChain agent framework for automated coding tasks
-- Contains: 6 specialist agents (research, scaffold, implement, test, review, migration) + supervisor + middleware + cost tracking + shared tools (bash, file-ops, git, search)
-- Pattern: Each agent has `agent.ts` (creation) + `prompt.ts` (system prompt). Middleware provides tool/model call limits and cost tracking.
+- Purpose: Internal developer AI tooling (not end-user product)
+- Contains: supervisor, 6 specialist agents (scaffold, migration, test, review, research, implement), tools (bash, file-ops, git, search)
+- Entry: `cli.ts` and `cli-workflow.ts` (invoked via `npm run dev:agent` / `dev:workflow`)
+
+**`backend/drizzle/`:**
+- Purpose: Migration SQL files and drizzle-kit journal
+- Managed exclusively by `drizzle-kit generate` and `drizzle-kit migrate`
+- Do NOT edit migration files manually after they are committed
+
+**`backend/scripts/`:**
+- Purpose: One-off utility scripts run with `tsx`
+- Contains: seed scripts, DB check scripts, migration safety analysis/rollback tools
+
+**`backend/templates/`:**
+- Purpose: Handlebars templates for Puppeteer PDF generation
+- Contains: `checklist.hbs`, `renovation-plan.hbs`, `partials/print-styles.hbs`
+
+**`frontend/app/`:**
+- Purpose: Next.js App Router pages — server components by default
+- Structure mirrors URL hierarchy; client components marked with `'use client'` directive
+- `layout.tsx` files add persistent UI wrappers (header, providers) at each level
 
 **`frontend/components/chat/`:**
-- Purpose: Chat interface components
-- Contains: `chat-view.tsx`, `chat-input.tsx`, `message-list.tsx`, `empty-state.tsx`, `suggestion-bubbles.tsx`, `context-chip.tsx`, `inline-approval-widget.tsx`, `visual-response.tsx`, `file-upload-zone.tsx`, `tool-result-renderer.tsx`, `tool-error-boundary.tsx`
+- Purpose: All chat UI components
+- Key files: `chat-view.tsx` (container), `chat-input.tsx`, `message-list.tsx`, `suggestion-bubbles.tsx`, `inline-approval-widget.tsx`, `empty-state.tsx`, `visual-response.tsx`, `tool-result-renderer.tsx`, `context-chip.tsx`, `file-upload-zone.tsx`
 
 **`frontend/components/renovation/`:**
-- Purpose: Domain-specific renovation UI components
-- Contains: `phase-progress-bar.tsx`, `budget-gauge.tsx`, `room-card.tsx`, `material-swatch.tsx`, `contractor-card.tsx`, `timeline-view.tsx`, `trust-badge.tsx`, `before-after-slider.tsx`, `phase-transition.tsx`, `render-card.tsx`, `render-gallery.tsx`
-- Barrel export: `frontend/components/renovation/index.ts`
+- Purpose: Domain-specific display components
+- Key files: `phase-progress-bar.tsx`, `budget-gauge.tsx`, `room-card.tsx`, `render-card.tsx`, `render-gallery.tsx`, `before-after-slider.tsx`, `document-card.tsx`, `document-list.tsx`, `comparison-dialog.tsx`
+- All exported via `frontend/components/renovation/index.ts` barrel
+
+**`frontend/components/ui/`:**
+- Purpose: shadcn/ui primitive components
+- Key files: `button.tsx`, `badge.tsx`, `card.tsx`, `input.tsx`, `sheet.tsx`, `separator.tsx`, `skeleton-loader.tsx`, `loading-state.tsx`, `theme-toggle.tsx`
 
 **`frontend/hooks/`:**
-- Purpose: Custom React hooks for state management and real-time features
-- Contains: `useChat.ts` (Socket.io chat), `useSession.ts` (session data), `useSessionRooms.ts` (room queries), `useFileUpload.ts` (file upload state), `useRenderState.ts` (render tracking via Socket.io), `useRoomRenders.ts` (render queries), `useSocketQuerySync.ts` (Socket.io -> TanStack Query bridge), `useAssetProcessingState.ts` (asset processing progress)
+- Purpose: Custom React hooks for data fetching and real-time state
+- Key files: `useChat.ts` (Socket.io), `useSocketQuerySync.ts` (event→cache bridge), `useRenderState.ts` (in-flight renders), `useSession.ts`, `useSessionRooms.ts`, `useRoomRenders.ts`, `useDocuments.ts`, `usePayment.ts`, `useFileUpload.ts`, `useAssetProcessingState.ts`, `useRequestRender.ts`
+
+**`frontend/lib/`:**
+- Purpose: Shared utilities and configuration
+- Key files: `design-tokens.ts` (phase config, `RenovationPhase`, `PHASE_CONFIG`, `PHASE_INDEX`), `fonts.ts` (font variables), `api.ts` (`fetchWithAuth`), `api-mappers.ts` (response → UI type mapping), `logger.ts` (frontend logger), `supabase/client.ts`, `supabase/server.ts`
+
+**`packages/shared-types/src/`:**
+- Purpose: Shared TypeScript types consumed by both frontend and backend
+- Build required before either workspace: `pnpm run build:shared-types`
+- Referenced as `@renovation/shared-types` workspace dependency
 
 ## Key File Locations
 
 **Entry Points:**
-- `backend/src/server.ts`: Backend server startup (HTTP + Socket.io + workers)
-- `backend/src/app.ts`: Express app factory (middleware + routes)
-- `frontend/app/layout.tsx`: Root layout (providers, header, footer)
-- `frontend/app/page.tsx`: Landing page
-- `frontend/app/app/page.tsx`: Dashboard page
+- `backend/src/server.ts` — backend process entry (OTel init, all startup logic)
+- `backend/src/app.ts` — Express app factory (imported by server.ts and tests)
+- `frontend/app/layout.tsx` — frontend root layout
+- `frontend/app/app/session/[sessionId]/page.tsx` — session chat page (server component shell)
+- `frontend/components/session/session-page-client.tsx` — session page client component (all hooks wired here)
 
 **Configuration:**
-- `backend/src/config/env.ts`: Environment variable validation (Zod schema + feature flags)
-- `backend/src/config/gemini.ts`: AI model factories
-- `backend/src/config/queue.ts`: BullMQ queue definitions and worker profiles
-- `backend/src/config/prompts.ts`: Phase-aware system prompts for AI agent
-- `frontend/tailwind.config.ts`: Design system tokens
-- `frontend/lib/design-tokens.ts`: Phase config constants
+- `backend/src/config/env.ts` — all env vars, feature gates
+- `backend/src/config/gemini.ts` — AI model factories
+- `backend/src/config/queue.ts` — BullMQ queue + worker factory + job type definitions
+- `backend/src/config/prompts.ts` — system prompt for the AI agent
+- `frontend/lib/design-tokens.ts` — phase constants, `PHASE_CONFIG`, `PHASE_INDEX`
+- `frontend/lib/fonts.ts` — font variable exports for root layout
 
 **Core Logic:**
-- `backend/src/services/chat.service.ts`: ReAct agent graph + message processing
-- `backend/src/tools/index.ts`: Agent tool registry
-- `backend/src/utils/socket-emitter.ts`: Global Socket.io emitter for workers
-- `frontend/hooks/useChat.ts`: Client-side chat state + Socket.io connection
+- `backend/src/services/chat.service.ts` — ReAct agent, LangGraph StateGraph
+- `backend/src/tools/index.ts` — `renovationTools` array (all agent tools)
+- `backend/src/utils/errors.ts` — `AppError`, `NotFoundError`, `BadRequestError`, `ConflictError`
+- `backend/src/utils/logger.ts` — structured JSON logger (use everywhere, never console.log)
+- `backend/src/middleware/auth.middleware.ts` — `optionalAuthMiddleware`, `authMiddleware`, `verifyToken`
+- `backend/src/middleware/ownership.middleware.ts` — `verifySessionOwnership`
+- `packages/shared-types/src/socket-events.ts` — all Socket.io event payload types
 
-**Database:**
-- `backend/src/db/index.ts`: Database connection pool
-- `backend/src/db/schema/index.ts`: Schema barrel export (12 tables)
-- `backend/drizzle/`: Migration files (journal-managed)
+**Schema:**
+- `backend/src/db/schema/index.ts` — barrel re-exports all table definitions
+- `backend/src/db/schema/sessions.schema.ts` — `renovationSessions` table + phase enum
+- `backend/drizzle/` — migration SQL files managed by drizzle-kit
+
+**Testing:**
+- `backend/tests/unit/` — Vitest unit tests
+- `backend/tests/integration/` — integration tests (with testcontainers or test DB)
+- `backend/src/__tests__/` — additional unit tests co-located with source
+- `frontend/__tests__/` — Vitest + Testing Library component and hook tests
+- `e2e/` — Playwright end-to-end tests
 
 ## Naming Conventions
 
 **Files:**
-- Backend source: `kebab-case.ts` (e.g., `chat.service.ts`, `auth.middleware.ts`)
-- Backend tests: `kebab-case.test.ts` mirroring source path (e.g., `tests/unit/services/chat.service.test.ts`)
-- Frontend components: `kebab-case.tsx` (e.g., `chat-input.tsx`, `phase-progress-bar.tsx`)
-- Frontend hooks: `camelCase.ts` (e.g., `useChat.ts`, `useRenderState.ts`)
-- Schema files: `kebab-case.schema.ts` (e.g., `sessions.schema.ts`)
-- Validator files: `kebab-case.validators.ts` (e.g., `socket.validators.ts`)
-- Worker files: `kebab-case.worker.ts` (e.g., `render.worker.ts`)
+- Backend services: `[domain].service.ts` (e.g. `render.service.ts`)
+- Backend routes: `[domain].routes.ts`
+- Backend controllers: `[domain].controller.ts`
+- Backend workers: `[domain].worker.ts`
+- Backend tools: `[action]-[noun].tool.ts` (e.g. `generate-render.tool.ts`)
+- Backend schemas: `[domain].schema.ts`
+- Backend validators: `[domain].validators.ts`
+- Frontend components: `kebab-case.tsx` (e.g. `chat-input.tsx`)
+- Frontend hooks: `use[PascalCase].ts` (e.g. `useRenderState.ts`)
+- Frontend pages: `page.tsx`, layouts: `layout.tsx`, errors: `error.tsx`, loading: `loading.tsx`
 
 **Directories:**
-- `kebab-case` throughout (e.g., `dev-agents/`, `shared-types/`)
-
-**Exports:**
-- Functions: `camelCase` (e.g., `createChatModel`, `fetchWithAuth`, `emitToSession`)
-- Classes: `PascalCase` (e.g., `ChatService`, `Logger`, `AppError`)
-- Constants: `UPPER_SNAKE_CASE` (e.g., `WORKER_PROFILES`, `RENOVATION_PHASES`, `MAX_REACT_ITERATIONS`)
-- Types/Interfaces: `PascalCase` (e.g., `TracedModel`, `StreamCallback`, `WorkerProfile`)
-- Zod schemas: `camelCase` (e.g., `chatUserMessageSchema`, `renderGenerateJobSchema`)
+- Backend: plural nouns matching layer names (`services/`, `routes/`, `controllers/`, `workers/`, `tools/`)
+- Frontend components: organized by domain (`chat/`, `renovation/`, `session/`, `payment/`, `ui/`)
 
 ## Where to Add New Code
 
-**New API Endpoint:**
-1. Create validator schema: `backend/src/validators/{resource}.validators.ts`
-2. Create or extend controller: `backend/src/controllers/{resource}.controller.ts`
-3. Create or extend service: `backend/src/services/{resource}.service.ts`
-4. Create or extend routes: `backend/src/routes/{resource}.routes.ts`
-5. Mount routes in `backend/src/app.ts`
-6. Add types to `packages/shared-types/src/` if shared with frontend
-7. Tests: `backend/tests/unit/controllers/{resource}.controller.test.ts`, `backend/tests/unit/services/{resource}.service.test.ts`
+**New API endpoint:**
+1. Schema (if new table): `backend/src/db/schema/[domain].schema.ts`, add export to `backend/src/db/schema/index.ts`
+2. Migration: `pnpm run db:generate` → review `backend/drizzle/`
+3. Validator: `backend/src/validators/[domain].validators.ts`
+4. Service: `backend/src/services/[domain].service.ts`
+5. Controller: `backend/src/controllers/[domain].controller.ts`
+6. Route: `backend/src/routes/[domain].routes.ts`
+7. Mount route in `backend/src/app.ts`
 
-**New Database Table:**
-1. Create schema: `backend/src/db/schema/{table}.schema.ts`
-2. Export from barrel: `backend/src/db/schema/index.ts`
-3. Generate migration: `pnpm db:generate`
-4. If JSONB columns: add Zod schema to `backend/src/db/jsonb-schemas.ts`
+**New agent tool:**
+1. Implement: `backend/src/tools/[action]-[noun].tool.ts` — export a LangChain `StructuredTool` with Zod schema
+2. Register: add to `renovationTools` array in `backend/src/tools/index.ts`
 
-**New AI Agent Tool:**
-1. Create tool: `backend/src/tools/{tool-name}.tool.ts` (use `DynamicStructuredTool`)
-2. Register in: `backend/src/tools/index.ts` (add to `renovationTools` array)
-3. Test: `backend/tests/unit/tools/{tool-name}.tool.test.ts`
-
-**New BullMQ Worker:**
+**New BullMQ job type:**
 1. Add job type to `JobTypes` interface in `backend/src/config/queue.ts`
-2. Add worker profile to `WORKER_PROFILES` in `backend/src/config/queue.ts`
-3. Add job validator to `backend/src/validators/job.validators.ts`
-4. Create worker: `backend/src/workers/{name}.worker.ts` (export `startXxxWorker()`)
+2. Add `WorkerProfile` entry to `WORKER_PROFILES`
+3. Add lazy queue getter function
+4. Create worker in `backend/src/workers/[domain].worker.ts`
 5. Start worker in `backend/src/server.ts` startup sequence
-6. Register shutdown in `setupGracefulShutdown()`
-7. Add to Bull Board in `backend/src/app.ts`
 
-**New Frontend Page:**
-1. Create page: `frontend/app/{path}/page.tsx` (server component)
-2. Create client component if needed: `frontend/components/{section}/{name}.tsx`
-3. Add data fetching hook if needed: `frontend/hooks/use{Name}.ts`
+**New frontend page:**
+- Location: `frontend/app/[path]/page.tsx` (server component by default)
+- Add `'use client'` directive if it needs hooks/state; otherwise keep as server component
 
-**New Frontend Component:**
-- UI primitives: `frontend/components/ui/` (shadcn pattern)
-- Chat components: `frontend/components/chat/`
-- Renovation domain: `frontend/components/renovation/` (update barrel `index.ts`)
-- Dashboard: `frontend/components/dashboard/`
+**New frontend component:**
+- Domain component: `frontend/components/[domain]/[name].tsx`
+- UI primitive: `frontend/components/ui/[name].tsx` (shadcn/ui pattern)
+- Add to barrel export if the directory has an `index.ts`
 
-**New Shared Type:**
-1. Add to appropriate file in `packages/shared-types/src/`
-2. Export from `packages/shared-types/src/index.ts`
-3. Rebuild: `pnpm run build:shared-types`
+**New frontend hook:**
+- Location: `frontend/hooks/use[Name].ts`
+- Use TanStack Query (`useQuery`, `useMutation`) for server data
+- Use `useChat` socketRef for Socket.io event subscriptions
+
+**New shared type:**
+- Add to appropriate file in `packages/shared-types/src/`
+- Export from `packages/shared-types/src/index.ts`
+- Run `pnpm run build:shared-types` before using
+
+**Utilities:**
+- Backend shared helpers: `backend/src/utils/`
+- Frontend shared helpers: `frontend/lib/`
 
 ## Special Directories
 
 **`backend/drizzle/`:**
-- Purpose: Database migration files managed by drizzle-kit
-- Generated: Yes (via `pnpm db:generate`)
-- Committed: Yes
-- Subdirs: `meta/` (journal), `archive/` (old manual migrations), `rollbacks/` (auto-generated)
+- Purpose: SQL migration files + drizzle-kit snapshot journal
+- Generated: Yes (by `drizzle-kit generate`)
+- Committed: Yes — do not edit migration files after committing
 
-**`backend/dist/`:**
-- Purpose: Compiled TypeScript output
-- Generated: Yes (via `pnpm build`)
-- Committed: No (gitignored)
-
-**`frontend/.next/`:**
-- Purpose: Next.js build output
-- Generated: Yes (via `pnpm build`)
-- Committed: No (gitignored)
+**`backend/drizzle/archive/manual-0007-0012/`:**
+- Purpose: Historical manual migration reference only
+- Generated: No
+- Committed: Yes — read-only archive
 
 **`packages/shared-types/dist/`:**
-- Purpose: Compiled shared type declarations
-- Generated: Yes (via `pnpm run build:shared-types`)
-- Committed: Yes (needed for workspace resolution)
+- Purpose: Compiled shared types output
+- Generated: Yes (by `tsc` in `packages/shared-types/`)
+- Committed: No (in `.gitignore`)
+- Required: Must be built before running backend or frontend
+
+**`frontend/.next/`:**
+- Purpose: Next.js build cache and output
+- Generated: Yes
+- Committed: No
+
+**`backend/dist/`:**
+- Purpose: Compiled backend TypeScript output
+- Generated: Yes (by `tsc`)
+- Committed: No
 
 **`.planning/`:**
-- Purpose: Planning documents, codebase analysis, phase plans, debug logs
-- Generated: Manually by developers/AI
+- Purpose: Project planning documents, research, phase summaries, codebase analysis
+- Generated: No (human/AI authored)
 - Committed: Yes
+
+**`.claude/`:**
+- Purpose: Claude Code configuration, skills, agent memory, progress trackers
+- Generated: Partially (agent memory, progress files)
+- Committed: Partially (skills and config committed; worktrees gitignored)
 
 ---
 
-*Structure analysis: 2026-03-01*
+*Structure analysis: 2026-04-17*

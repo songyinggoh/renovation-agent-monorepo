@@ -2,14 +2,21 @@
 
 ## Current Position
 
-Phase: phase-4-payment (IN PROGRESS)
-Plan: 4-03 of 5 complete
-Status: Wave 3 security hardening complete. Rate limiter, entitlement gates, and comprehensive unit tests done.
-Last activity: 2026-03-18 - Completed 4-03-PLAN.md (checkoutLimiter, isPaid gates, 18 new tests)
+Phase: phase-5 (NOT STARTED)
+Plan: —
+Status: Phase 4 complete. All 5 plans executed and verified. Ready to begin Phase 5.
+Last activity: 2026-04-18 - Closed Phase 4, committed remaining deliverables
 
-Progress: ███░░░░░░░░░░░░░ (60% Phase 4 execution — 3/5 plans complete)
+Progress: ░░░░░░░░░░░░░ (Phase 5 not started)
 
 ## Completed (Recent)
+
+- **Phase 4 Plan 4-04 (Wave 4 — Frontend):**
+  - frontend/hooks/usePayment.ts: useCreateCheckout, useDevComplete mutation hooks
+  - frontend/components/payment/payment-panel.tsx: Multi-state payment UI component
+  - frontend/hooks/useSocketQuerySync.ts: payment:completed/failed Socket.io listeners
+  - frontend/components/session/session-page-client.tsx: PaymentPanel integration
+  - Summary: .planning/phases/phase-4-payment/4-04-SUMMARY.md
 
 - **Phase 4 Plan 4-03 (Wave 3 — Security Hardening):**
   - backend/src/middleware/rate-limit.middleware.ts: checkoutLimiter (5 req/10 min per IP)
@@ -45,8 +52,7 @@ Progress: ███░░░░░░░░░░░░░ (60% Phase 4 executio
 
 ## Next Steps
 
-- Execute Plan 4-04 (Wave 4): frontend payment hook, PAYMENT phase UI (has human-verify checkpoint)
-- Execute Plan 4-05 (Wave 5): integration tests, prompt, CSP, runbook
+- Plan and execute Phase 5
 
 ## Accumulated Decisions
 
@@ -123,3 +129,4 @@ Resume file: None
 - **Phase 1**: Chat MVP
 - **Phase 2**: Images, Style & Products
 - **Phase 3**: Renders & Documents (committed 2026-03-19)
+- **Phase 4**: Payment Integration — Stripe Checkout, webhook fulfillment, entitlement gates, frontend PaymentPanel (committed 2026-04-18)
