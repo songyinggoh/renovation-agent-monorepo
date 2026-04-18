@@ -59,7 +59,7 @@ describe('Payment Integration Tests', () => {
       vi.mocked(stripe.checkout.sessions.create).mockResolvedValueOnce({
         id: 'cs_test_123',
         url: 'https://checkout.stripe.com/pay/cs_test_123',
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof stripe.checkout.sessions.create>>);
 
       const res = await request(app)
         .post(`/api/payments/checkout/${sessionId}`)
@@ -160,7 +160,7 @@ describe('Payment Integration Tests', () => {
         },
       };
 
-      vi.mocked(stripe.webhooks.constructEvent).mockReturnValue(mockEvent as any);
+      vi.mocked(stripe.webhooks.constructEvent).mockReturnValue(mockEvent as unknown as ReturnType<typeof stripe.webhooks.constructEvent>);
       
       // For fulfillPayment: 
       // 1. Select session status (idempotency check)

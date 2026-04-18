@@ -2,140 +2,124 @@
  * Stripe config unit tests
  *
  * Covers:
- *   - isPaymentsEnabled() returns false when STRIPE_SECRET_KEY is not set
- *   - isPaymentsEnabled() returns false when STRIPE_WEBHOOK_SECRET is not set
- *   - isPaymentsEnabled() returns true when both keys are set
- *   - getStripe() throws when payments are not enabled
+ *   - isPaymentsEnabled() logic: false when either key is absent, true when both set
+ *   - getStripe() throws when isPaymentsEnabled() returns false
  *   - getStripe() returns the same instance on repeated calls (singleton)
+ *
+ * Note: env.ts is a singleton that runs at import time, so we test
+ * isPaymentsEnabled() logic by evaluating its inline boolean expression
+ * rather than re-importing the module. For getStripe() we use vi.resetModules()
+ * + dynamic import to get a fresh module instance per test.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Hoisted mocks ─────────────────────────────────────────────────────────────
-// We need to control the env and isPaymentsEnabled at the module boundary.
-// stripe.ts imports both from env.js, so we mock that module.
+// ── isPaymentsEnabled logic ────────────────────────────────────────────────────
 
-const { mockIsPaymentsEnabled, mockEnv } = vi.hoisted(() => ({
-  mockIsPaymentsEnabled: vi.fn(),
-  mockEnv: {
-    STRIPE_SECRET_KEY: undefined as string | undefined,
-    STRIPE_WEBHOOK_SECRET: undefined as string | undefined,
-  },
-}));
+describe('isPaymentsEnabled logic', () => {
+  // The implementation is: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)
+  // We test the boolean contract directly without re-loading env.ts.
 
-vi.mock('../../src/utils/logger.js', () => ({
-  Logger: vi.fn().mockImplementation(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  })),
-}));
-
-vi.mock('../../src/config/env.js', () => ({
-  env: mockEnv,
-  isPaymentsEnabled: mockIsPaymentsEnabled,
-}));
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe('isPaymentsEnabled (from env.js)', () => {
-  // These tests use the real env.js isPaymentsEnabled logic rather than the
-  // mock, so we import the real function separately.
-  // The function is: !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)
+  const check = (key: string | undefined, secret: string | undefined) =>
+    !!(key && secret);
 
   it('returns false when STRIPE_SECRET_KEY is not set', () => {
-    // Inline implementation to test the logic without re-importing env.ts
-    // (env.ts has a singleton that can't be re-evaluated).
-    // We test the contract: both keys required.
-    const check = (key?: string, secret?: string) => !!(key && secret);
-
     expect(check(undefined, 'whsec_test')).toBe(false);
   });
 
   it('returns false when STRIPE_WEBHOOK_SECRET is not set', () => {
-    const check = (key?: string, secret?: string) => !!(key && secret);
-
     expect(check('sk_test_abc', undefined)).toBe(false);
   });
 
   it('returns false when both keys are missing', () => {
-    const check = (key?: string, secret?: string) => !!(key && secret);
-
     expect(check(undefined, undefined)).toBe(false);
   });
 
-  it('returns true when both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are set', () => {
-    const check = (key?: string, secret?: string) => !!(key && secret);
+  it('returns false when STRIPE_SECRET_KEY is empty string', () => {
+    expect(check('', 'whsec_test')).toBe(false);
+  });
 
+  it('returns false when STRIPE_WEBHOOK_SECRET is empty string', () => {
+    expect(check('sk_test_abc', '')).toBe(false);
+  });
+
+  it('returns true when both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are set', () => {
     expect(check('sk_test_abc', 'whsec_test')).toBe(true);
   });
 });
 
-describe('getStripe (stripe.ts)', () => {
+// ── getStripe — throws when payments disabled ──────────────────────────────────
+
+describe('getStripe()', () => {
+  // Each test resets modules to get a fresh _stripe singleton state
   beforeEach(() => {
-    vi.clearAllMocks();
-    // Reset env keys to undefined before each test
-    mockEnv.STRIPE_SECRET_KEY = undefined;
-    mockEnv.STRIPE_WEBHOOK_SECRET = undefined;
+    vi.resetModules();
   });
 
   it('throws when isPaymentsEnabled() returns false', async () => {
-    mockIsPaymentsEnabled.mockReturnValue(false);
-
-    // Dynamic import with vi.resetModules() to get a fresh module state
-    // (the singleton _stripe is module-level, so we isolate per test via factory reset)
-    vi.resetModules();
-
-    // Re-apply mocks after resetModules
-    vi.mock('../../src/utils/logger.js', () => ({
+    vi.doMock('../../../src/utils/logger.js', () => ({
       Logger: vi.fn().mockImplementation(() => ({
         info: vi.fn(),
         error: vi.fn(),
         warn: vi.fn(),
       })),
     }));
-    vi.mock('../../src/config/env.js', () => ({
-      env: mockEnv,
-      isPaymentsEnabled: mockIsPaymentsEnabled,
+
+    vi.doMock('../../../src/config/env.js', () => ({
+      env: {
+        STRIPE_SECRET_KEY: undefined,
+        STRIPE_WEBHOOK_SECRET: undefined,
+      },
+      isPaymentsEnabled: () => false,
     }));
+
+    // Stub stripe so its module-level initialisation doesn't add import cost
+    vi.doMock('stripe', () => ({ default: vi.fn() }));
 
     const { getStripe } = await import('../../../src/config/stripe.js');
 
     expect(() => getStripe()).toThrow(
       'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in your environment.',
     );
-  });
+  }, 15_000);
 
-  it('returns the same instance on multiple calls (singleton)', async () => {
-    vi.resetModules();
+  it('returns the same instance on multiple calls (singleton behaviour)', async () => {
+    const fakeStripeInstance = {
+      checkout: { sessions: { create: vi.fn() } },
+      webhooks: { constructEvent: vi.fn() },
+    };
 
-    const localEnv = { STRIPE_SECRET_KEY: 'sk_test_singleton', STRIPE_WEBHOOK_SECRET: 'whsec_test' };
-    const localIsPaymentsEnabled = vi.fn(() => true);
-
-    vi.mock('../../../src/utils/logger.js', () => ({
+    vi.doMock('../../../src/utils/logger.js', () => ({
       Logger: vi.fn().mockImplementation(() => ({
         info: vi.fn(),
         error: vi.fn(),
         warn: vi.fn(),
       })),
     }));
-    vi.mock('../../../src/config/env.js', () => ({
-      env: localEnv,
-      isPaymentsEnabled: localIsPaymentsEnabled,
+
+    vi.doMock('../../../src/config/env.js', () => ({
+      env: {
+        STRIPE_SECRET_KEY: 'sk_test_singleton_key',
+        STRIPE_WEBHOOK_SECRET: 'whsec_test',
+      },
+      isPaymentsEnabled: () => true,
     }));
 
-    // Stripe SDK itself — mock its constructor so no real network call
-    vi.mock('stripe', () => ({
-      default: vi.fn().mockImplementation(() => ({
-        checkout: { sessions: { create: vi.fn() } },
-        webhooks: { constructEvent: vi.fn() },
-      })),
+    // Stub the Stripe constructor so no real network call is made
+    const StripeConstructor = vi.fn().mockReturnValue(fakeStripeInstance);
+    vi.doMock('stripe', () => ({
+      default: StripeConstructor,
     }));
 
     const { getStripe } = await import('../../../src/config/stripe.js');
 
-    const instance1 = getStripe();
-    const instance2 = getStripe();
+    const first = getStripe();
+    const second = getStripe();
 
-    expect(instance1).toBe(instance2);
+    // Both calls must return the same object reference
+    expect(first).toBe(second);
+
+    // Stripe constructor must only have been called once
+    expect(StripeConstructor).toHaveBeenCalledTimes(1);
+    expect(StripeConstructor).toHaveBeenCalledWith('sk_test_singleton_key');
   });
 });
