@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { Socket } from 'socket.io-client';
 import { Message } from '@/types/chat';
@@ -38,9 +38,20 @@ function formatTime(dateString: string): string {
 
 export function MessageList({ messages, isAssistantTyping, isLoadingHistory, phase, onSuggestionSelect, socketRef }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Track whether user has scrolled up to read history
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isAssistantTyping]);
 
   if (isLoadingHistory) {
@@ -62,7 +73,7 @@ export function MessageList({ messages, isAssistantTyping, isLoadingHistory, pha
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 surface-chat" data-testid="message-list">
+    <div ref={containerRef} onScroll={handleScroll} role="log" aria-live="polite" aria-label="Renovation chat messages" className="flex-1 overflow-y-auto p-4 space-y-4 surface-chat" data-testid="message-list">
       {messages.map((message) => {
         // Tool call: subtle loading indicator
         if (message.type === 'tool_call') {

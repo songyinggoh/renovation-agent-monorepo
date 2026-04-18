@@ -25,7 +25,7 @@ export function PaymentPanel({ sessionId, isPaid }: PaymentPanelProps) {
   // If paid (either from webhook or refresh), show success
   if (isPaid) {
     return (
-      <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+      <Card data-testid="payment-panel" className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
         <CardContent className="pt-6">
           <div className="text-center">
             <div className="text-2xl mb-2 text-green-600 dark:text-green-400">✓</div>
@@ -44,7 +44,7 @@ export function PaymentPanel({ sessionId, isPaid }: PaymentPanelProps) {
   // Returning from Stripe success_url — waiting for webhook to fulfill
   if (isReturningFromStripe) {
     return (
-      <Card>
+      <Card data-testid="payment-panel">
         <CardContent className="pt-6">
           <div className="text-center">
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
@@ -82,7 +82,7 @@ export function PaymentPanel({ sessionId, isPaid }: PaymentPanelProps) {
   };
 
   return (
-    <Card>
+    <Card data-testid="payment-panel">
       <CardHeader>
         <CardTitle>Complete Your Renovation Plan</CardTitle>
         <CardDescription>

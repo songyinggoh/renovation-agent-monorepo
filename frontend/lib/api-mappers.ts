@@ -13,6 +13,7 @@ export function mapSessionResponse(data: Record<string, unknown>): SessionDetail
     phase: data.phase as SessionDetail['phase'],
     totalBudget: data.totalBudget as string | null,
     currency: (data.currency as string | undefined) ?? 'USD',
+    isPaid: !!data.isPaid,
     createdAt: data.createdAt as string,
     updatedAt: data.updatedAt as string,
     stylePreferences: (data.stylePreferences as SessionDetail['stylePreferences']) ?? null,

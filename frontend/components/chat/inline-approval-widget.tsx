@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, X } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -28,13 +28,13 @@ export function InlineApprovalWidget({
 
       {status === 'pending' ? (
         <div className="mt-3 flex gap-2">
-          <Button size="sm" onClick={onApprove} className="gap-1.5">
+          <Button size="sm" onClick={onApprove} className="gap-1.5 min-h-[44px]">
             <Check className="h-3.5 w-3.5" />
-            Approve
+            Looks good
           </Button>
-          <Button size="sm" variant="outline" onClick={onReject} className="gap-1.5">
-            <X className="h-3.5 w-3.5" />
-            Reject
+          <Button size="sm" variant="outline" onClick={onReject} className="gap-1.5 min-h-[44px]">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Let&apos;s try something else
           </Button>
         </div>
       ) : (
@@ -43,7 +43,7 @@ export function InlineApprovalWidget({
           status === 'approved' && 'bg-success/15 text-success',
           status === 'rejected' && 'bg-destructive/15 text-destructive'
         )}>
-          {status === 'approved' ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+          {status === 'approved' ? <Check className="h-3 w-3" /> : <RefreshCw className="h-3 w-3" />}
           {status === 'approved' ? 'Approved' : 'Rejected'}
         </div>
       )}

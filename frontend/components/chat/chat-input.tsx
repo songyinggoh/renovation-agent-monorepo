@@ -96,7 +96,7 @@ export function ChatInput({
   ).length ?? 0;
 
   return (
-    <div className="border-t border-border bg-card">
+    <div className="sticky bottom-0 z-10 border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
       {/* Intake guidance prompt */}
       {showIntakePrompt && (
         <div className="flex items-start gap-3 border-b border-border bg-primary/5 px-4 py-3">

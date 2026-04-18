@@ -24,6 +24,7 @@ export interface SessionSummary {
   phase: RenovationPhase;
   totalBudget: string | null;
   currency: string;
+  isPaid: boolean;
   createdAt: string;
   updatedAt: string;
 }

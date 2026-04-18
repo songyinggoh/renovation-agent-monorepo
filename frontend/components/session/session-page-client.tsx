@@ -6,12 +6,17 @@ import { useChat } from '@/hooks/useChat';
 import { useSocketQuerySync } from '@/hooks/useSocketQuerySync';
 import { useRenderState } from '@/hooks/useRenderState';
 import { useRoomRenders } from '@/hooks/useRoomRenders';
+import { useSearchParams } from 'next/navigation';
 import { ChatView } from '@/components/chat/chat-view';
 import { SessionSidebar } from '@/components/session/session-sidebar';
 import { RenderGallery } from '@/components/renovation/render-gallery';
 import { ComparisonDialog } from '@/components/renovation/index';
-import { PHASE_INDEX, type RenovationPhase } from '@/lib/design-tokens';
+import { PaymentPanel } from '@/components/payment/payment-panel';
+import { PHASE_CONFIG, PHASE_INDEX, type RenovationPhase } from '@/lib/design-tokens';
 import { useState } from 'react';
+import { Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 interface SessionPageClientProps {
   sessionId: string;
@@ -50,8 +55,10 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
   // Fetch persisted renders for the selected room
   const { renders } = useRoomRenders(selectedRoomId);
 
+  const searchParams = useSearchParams();
   const phase = session?.phase ?? 'INTAKE';
   const showRenders = isRenderPhase(phase) && !!selectedRoomId && renders.length > 0;
+  const showPayment = phase === 'PAYMENT' || (phase === 'COMPLETE' && !!searchParams.get('payment'));
 
   const handleCompare = (renderId: string) => {
     const render = renders.find((r) => r.id === renderId);
@@ -74,34 +81,71 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
     });
   };
 
+  const sidebarContent = (
+    <SessionSidebar
+      phase={phase}
+      totalBudget={session?.totalBudget ?? null}
+      currency={session?.currency ?? 'USD'}
+      stylePreferences={session?.stylePreferences ?? null}
+      rooms={rooms}
+      selectedRoomId={selectedRoomId}
+      onSelectRoom={selectRoom}
+      isLoading={sessionLoading || roomsLoading}
+    />
+  );
+
   return (
     <div className="flex h-[calc(100vh-10rem)]">
-      <SessionSidebar
-        phase={phase}
-        totalBudget={session?.totalBudget ?? null}
-        currency={session?.currency ?? 'USD'}
-        stylePreferences={session?.stylePreferences ?? null}
-        rooms={rooms}
-        selectedRoomId={selectedRoomId}
-        onSelectRoom={selectRoom}
-        isLoading={sessionLoading || roomsLoading}
-      />
-      <div className="flex-1">
-        <ChatView
-          sessionId={sessionId}
-          phase={phase}
-          roomId={selectedRoomId ?? undefined}
-          messages={chat.messages}
-          sendMessage={chat.sendMessage}
-          isConnected={chat.isConnected}
-          error={chat.error}
-          isAssistantTyping={chat.isAssistantTyping}
-          isLoadingHistory={chat.isLoadingHistory}
-          socketRef={chat.socketRef}
-        />
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">
+        {sidebarContent}
       </div>
+
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Mobile header with sidebar trigger */}
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-10 w-10" aria-label="Open sidebar">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              {sidebarContent}
+            </SheetContent>
+          </Sheet>
+          <span className="text-sm font-medium text-muted-foreground">
+            {PHASE_CONFIG[phase].label}
+          </span>
+        </div>
+
+        {showPayment && (
+          <div className="p-4 border-b border-border bg-muted/30">
+            <PaymentPanel
+              sessionId={sessionId}
+              isPaid={session?.isPaid ?? false}
+            />
+          </div>
+        )}
+        <div className="flex-1">
+          <ChatView
+            sessionId={sessionId}
+            phase={phase}
+            roomId={selectedRoomId ?? undefined}
+            messages={chat.messages}
+            sendMessage={chat.sendMessage}
+            isConnected={chat.isConnected}
+            error={chat.error}
+            isAssistantTyping={chat.isAssistantTyping}
+            isLoadingHistory={chat.isLoadingHistory}
+            socketRef={chat.socketRef}
+          />
+        </div>
+      </div>
+
+      {/* Desktop render panel */}
       {showRenders && (
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-border bg-card p-4">
+        <aside className="hidden md:block w-80 shrink-0 overflow-y-auto border-l border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Renders</h2>
           <RenderGallery
             roomId={selectedRoomId!}
