@@ -60,9 +60,22 @@ export function createApp(): Application {
 
   // ============================================
   // Security Headers (Helmet)
+  //
+  // NOTE: When deploying to production, ensure CSP allows:
+  // connect-src: https://checkout.stripe.com, https://api.stripe.com
+  // frame-src: https://checkout.stripe.com, https://js.stripe.com
+  // These are needed for Stripe Checkout hosted redirect.
   // ============================================
   app.use(helmet({
-    contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
+    contentSecurityPolicy: env.NODE_ENV === 'production' ? {
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: ["'self'", 'https://checkout.stripe.com', 'https://api.stripe.com'],
+        frameSrc: ["'self'", 'https://checkout.stripe.com', 'https://js.stripe.com'],
+        scriptSrc: ["'self'", 'https://js.stripe.com'],
+        imgSrc: ["'self'", 'data:', 'https://*.stripe.com'],
+      },
+    } : false,
     crossOriginEmbedderPolicy: false, // Allow cross-origin resources (images, fonts)
   }));
 
@@ -181,6 +194,43 @@ export function createApp(): Application {
       handleDevComplete
     );
     logger.warn('DEV BYPASS: /api/payments/dev-complete is mounted. DO NOT USE IN PRODUCTION.');
+
+    // ============================================
+    // Dev-only Phase Override (E2E test helper)
+    //
+    // Allows E2E tests to force a session into a specific phase without
+    // running the AI agent. Only mounted when NODE_ENV !== 'production'.
+    // SECURITY-CHECKLIST B1: gated at route registration time.
+    // ============================================
+    app.post(
+      '/api/dev/sessions/:sessionId/phase',
+      optionalAuthMiddleware,
+      verifySessionOwnership,
+      async (req: Request, res: Response) => {
+        const { sessionId } = req.params;
+        const { phase } = req.body as { phase: string };
+        const validPhases = ['INTAKE', 'CHECKLIST', 'PLAN', 'RENDER', 'PAYMENT', 'COMPLETE', 'ITERATE'];
+        if (!phase || !validPhases.includes(phase)) {
+          res.status(400).json({ error: `phase must be one of: ${validPhases.join(', ')}` });
+          return;
+        }
+        const { db: database } = await import('./db/index.js');
+        const { renovationSessions: sessions } = await import('./db/schema/sessions.schema.js');
+        const { eq: eqFn } = await import('drizzle-orm');
+        const [updated] = await database
+          .update(sessions)
+          .set({ phase, updatedAt: new Date() })
+          .where(eqFn(sessions.id, sessionId))
+          .returning({ id: sessions.id, phase: sessions.phase });
+        if (!updated) {
+          res.status(404).json({ error: 'Session not found' });
+          return;
+        }
+        logger.warn('DEV: phase override applied', { sessionId, phase });
+        res.json({ sessionId: updated.id, phase: updated.phase });
+      }
+    );
+    logger.warn('DEV BYPASS: /api/dev/sessions/:id/phase is mounted. DO NOT USE IN PRODUCTION.');
   }
 
   // ============================================

@@ -104,6 +104,9 @@ export const documentArtifacts = pgTable('document_artifacts', {
 
   // Index for cleanup queries (expired documents)
   index('idx_docs_expired').on(table.expiresAt),
+
+  // Index on previous_version_id FK (Supabase unindexed-FK advisor)
+  index('idx_docs_previous_version').on(table.previousVersionId),
 ]);
 
 export type DocumentArtifact = typeof documentArtifacts.$inferSelect;
