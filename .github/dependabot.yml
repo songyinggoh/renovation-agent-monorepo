@@ -9,8 +9,12 @@ updates:
       day: monday
     open-pull-requests-limit: 10
     groups:
-      root-devtools:
+      root-devtools-safe:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+      root-devtools-majors:
+        patterns: ["*"]
+        update-types: ["major"]
 
   # ── Backend ──
   - package-ecosystem: npm
@@ -113,5 +117,9 @@ updates:
       interval: weekly
       day: monday
     groups:
-      github-actions:
+      github-actions-safe:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+      github-actions-majors:
+        patterns: ["*"]
+        update-types: ["major"]
