@@ -45,13 +45,31 @@ export function BeforeAfterSlider({
     isDragging.current = false;
   }, []);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const step = 10;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setPosition((prev) => Math.max(0, prev - step));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setPosition((prev) => Math.min(100, prev + step));
+    }
+  }, []);
+
   return (
     <div
       ref={containerRef}
       className={cn('relative select-none overflow-hidden rounded-lg', className)}
+      tabIndex={0}
+      role="slider"
+      aria-label="Before and after comparison"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(position)}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onKeyDown={handleKeyDown}
     >
       {/* After image (full width) */}
       <Image src={afterImageUrl} alt={afterLabel} width={800} height={600} className="block w-full" draggable={false} />
@@ -77,7 +95,7 @@ export function BeforeAfterSlider({
         className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg"
         style={{ left: `${position}%` }}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-md">
           <svg width="12" height="12" viewBox="0 0 12 12" className="text-foreground">
             <path d="M3 6L0 3v6l3-3zm6 0l3-3v6l-3-3z" fill="currentColor" />
           </svg>

@@ -69,7 +69,7 @@ export function SessionList() {
     return (
         <ul className="divide-y divide-border">
             {sessions.map((session) => (
-                <li key={session.id}>
+                <li key={session.id} data-testid="session-item">
                     <Link
                         href={`/app/session/${session.id}` as Route}
                         className="flex items-center justify-between gap-x-6 rounded-lg px-4 py-5 transition-colors hover:bg-muted/50"

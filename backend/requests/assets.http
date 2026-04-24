@@ -1,0 +1,29 @@
+@baseUrl = http://localhost:3000/api
+@roomId = YOUR_ROOM_ID
+@assetId = YOUR_ASSET_ID
+
+### Request a signed upload URL
+POST {{baseUrl}}/rooms/{{roomId}}/assets/request-upload
+Content-Type: application/json
+
+{
+  "fileName": "kitchen-photo.jpg",
+  "fileType": "image/jpeg",
+  "fileSize": 2048000,
+  "assetType": "photo"
+}
+
+### Confirm upload completed
+POST {{baseUrl}}/rooms/{{roomId}}/assets/{{assetId}}/confirm
+
+### List all assets for a room
+GET {{baseUrl}}/rooms/{{roomId}}/assets
+
+### Get a single asset
+GET {{baseUrl}}/rooms/{{roomId}}/assets/{{assetId}}
+
+### Get signed download URL
+GET {{baseUrl}}/rooms/{{roomId}}/assets/{{assetId}}/url
+
+### Delete an asset
+DELETE {{baseUrl}}/rooms/{{roomId}}/assets/{{assetId}}

@@ -76,6 +76,7 @@ export default function HomePage() {
   const supabase = createClient();
 
   const handleSignIn = async () => {
+    if (!supabase) return;
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

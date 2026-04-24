@@ -2,6 +2,7 @@
 
 import { RenderCard } from '@/components/renovation/render-card';
 import type { RenderEntry } from '@/hooks/useRenderState';
+import { notFound } from 'next/navigation';
 
 /**
  * Visual test page for RenderCard in all 7 display states.
@@ -100,6 +101,8 @@ const cards: MockCard[] = [
 // ─── Page Component ─────────────────────────────────────────────────
 
 export default function RenderTestPage() {
+  if (process.env.NODE_ENV === 'production') notFound();
+
   return (
     <div className="mx-auto max-w-6xl p-8">
       <h1 className="text-fluid-2xl font-bold mb-2">RenderCard Visual Test</h1>

@@ -1,0 +1,5 @@
+@baseUrl = http://localhost:3000/api
+@sessionId = YOUR_SESSION_ID
+
+### Get chat messages for a session
+GET {{baseUrl}}/sessions/{{sessionId}}/messages

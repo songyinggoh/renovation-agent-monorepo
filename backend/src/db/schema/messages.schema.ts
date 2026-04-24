@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 import { renovationSessions } from './sessions.schema.js';
 import { profiles } from './users.schema.js';
 
@@ -37,7 +37,9 @@ export const chatMessages = pgTable('chat_messages', {
   metadata: jsonb('metadata'), // Token counts, model info, etc.
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('idx_chat_messages_user').on(table.userId),
+]);
 
 /**
  * Type inference for chat_messages table

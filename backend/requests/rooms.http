@@ -1,0 +1,35 @@
+@baseUrl = http://localhost:3000/api
+@sessionId = YOUR_SESSION_ID
+@roomId = YOUR_ROOM_ID
+
+### List rooms for a session
+GET {{baseUrl}}/sessions/{{sessionId}}/rooms
+
+### Create a room
+POST {{baseUrl}}/sessions/{{sessionId}}/rooms
+Content-Type: application/json
+
+{
+  "name": "Kitchen",
+  "roomType": "kitchen",
+  "dimensions": {
+    "length": 12,
+    "width": 10,
+    "height": 9
+  }
+}
+
+### Get a single room
+GET {{baseUrl}}/rooms/{{roomId}}
+
+### Update a room
+PATCH {{baseUrl}}/rooms/{{roomId}}
+Content-Type: application/json
+
+{
+  "name": "Main Kitchen",
+  "budget": 25000
+}
+
+### Delete a room
+DELETE {{baseUrl}}/rooms/{{roomId}}

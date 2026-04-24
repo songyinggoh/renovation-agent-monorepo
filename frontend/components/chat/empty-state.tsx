@@ -64,11 +64,11 @@ export function EmptyState({
           <div className="rounded-full bg-primary/10 p-4">
             <Home className="h-8 w-8 text-primary" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold text-foreground">
-            Let&apos;s plan something beautiful
+          <h3 className="mt-4 text-lg font-semibold text-foreground font-display">
+            Your home is telling you something
           </h3>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Describe your renovation vision or upload photos of your space &mdash; our AI will help you plan every detail.
+            Tell us what you&apos;re dreaming of, or upload a photo of your space &mdash; our AI will help you plan every detail.
           </p>
           <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <Camera className="h-3.5 w-3.5" />

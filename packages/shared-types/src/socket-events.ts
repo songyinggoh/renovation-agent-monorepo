@@ -100,10 +100,48 @@ export interface RenderProgressPayload {
   stage: RenderStage;
 }
 
+export interface DocGenerationStartedPayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  jobId?: string;
+}
+
+export interface DocGenerationProgressPayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  progress: number;
+  stage: string;
+}
+
+export interface DocGenerationCompletePayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  documentId: string;
+  storagePath: string;
+}
+
+export interface DocGenerationFailedPayload {
+  sessionId: string;
+  documentType: string;
+  roomId?: string;
+  error: string;
+}
+
 export interface DocGeneratedPayload {
   sessionId: string;
-  roomId: string;
-  format: 'pdf' | 'html';
+  roomId?: string;
+}
+
+export interface PaymentCompletedPayload {
+  sessionId: string;
+}
+
+export interface PaymentFailedPayload {
+  sessionId: string;
+  reason?: string;
 }
 
 export interface ClientToServerEvents {
@@ -126,5 +164,11 @@ export interface ServerToClientEvents {
   'render:complete': (data: RenderCompletePayload) => void;
   'render:progress': (data: RenderProgressPayload) => void;
   'render:failed': (data: RenderFailedPayload) => void;
+  'doc:generation_started': (data: DocGenerationStartedPayload) => void;
+  'doc:generation_complete': (data: DocGenerationCompletePayload) => void;
+  'doc:generation_progress': (data: DocGenerationProgressPayload) => void;
+  'doc:generation_failed': (data: DocGenerationFailedPayload) => void;
   'doc:generated': (data: DocGeneratedPayload) => void;
+  'payment:completed': (data: PaymentCompletedPayload) => void;
+  'payment:failed': (data: PaymentFailedPayload) => void;
 }

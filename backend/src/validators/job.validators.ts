@@ -25,8 +25,8 @@ export const emailSendNotificationJobSchema = z.object({
 
 export const docGeneratePlanJobSchema = z.object({
   sessionId: z.string().uuid(),
-  roomId: z.string().uuid(),
-  format: z.enum(['pdf', 'html']),
+  documentType: z.enum(['checklist_pdf', 'plan_pdf']),
+  roomId: z.string().uuid().optional(),
 });
 
 export const renderGenerateJobSchema = z.object({

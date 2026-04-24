@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
+import type { RefObject } from 'react';
+import type { Socket } from 'socket.io-client';
 import { useRouter } from 'next/navigation';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { MessageList } from '@/components/chat/message-list';
@@ -20,9 +22,10 @@ interface ChatViewProps {
   error: string | null;
   isAssistantTyping: boolean;
   isLoadingHistory: boolean;
+  socketRef?: RefObject<Socket | null>;
 }
 
-export function ChatView({ sessionId, phase, roomId, messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory }: ChatViewProps) {
+export function ChatView({ sessionId, phase, roomId, messages, sendMessage, isConnected, error, isAssistantTyping, isLoadingHistory, socketRef }: ChatViewProps) {
   const router = useRouter();
 
   const upload = useFileUpload({
@@ -84,6 +87,7 @@ export function ChatView({ sessionId, phase, roomId, messages, sendMessage, isCo
         isLoadingHistory={isLoadingHistory}
         phase={phase}
         onSuggestionSelect={handleSend}
+        socketRef={socketRef}
       />
 
       {/* Input with upload support */}

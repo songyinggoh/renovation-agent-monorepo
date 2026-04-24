@@ -4,6 +4,7 @@ import { testRedisConnection } from '../config/redis.js';
 import { isSentryEnabled } from '../config/sentry.js';
 import { env, isAuthEnabled, isPaymentsEnabled } from '../config/env.js';
 import { Logger } from '../utils/logger.js';
+import { getRenderQueue } from '../config/queue.js';
 
 const router = Router();
 const logger = new Logger({ serviceName: 'HealthCheck' });
@@ -95,10 +96,12 @@ router.get('/health/ready', async (_req: Request, res: Response) => {
     errorTracking: isSentryEnabled() ? 'enabled' : 'disabled',
   };
 
-  // Determine overall readiness
-  const allHealthy = Object.values(checks)
-    .filter(check => check.status !== undefined)
-    .every(check => check.status === 'ok');
+  // Determine overall readiness — only required services gate readiness.
+  // Redis is optional (graceful degradation), so exclude it.
+  const requiredChecks = ['database'];
+  const allHealthy = requiredChecks.every(
+    key => checks[key]?.status === 'ok',
+  );
 
   const statusCode = allHealthy ? 200 : 503;
 
@@ -111,6 +114,22 @@ router.get('/health/ready', async (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     checks,
   });
+});
+
+/**
+ * Debug endpoint to check queue status
+ * GET /health/queues
+ */
+router.get('/health/queues', async (_req: Request, res: Response) => {
+  try {
+    const renderQueue = getRenderQueue();
+    const counts = await renderQueue.getJobCounts();
+    res.json({
+      render: counts,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
 });
 
 /**

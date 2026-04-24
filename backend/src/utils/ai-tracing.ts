@@ -35,12 +35,12 @@ export interface AISpanAttributes {
 }
 
 /**
- * Gemini pricing per 1M tokens (approximate, 2025 rates)
+ * Gemini pricing per 1M tokens (approximate, 2026 rates)
  * Used for ai.cost.estimated_usd attribute
  */
 const GEMINI_PRICING: Record<string, { input: number; output: number }> = {
   'gemini-2.5-flash': { input: 0.075, output: 0.30 },
-  'gemini-1.5-pro': { input: 1.25, output: 5.00 },
+  'gemini-2.5-pro': { input: 1.25, output: 10.00 },
 };
 
 const DEFAULT_PRICING = { input: 0.075, output: 0.30 };

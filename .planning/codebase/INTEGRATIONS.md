@@ -1,141 +1,169 @@
 # External Integrations
 
-**Analysis Date:** 2026-02-09
+**Analysis Date:** 2026-04-17
 
 ## APIs & External Services
 
-**AI/ML:**
-- Google Gemini AI - LangChain-based conversational AI with tool calling
-  - SDK/Client: @langchain/google-genai 2.1.12, @google/generative-ai 0.24.1
-  - Auth: GOOGLE_API_KEY (env var)
-  - Models: gemini-2.5-flash (4 model configurations: chat, vision, structured, streaming)
-  - Located: `backend/src/config/gemini.ts`
+**AI / Machine Learning:**
+- Google Gemini (via `@langchain/google-genai` and `@google/genai`)
+  - SDK/Client: `backend/src/config/gemini.ts` (LangChain wrapper), `backend/src/services/image-generation.service.ts` (native `@google/genai`)
+  - Auth: `GOOGLE_API_KEY` env var
+  - Models: `gemini-2.5-flash` (chat/vision/structured/streaming), `gemini-2.5-flash-image` (image generation)
+  - Used for: ReAct agent conversation, vision analysis, structured JSON output, room render image generation
+
+- Anthropic Claude (via `@langchain/anthropic`)
+  - SDK/Client: `backend/src/config/claude.ts`
+  - Auth: `ANTHROPIC_API_KEY` env var (optional — gates `isDevAgentEnabled()`)
+  - Used for: dev-agent framework only (`backend/src/dev-agents/`), not the end-user product
+
+- Stability AI (optional alternate image provider)
+  - SDK/Client: `StabilityAIAdapter` in `backend/src/services/image-generation.service.ts`
+  - Auth: `STABILITY_API_KEY` env var
+  - Activation: `IMAGE_GENERATION_PROVIDER=stability` env var (default is `gemini`)
+
+**Payments:**
+- Stripe
+  - SDK/Client: `stripe` npm package, lazy-initialized in `backend/src/config/stripe.ts`
+  - Auth: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` env vars
+  - Guards: `isPaymentsEnabled()` check before any Stripe call
+  - Used for: Checkout Session creation (`backend/src/services/payment.service.ts`), webhook fulfillment
+  - Webhook endpoint: `POST /api/webhooks/stripe` — mounted in `backend/src/app.ts` with `express.raw()` before `express.json()` (required for signature verification)
+  - Frontend: `stripe` npm package in `frontend/` for Stripe.js (redirect to hosted Checkout)
+
+**Email:**
+- Resend
+  - SDK/Client: `resend` npm package, lazy-initialized in `backend/src/config/email.ts`
+  - Auth: `RESEND_API_KEY` env var (optional — gates `isEmailEnabled()`)
+  - Used for: transactional email via BullMQ `email:send-notification` jobs (`backend/src/workers/email.worker.ts`)
+  - Templates: `backend/src/emails/templates.ts`
+  - Rate limit: 10 emails/second (configured in BullMQ worker profile, `backend/src/config/queue.ts`)
+
+**Error Tracking & Monitoring:**
+- Sentry
+  - Backend SDK: `@sentry/node` + `@sentry/profiling-node`, initialized in `backend/src/config/sentry.ts`
+  - Frontend SDK: `@sentry/nextjs`, configured in `frontend/sentry.*.config.ts`
+  - Auth: `SENTRY_DSN` env var (optional)
+  - Config: `SENTRY_ORG`, `SENTRY_PROJECT` (frontend source map upload)
+  - Used for: error capture, performance tracing, CPU profiling
 
 ## Data Storage
 
 **Databases:**
-- PostgreSQL 15+ (primary database)
-  - Connection: DATABASE_URL (env var)
-  - Client: Drizzle ORM 0.38.3
-  - Pool management: `backend/src/db/index.ts`
-  - Schemas: 8 tables (users, sessions, rooms, messages, products, contractors, styles, assets)
-  - Migrations: `backend/drizzle/` directory
+- PostgreSQL 15
+  - Connection: `DATABASE_URL` env var
+  - Client: `pg` (connection pool, max 20) + Drizzle ORM (`backend/src/db/index.ts`)
+  - Also used for: LangGraph checkpoint persistence (`LANGGRAPH_CHECKPOINTER=postgres`), distributed rate limiting (`rate_limits` table via `rate-limiter-flexible`)
 
 **File Storage:**
-- Supabase Storage (optional - Phase 2.1+)
-  - Bucket: SUPABASE_STORAGE_BUCKET (default: 'room-assets')
-  - Client: @supabase/supabase-js
-  - Use case: User-uploaded room images for AI analysis
-  - Located: `backend/src/services/asset.service.ts`
+- Supabase Storage
+  - Client: `supabaseAdmin` in `backend/src/config/supabase.ts` (service role key)
+  - Auth: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` env vars
+  - Buckets:
+    - `SUPABASE_STORAGE_BUCKET` (default `room-assets`) — user-uploaded room photos and floorplans
+    - `SUPABASE_STYLE_BUCKET` (default `style-assets`) — style moodboard images
+    - `SUPABASE_DOCUMENTS_BUCKET` (default `renovation-documents`) — AI-generated PDFs
+  - Guards: `isStorageEnabled()` — requires `isAuthEnabled()` to be true
+  - Usage: `backend/src/services/asset.service.ts`, `backend/src/services/render.service.ts`, `backend/src/services/document.service.ts`
+  - Signed URLs: 15-minute expiry for asset access
 
 **Caching:**
-- Redis 7-alpine (optional - docker-compose.yml)
-  - Connection: localhost:6379 (development)
-  - Use case: Session storage, rate limiting (future implementation)
-  - Currently: In-memory token bucket rate limiting in `backend/src/server.ts`
-
-**LangGraph Checkpointing:**
-- PostgreSQL (conversation state persistence)
-  - Mode: LANGGRAPH_CHECKPOINTER=postgres (default: memory)
-  - Client: @langchain/langgraph-checkpoint-postgres 1.0.0
-  - Purpose: Multi-turn conversation history and ReAct agent state
-  - Located: `backend/src/services/checkpointer.service.ts`
+- Redis (via ioredis)
+  - Connection: `REDIS_URL` env var (default `redis://localhost:6379`)
+  - Client: `backend/src/config/redis.ts` (lazy connect, 5-retry strategy)
+  - Used for: Socket.io Redis adapter (cross-instance events), BullMQ job queues, `CacheService` (`backend/src/services/cache.service.ts`)
+  - Graceful degradation: all Redis-dependent features (workers, Socket.io adapter) skip with warnings if Redis is unavailable
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- Supabase Auth (optional - Phase 8+)
-  - Implementation: JWT-based authentication
-  - Config: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-  - Client: @supabase/supabase-js 2.90.1 (backend), 2.94.1 (frontend)
-  - Middleware: `backend/src/middleware/auth.middleware.ts` - Token verification
-  - SSR Support: @supabase/ssr 0.8.0 (frontend)
-  - Socket.io Auth: Token-based middleware in `backend/src/server.ts` (lines 145-160)
-  - User ID: Nullable in database schemas for anonymous sessions (Phases 1-7)
+- Supabase Auth
+  - Backend: `supabaseAdmin.auth.getUser(token)` in `backend/src/middleware/auth.middleware.ts`
+  - Frontend: `@supabase/ssr` client in `frontend/lib/supabase/`; auth callback route at `frontend/app/auth/callback/route.ts`
+  - Activation: optional — `isAuthEnabled()` returns false when Supabase vars are absent, enabling anonymous access (Phases 1-7)
+  - Socket.io auth: token passed in `socket.handshake.auth.token`, verified in `backend/src/server.ts` io.use() middleware
 
-## Monitoring & Observability
+**Anonymous Access Pattern:**
+- HTTP routes use `optionalAuthMiddleware` (`backend/src/middleware/auth.middleware.ts`) — passes through without a token when Supabase is not configured
+- Socket.io skips auth when `!isAuthEnabled()`
+- Frontend `fetchWithAuth` (`frontend/lib/api.ts`) omits `Authorization` header when no session token exists
+- `useChat` hook (`frontend/hooks/useChat.ts`) connects with `auth: token ? { token } : {}`
+
+## Observability
+
+**Distributed Tracing:**
+- OpenTelemetry (OTLP over HTTP)
+  - SDK: `@opentelemetry/sdk-node` with `BatchSpanProcessor`
+  - Exporter: `@opentelemetry/exporter-trace-otlp-http`
+  - Config: `backend/src/config/telemetry.ts` (must import before all other modules in `server.ts`)
+  - Activation: `OTEL_ENABLED=true` (default), `OTEL_EXPORTER_OTLP_ENDPOINT` for export destination
+  - Auto-instrumentation: HTTP, Express, PostgreSQL via `@opentelemetry/auto-instrumentations-node`
+  - Custom instrumentation: Socket.io (`backend/src/middleware/socketio-tracing.middleware.ts`), AI calls (`backend/src/utils/ai-tracing.ts`), Logger trace correlation (`backend/src/utils/logger.ts`)
+  - Force-sample header: `x-force-sample` (for load tests and E2E verification)
 
 **Error Tracking:**
-- None (custom Logger class only)
+- Sentry (see "Error Tracking & Monitoring" above)
 
 **Logs:**
-- Custom structured JSON logger (`backend/src/utils/logger.ts`)
-- Format: Timestamp, level (DEBUG/INFO/WARN/ERROR), service name, message, metadata
-- MDC pattern: Includes userId, sessionId, socketId contextual fields
-- Output: console.log with JSON.stringify (container compatible)
-- No external log aggregation service configured
+- Structured JSON logger (`backend/src/utils/logger.ts`) — outputs `{ timestamp, level, service, message, requestId, trace_id, span_id, ...metadata }`
+- Request ID propagated via `AsyncLocalStorage` (`backend/src/middleware/request-id.middleware.ts`)
+
+**Queue Monitoring:**
+- Bull Board at `/admin/queues` — only mounted when `NODE_ENV !== 'production'`
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Frontend: Vercel
-- Backend: Docker container (any container platform)
-  - HTTP server (TLS termination at reverse proxy / load balancer)
-  - Health endpoints: `/health`, `/health/live`, `/health/ready`, `/health/status`
-  - Graceful shutdown: 10s timeout with resource cleanup
+- Frontend: Vercel (`.github/workflows/frontend-deploy.yml`)
+- Backend: containerized (`.github/workflows/backend-deploy.yml`), Docker (`backend/Dockerfile`)
 
 **CI Pipeline:**
-- GitHub Actions
-- Docker: Multi-stage builds (`backend/Dockerfile`)
-- Docker Compose: `docker-compose.yml` for development environment
-
-**Build Tools:**
-- Backend: tsx (dev), tsc (production build)
-- Frontend: Next.js build system (webpack/turbopack)
-
-## Environment Configuration
-
-**Required env vars:**
-- Backend: NODE_ENV, PORT, DATABASE_URL, GOOGLE_API_KEY, FRONTEND_URL
-- Frontend: NEXT_PUBLIC_API_URL, NEXT_PUBLIC_BACKEND_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-**Secrets location:**
-- Development: `.env` files (gitignored)
-- Production: Environment variables injected at container runtime
-- Schema validation: `backend/src/config/env.ts` with Zod
+- GitHub Actions — `.github/workflows/` contains:
+  - `quality-gates.yml` — lint, type-check, unit tests, schema drift detection
+  - `integration-tests.yml` — integration tests with test database
+  - `ai-regression.yml` — AI prompt smoke tests (token budget guards)
+  - `frontend-deploy.yml` — Vercel deployment
+  - `backend-deploy.yml` — backend deployment
+  - `dependency-audit.yml` — npm audit
+  - `dependency-review.yml` — PR dependency review
+  - `docker-scan.yml` — container vulnerability scanning
+  - `codeql.yml` — static analysis
+  - `semgrep.yml` — security scanning
+  - `lighthouse.yml` — frontend performance
+  - `db-health.yml` — database health checks
+  - `release.yml` — release automation
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- Socket.io events (WebSocket) - Real-time chat communication
-  - `chat:join_session` - Join renovation session room
-  - `chat:user_message` - User sends message to AI agent
-  - Handler: `backend/src/server.ts` (lines 194-338)
-  - Rate limiting: 10 tokens per 60s per socket (in-memory)
+- `POST /api/webhooks/stripe` — Stripe payment events (`checkout.session.completed`, etc.)
+  - Raw body required for HMAC signature verification
+  - Handler: `handleStripeWebhook` in `backend/src/controllers/payment.controller.ts`
+
+- `GET /app/auth/callback` — Supabase OAuth callback
+  - Handler: `frontend/app/auth/callback/route.ts`
 
 **Outgoing:**
-- Socket.io events (WebSocket) - AI responses and tool events
-  - `chat:session_joined` - Session join confirmation
-  - `chat:message_ack` - Message receipt acknowledgment
-  - `chat:assistant_token` - Streaming AI response tokens
-  - `chat:tool_call` - Agent is calling a tool (e.g., save_intake_state)
-  - `chat:tool_result` - Tool execution result
-  - `chat:error` - Error during message processing
-  - Emitted from: `backend/src/services/chat.service.ts` (StreamCallback interface)
+- None — all external API calls are request-initiated (Stripe Checkout, Gemini, Resend)
 
-**Stripe Webhooks (Optional - Phase 9):**
-- Not yet implemented
-- Config: STRIPE_WEBHOOK_SECRET (env var)
-- Use case: Payment confirmation callbacks
+## Environment Configuration
 
-## Real-Time Communication
+**Required env vars:**
+- `DATABASE_URL` — PostgreSQL connection string
+- `GOOGLE_API_KEY` — Gemini API key
 
-**Socket.io Configuration:**
-- CORS: Restricted to FRONTEND_URL with credentials
-- Transport: WebSocket with polling fallback
-- Settings: 60s ping timeout, 25s ping interval, 10MB max payload (for image uploads)
-- Authentication: JWT token in handshake.auth.token
-- Room-based: Session isolation (`session:${sessionId}`)
+**Critical optional vars (features silently disabled without them):**
+- `SUPABASE_URL` + `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY` — auth and file storage
+- `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` — payments
+- `REDIS_URL` — job queues and cross-instance events
+- `RESEND_API_KEY` — email delivery
+- `SENTRY_DSN` — error tracking
+- `ANTHROPIC_API_KEY` — dev-agent framework
 
-## LangChain Tool Integrations
-
-**Renovation Agent Tools:**
-- `getStyleExamplesTool` - Retrieve design style examples from database (`backend/src/tools/get-style-examples.tool.ts`)
-- `searchProductsTool` - Search product recommendations (`backend/src/tools/search-products.tool.ts`)
-- `saveIntakeStateTool` - Persist intake phase data (`backend/src/tools/save-intake-state.tool.ts`)
-- `saveChecklistStateTool` - Persist checklist phase data (`backend/src/tools/save-checklist-state.tool.ts`)
-- Tool binding: Model binds tools in ReAct agent (`backend/src/services/chat.service.ts` line 64)
+**Frontend env vars:**
+- `NEXT_PUBLIC_API_URL` — backend URL (default `http://localhost:3000`)
+- `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` — browser Supabase client
+- `NEXT_PUBLIC_SENTRY_DSN` — frontend Sentry
 
 ---
 
-*Integration audit: 2026-02-09*
+*Integration audit: 2026-04-17*

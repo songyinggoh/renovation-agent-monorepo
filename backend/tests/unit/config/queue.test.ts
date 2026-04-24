@@ -112,8 +112,9 @@ describe('queue.ts', () => {
       createWorker('image:optimize', processor);
 
       const profile = WORKER_PROFILES['image:optimize'];
+      // sanitizeQueueName converts colons to hyphens for BullMQ 5.x
       expect(MockWorker).toHaveBeenCalledWith(
-        'image:optimize',
+        'image-optimize',
         processor,
         expect.objectContaining({
           concurrency: profile.concurrency,
@@ -131,7 +132,7 @@ describe('queue.ts', () => {
       createWorker('image:optimize', processor, 5);
 
       expect(MockWorker).toHaveBeenCalledWith(
-        'image:optimize',
+        'image-optimize',
         processor,
         expect.objectContaining({ concurrency: 5 }),
       );
@@ -144,7 +145,7 @@ describe('queue.ts', () => {
       createWorker('image:optimize', processor, { concurrency: 4, lockDuration: 90_000 });
 
       expect(MockWorker).toHaveBeenCalledWith(
-        'image:optimize',
+        'image-optimize',
         processor,
         expect.objectContaining({
           concurrency: 4,
@@ -161,7 +162,7 @@ describe('queue.ts', () => {
       createWorker('email:send-notification', processor);
 
       expect(MockWorker).toHaveBeenCalledWith(
-        'email:send-notification',
+        'email-send-notification',
         processor,
         expect.objectContaining({
           limiter: WORKER_PROFILES['email:send-notification'].limiter,
@@ -283,8 +284,9 @@ describe('queue.ts', () => {
 
       getImageQueue();
 
+      // sanitizeQueueName converts colons to hyphens for BullMQ 5.x
       expect(MockQueue).toHaveBeenCalledWith(
-        'image:optimize',
+        'image-optimize',
         expect.objectContaining({
           defaultJobOptions: WORKER_PROFILES['image:optimize'].defaultJobOptions,
         }),

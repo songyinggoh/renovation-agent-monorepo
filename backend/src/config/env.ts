@@ -13,8 +13,8 @@ const logger = new Logger({ serviceName: 'EnvConfig' });
  * OPTIONAL until Phase 8 (Authentication):
  * - SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
  *
- * OPTIONAL until Phase 9 (Payments):
- * - STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+ * OPTIONAL until Phase 4 (Payments):
+ * - STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_AMOUNT_CENTS
  */
 const envSchema = z.object({
   // ============================================
@@ -66,6 +66,7 @@ const envSchema = z.object({
   // ============================================
   SUPABASE_STORAGE_BUCKET: z.string().default('room-assets'),
   SUPABASE_STYLE_BUCKET: z.string().default('style-assets'),
+  SUPABASE_DOCUMENTS_BUCKET: z.string().default('renovation-documents'),
 
   // ============================================
   // Redis Configuration (Phase 3: Production Safety)
@@ -134,10 +135,21 @@ const envSchema = z.object({
   STABILITY_API_KEY: z.string().optional(),
 
   // ============================================
-  // Stripe Payment Integration (OPTIONAL - Phase 9)
+  // Anthropic Claude (Dev Agent Framework)
+  // ============================================
+  ANTHROPIC_API_KEY: z.string().optional(),
+
+  // ============================================
+  // Graceful Shutdown
+  // ============================================
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+
+  // ============================================
+  // Stripe Payment Integration (OPTIONAL - Phase 4)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRICE_AMOUNT_CENTS: z.coerce.number().int().positive().default(4900),
 });
 
 /**
@@ -168,6 +180,7 @@ function loadEnv(): Env {
       hasDatabaseUrl: !!env.DATABASE_URL,
       hasSupabaseUrl: !!env.SUPABASE_URL,
       hasStripeKey: !!env.STRIPE_SECRET_KEY,
+      hasStripeWebhookSecret: !!env.STRIPE_WEBHOOK_SECRET,
       otelEnabled: env.OTEL_ENABLED,
     });
 
@@ -176,7 +189,7 @@ function loadEnv(): Env {
       logger.warn('Supabase authentication not configured (optional for Phases 1-7)');
     }
     if (!env.STRIPE_SECRET_KEY) {
-      logger.warn('Stripe payment integration not configured (optional for Phases 1-7)');
+      logger.warn('Stripe payment integration not configured (optional for Phases 1-3)');
     }
 
     return env;
@@ -266,4 +279,11 @@ export function isTelemetryEnabled(): boolean {
  */
 export function isImageGenerationEnabled(): boolean {
   return env.IMAGE_GENERATION_PROVIDER === 'gemini' || !!env.STABILITY_API_KEY;
+}
+
+/**
+ * Helper function to check if dev-agent framework is configured
+ */
+export function isDevAgentEnabled(): boolean {
+  return !!env.ANTHROPIC_API_KEY;
 }

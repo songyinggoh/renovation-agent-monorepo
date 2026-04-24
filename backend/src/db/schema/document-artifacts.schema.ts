@@ -6,8 +6,11 @@ import { renovationRooms } from './rooms.schema.js';
  * Document types for system-generated artifacts
  */
 export const DOCUMENT_TYPES = [
-  'checklist_pdf',      // AI-generated checklist PDF (Phase 2 CHECKLIST)
-  'plan_pdf',           // Renovation plan PDF (Phase 3 PLAN)
+  'checklist',          // AI-generated checklist (Phase 2 CHECKLIST)
+  'plan',               // Renovation plan (Phase 3 PLAN)
+  'shopping_list',      // Materials shopping list (Phase 2/3)
+  'checklist_pdf',      // AI-generated checklist PDF
+  'plan_pdf',           // Renovation plan PDF
   'estimate_pdf',       // Cost estimate PDF
   'contract_draft',     // Contract template draft
   'progress_report',    // Progress report PDF
@@ -101,6 +104,9 @@ export const documentArtifacts = pgTable('document_artifacts', {
 
   // Index for cleanup queries (expired documents)
   index('idx_docs_expired').on(table.expiresAt),
+
+  // Index on previous_version_id FK (Supabase unindexed-FK advisor)
+  index('idx_docs_previous_version').on(table.previousVersionId),
 ]);
 
 export type DocumentArtifact = typeof documentArtifacts.$inferSelect;

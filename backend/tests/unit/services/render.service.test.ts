@@ -56,11 +56,24 @@ vi.mock('../../../src/db/schema/rooms.schema.js', () => ({
   },
 }));
 
+vi.mock('../../../src/db/schema/sessions.schema.js', () => ({
+  renovationSessions: {
+    id: 'renovation_sessions.id',
+    phase: 'renovation_sessions.phase',
+    isPaid: 'renovation_sessions.is_paid',
+  },
+}));
+
 // Mock queue
 vi.mock('../../../src/config/queue.js', () => ({
   getRenderQueue: vi.fn(() => ({
     add: mockQueueAdd,
   })),
+}));
+
+// Mock Redis — always available so the BullMQ queue path is taken
+vi.mock('../../../src/config/redis.js', () => ({
+  testRedisConnection: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock env
@@ -121,8 +134,19 @@ describe('RenderService', () => {
     // requestRender now takes a single object: { sessionId, roomId, mode, prompt, baseImageUrl? }
 
     it('should throw NotFoundError when room does not exist', async () => {
-      // First select (room check) returns empty
-      setupDbSelectChain([]);
+      // Call 1: session entitlement check — session exists, free phase, so passes
+      const mockSessionWhere = vi.fn().mockResolvedValue([{ phase: 'RENDER', isPaid: false }]);
+      const mockSessionFrom = vi.fn().mockReturnValue({ where: mockSessionWhere });
+      // Call 2: room check returns empty
+      const mockRoomWhere = vi.fn().mockResolvedValue([]);
+      const mockRoomFrom = vi.fn().mockReturnValue({ where: mockRoomWhere });
+
+      let callCount = 0;
+      mockDbSelect.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return { from: mockSessionFrom };
+        return { from: mockRoomFrom };
+      });
 
       await expect(
         service.requestRender({ sessionId: SESSION_ID, roomId: ROOM_ID, mode: 'from_scratch', prompt: 'A modern kitchen render' })
@@ -137,19 +161,24 @@ describe('RenderService', () => {
     });
 
     it('should throw BadRequestError when rate limit is exceeded', async () => {
-      // First call: room exists
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: ROOM_ID, name: 'Kitchen' }]);
+      // Call 1: session entitlement check — passes (free phase)
+      const mockWhere1 = vi.fn().mockResolvedValue([{ phase: 'RENDER', isPaid: false }]);
       const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
 
-      // Second call: count of renders
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 10 }]);
+      // Call 2: room exists
+      const mockWhere2 = vi.fn().mockResolvedValue([{ id: ROOM_ID, name: 'Kitchen' }]);
       const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
+
+      // Call 3: count of renders (at limit)
+      const mockWhere3 = vi.fn().mockResolvedValue([{ count: 10 }]);
+      const mockFrom3 = vi.fn().mockReturnValue({ where: mockWhere3 });
 
       let callCount = 0;
       mockDbSelect.mockImplementation(() => {
         callCount++;
         if (callCount === 1) return { from: mockFrom1 };
-        return { from: mockFrom2 };
+        if (callCount === 2) return { from: mockFrom2 };
+        return { from: mockFrom3 };
       });
 
       await expect(
@@ -158,19 +187,24 @@ describe('RenderService', () => {
     });
 
     it('should create asset record and enqueue job on success', async () => {
-      // Room exists
-      const mockWhere1 = vi.fn().mockResolvedValue([{ id: ROOM_ID, name: 'Kitchen' }]);
+      // Call 1: session entitlement check — passes (free phase, PLAN phase + not paid)
+      const mockWhere1 = vi.fn().mockResolvedValue([{ phase: 'PLAN', isPaid: false }]);
       const mockFrom1 = vi.fn().mockReturnValue({ where: mockWhere1 });
 
-      // Rate limit check: under limit
-      const mockWhere2 = vi.fn().mockResolvedValue([{ count: 2 }]);
+      // Call 2: room exists
+      const mockWhere2 = vi.fn().mockResolvedValue([{ id: ROOM_ID, name: 'Kitchen' }]);
       const mockFrom2 = vi.fn().mockReturnValue({ where: mockWhere2 });
+
+      // Call 3: rate limit check — under limit
+      const mockWhere3 = vi.fn().mockResolvedValue([{ count: 2 }]);
+      const mockFrom3 = vi.fn().mockReturnValue({ where: mockWhere3 });
 
       let selectCallCount = 0;
       mockDbSelect.mockImplementation(() => {
         selectCallCount++;
         if (selectCallCount === 1) return { from: mockFrom1 };
-        return { from: mockFrom2 };
+        if (selectCallCount === 2) return { from: mockFrom2 };
+        return { from: mockFrom3 };
       });
 
       // Insert returns asset record
@@ -239,7 +273,7 @@ describe('RenderService', () => {
       const result = await service.completeRender('asset-uuid-1', {
         imageBuffer: Buffer.from('image-data'),
         contentType: 'image/png',
-        metadata: { model: 'gemini-2.0-flash-exp', generationTimeMs: 5000 },
+        metadata: { model: 'gemini-2.5-flash-image', generationTimeMs: 5000 },
       });
 
       expect(result.status).toBe('ready');

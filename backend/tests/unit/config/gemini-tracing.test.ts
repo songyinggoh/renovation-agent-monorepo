@@ -26,11 +26,11 @@ describe('getModelTraceAttributes', () => {
     });
   });
 
-  it('should return correct attributes for gemini-1.5-pro', () => {
-    const attrs = getModelTraceAttributes('gemini-1.5-pro', 0.3);
+  it('should return correct attributes for gemini-2.5-pro', () => {
+    const attrs = getModelTraceAttributes('gemini-2.5-pro', 0.3);
     expect(attrs).toEqual({
       'ai.system': 'gemini',
-      'ai.model': 'gemini-1.5-pro',
+      'ai.model': 'gemini-2.5-pro',
       'ai.temperature': 0.3,
     });
   });

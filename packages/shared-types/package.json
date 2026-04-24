@@ -12,12 +12,14 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch"
   },
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "typescript": "^5.9.3"
   }
 }

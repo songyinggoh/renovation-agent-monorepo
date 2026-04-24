@@ -1,9 +1,16 @@
 'use client';
 
+import type { RefObject } from 'react';
+import type { Socket } from 'socket.io-client';
+import { cn } from '@/lib/utils';
 import { Message } from '@/types/chat';
+import { RenderCard } from '@/components/renovation';
+import { useRenderState } from '@/hooks/useRenderState';
+import { useDocumentState, type DocumentGenerationEntry } from '@/hooks/useDocumentState';
 
 interface ToolResultRendererProps {
   message: Message;
+  socketRef?: RefObject<Socket | null>;
 }
 
 /** Human-readable labels for tool names */
@@ -14,6 +21,7 @@ const TOOL_LABELS: Record<string, string> = {
   save_checklist_state: 'Checklist Saved',
   save_product_recommendation: 'Product Saved',
   generate_render: 'Render Requested',
+  generate_document: 'Document Requested',
 };
 
 interface ColorSwatch {
@@ -35,7 +43,7 @@ interface Product {
  * Renders tool results as styled cards in the chat UI
  * Each tool type gets a specialized visual treatment
  */
-export function ToolResultRenderer({ message }: ToolResultRendererProps) {
+export function ToolResultRenderer({ message, socketRef }: ToolResultRendererProps) {
   const toolName = message.tool_name ?? 'unknown';
   const data = message.tool_data ?? {};
   const label = TOOL_LABELS[toolName] ?? toolName;
@@ -49,7 +57,7 @@ export function ToolResultRenderer({ message }: ToolResultRendererProps) {
             {label}
           </span>
         </div>
-        <ToolContent toolName={toolName} data={data} />
+        <ToolContent toolName={toolName} data={data} socketRef={socketRef} />
       </div>
     </div>
   );
@@ -63,11 +71,12 @@ function ToolIcon({ toolName }: { toolName: string }) {
     save_checklist_state: '\u{1F4CB}',
     save_product_recommendation: '\u{1F4E6}',
     generate_render: '\u{1F5BC}',
+    generate_document: '\u{1F4D4}',
   };
   return <span className="text-base">{iconMap[toolName] ?? '\u{1F527}'}</span>;
 }
 
-function ToolContent({ toolName, data }: { toolName: string; data: Record<string, unknown> }) {
+function ToolContent({ toolName, data, socketRef }: { toolName: string; data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
   switch (toolName) {
     case 'get_style_examples':
       return <StyleResult data={data} />;
@@ -80,7 +89,9 @@ function ToolContent({ toolName, data }: { toolName: string; data: Record<string
     case 'save_product_recommendation':
       return <ProductSavedResult data={data} />;
     case 'generate_render':
-      return <RenderRequestedResult data={data} />;
+      return <RenderRequestedResult data={data} socketRef={socketRef} />;
+    case 'generate_document':
+      return <DocumentRequestedResult data={data} socketRef={socketRef} />;
     default:
       return (
         <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
@@ -244,10 +255,15 @@ function ProductSavedResult({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function RenderRequestedResult({ data }: { data: Record<string, unknown> }) {
+function RenderRequestedResult({ data, socketRef }: { data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
   const success = typeof data.success === 'boolean' ? data.success : undefined;
   const error = typeof data.error === 'string' ? data.error : undefined;
-  const jobId = typeof data.jobId === 'string' ? data.jobId : undefined;
+  const assetId = typeof data.assetId === 'string' ? data.assetId : undefined;
+  const roomId = typeof data.roomId === 'string' ? data.roomId : undefined;
+  const prompt = typeof data.prompt === 'string' ? data.prompt : undefined;
+
+  const nullRef = { current: null } as RefObject<Socket | null>;
+  const { activeRenders } = useRenderState(socketRef ?? nullRef);
 
   if (success === false || error) {
     return (
@@ -256,6 +272,33 @@ function RenderRequestedResult({ data }: { data: Record<string, unknown> }) {
           !
         </span>
         <p className="text-sm text-destructive">{error ?? 'Failed to generate render'}</p>
+      </div>
+    );
+  }
+
+  // If we have an assetId, we can show the RenderCard
+  if (assetId && roomId) {
+    const activeRender = activeRenders.get(assetId);
+
+    // If it's no longer in activeRenders (completed or failed), 
+    // we show a simple success message or let the user know it's ready in the gallery.
+    // However, usually we want to show the RenderCard while it's processing.
+    return (
+      <div className="mt-1 w-full max-w-sm">
+        <RenderCard
+          render={{
+            id: assetId,
+            roomId,
+            status: activeRender ? (activeRender.status === 'failed' ? 'failed' : activeRender.status === 'complete' ? 'ready' : 'processing') : 'ready',
+            metadata: { prompt },
+          }}
+          activeRender={activeRender}
+        />
+        {!activeRender && (
+          <p className="mt-2 text-[10px] text-muted-foreground italic">
+            Generation complete. View in room gallery.
+          </p>
+        )}
       </div>
     );
   }
@@ -269,11 +312,6 @@ function RenderRequestedResult({ data }: { data: Record<string, unknown> }) {
       <p className="text-xs text-muted-foreground">
         Your AI render is being generated. It will appear shortly.
       </p>
-      {jobId && (
-        <p className="text-[10px] font-mono text-muted-foreground/60">
-          Job: {jobId}
-        </p>
-      )}
     </div>
   );
 }
@@ -299,6 +337,57 @@ function ChecklistSavedResult({ data }: { data: Record<string, unknown> }) {
             <span>Optional: <strong>{priorities.optional}</strong></span>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentRequestedResult({ data, socketRef }: { data: Record<string, unknown>; socketRef?: RefObject<Socket | null> }) {
+  const success = typeof data.success === 'boolean' ? data.success : undefined;
+  const error = typeof data.error === 'string' ? data.error : undefined;
+  const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
+  const documentType = typeof data.documentType === 'string' ? data.documentType as DocumentGenerationEntry['documentType'] : undefined;
+  const roomId = typeof data.roomId === 'string' ? data.roomId : undefined;
+
+  const nullRef = { current: null } as RefObject<Socket | null>;
+  const { activeDocuments } = useDocumentState(socketRef ?? nullRef);
+
+  if (success === false || error) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive/10 text-xs text-destructive">
+          !
+        </span>
+        <p className="text-sm text-destructive">{error ?? 'Failed to generate document'}</p>
+      </div>
+    );
+  }
+
+  const jobKey = sessionId && documentType ? `${sessionId}-${documentType}-${roomId ?? 'all'}` : undefined;
+  const activeDoc = jobKey ? activeDocuments.get(jobKey) : undefined;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className={cn(
+          "h-2 w-2 rounded-full",
+          activeDoc?.status === 'failed' ? "bg-destructive" : "animate-pulse bg-primary"
+        )} />
+        <p className="text-sm font-medium">
+          {activeDoc?.status === 'complete' ? 'Document ready' : 
+           activeDoc?.status === 'failed' ? 'Generation failed' : 
+           'Generating document...'}
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {activeDoc?.status === 'complete' ? 'Your PDF has been generated and is ready for download.' : 
+         activeDoc?.status === 'failed' ? `Error: ${activeDoc.error}` :
+         'Our worker is preparing your PDF. This usually takes 10-20 seconds.'}
+      </p>
+      {activeDoc?.status === 'complete' && (
+        <p className="text-[10px] text-muted-foreground italic">
+          Check the documents tab to view and download.
+        </p>
       )}
     </div>
   );

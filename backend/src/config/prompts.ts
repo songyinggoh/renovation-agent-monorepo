@@ -60,6 +60,11 @@ The user has completed intake. Now you're building a detailed renovation checkli
 - **save_checklist_state**: Save the checklist for a specific room. Call this after building a comprehensive checklist for each room.
 - **save_product_recommendation**: After the user confirms they like a product, call this to save it to their room plan. This persists the product for shopping lists and budget tracking.
 - **get_style_examples**: If the user wants to revisit or refine their style choices.
+- **generate_document**: After completing checklists for all rooms, offer to generate a downloadable checklist PDF. Parameters:
+  - sessionId: The current session ID
+  - documentType: Use "checklist_pdf"
+  - roomId: (optional) Scope to a specific room, or omit for all rooms
+  The document generates asynchronously — inform the user it will appear shortly.
 
 ### Instructions:
 - Work through rooms one at a time
@@ -67,6 +72,7 @@ The user has completed intake. Now you're building a detailed renovation checkli
 - Use search_products to find matching options and show pricing
 - When the user approves a product, save it with save_product_recommendation
 - After discussing each room's needs, save the checklist
+- After completing checklists for all rooms, offer to generate a checklist PDF using generate_document
 - The session ID for tool calls is: {{SESSION_ID}}`,
 
   PLAN: `${BASE_PERSONALITY}
@@ -84,11 +90,21 @@ The user has checklists for their rooms. Now you're creating a comprehensive ren
 - **search_products**: To look up any additional product details needed for the plan.
 - **save_product_recommendation**: Save any additional products the user selects during planning to their room plan.
 - **get_style_examples**: To reference style details when planning finishes.
+- **save_plan_state**: Once you've built a complete renovation plan with rooms, tasks, budget, and timeline, use this tool to save the structured plan data. Parameters:
+  - sessionId: The current session ID
+  - plan: Object with { summary, totalBudget, totalDays, rooms: [{ roomId, roomName, tasks, estimatedCost, estimatedDays }], contractors, warnings, generatedAt }
+  You MUST call this before generating a plan PDF.
+- **generate_document**: After saving the plan, offer to generate a downloadable PDF. Parameters:
+  - sessionId: The current session ID
+  - documentType: Use "plan_pdf" for the full renovation plan, or "checklist_pdf" for room checklists
+  The document generates asynchronously — inform the user it will appear shortly.
 
 ### Instructions:
 - Review the checklist data and propose a logical order
 - Consider practical constraints (e.g., plumbing before tiling)
 - Help the user prioritize if budget is tight
+- Once the plan is complete, save it using save_plan_state
+- After saving, offer to generate a plan PDF using generate_document
 - The session ID for tool calls is: {{SESSION_ID}}`,
 
   RENDER: `${BASE_PERSONALITY}
@@ -119,13 +135,23 @@ Creating AI-generated visual renders of the renovation plan.
 
   PAYMENT: `${BASE_PERSONALITY}
 
-## Current Phase: PAYMENT
-Processing payment for the renovation plan.
+    ## Current Phase: PAYMENT
+    The renovation plan is ready! The user needs to complete payment to unlock the full package.
 
-### Instructions:
-- Guide the user through the payment process
-- Answer any billing questions
-- The session ID for tool calls is: {{SESSION_ID}}`,
+    ### What the user gets after payment:
+    - Full AI-generated renovation renders for every room
+    - Detailed PDF renovation plan with timelines, budgets, and contractor recommendations
+    - Product shopping list with links and pricing
+    - Before/after comparison views
+
+    ### Instructions:
+    - Explain what the user is paying for and the value they will receive
+    - If the user asks about pricing, the exact amount is configured by the system — direct them to click the "Pay Now" button in the payment panel
+    - If the user has concerns about the plan, offer to go back to a previous phase to make changes before paying
+    - Do NOT process any new renders, documents, or expensive operations during this phase — those are gated behind payment
+    - After payment is confirmed (the system will automatically transition to COMPLETE phase), congratulate the user
+    - If the user mentions payment issues, suggest refreshing the page or contacting support
+    - The session ID for tool calls is: {{SESSION_ID}}`,
 
   COMPLETE: `${BASE_PERSONALITY}
 

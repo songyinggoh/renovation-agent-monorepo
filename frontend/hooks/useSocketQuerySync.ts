@@ -160,6 +160,24 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
       delayedInvalidate(sessionRoomsQueryKey(sessionId), JOB_COMPLETE_DELAY_MS);
     };
 
+    // --- Payment events ---
+    const handlePaymentCompleted = (data: { sessionId: string }) => {
+      if (data.sessionId !== sessionId) return;
+      logger.info('Payment completed — invalidating session query', { sessionId });
+      // Delay slightly to ensure DB write from webhook has propagated
+      delayedInvalidate(sessionQueryKey(sessionId), JOB_COMPLETE_DELAY_MS);
+    };
+
+    const handlePaymentFailed = (data: { sessionId: string; reason?: string }) => {
+      if (data.sessionId !== sessionId) return;
+      logger.warn('Payment failed', undefined, {
+        sessionId,
+        reason: data.reason,
+      });
+      // Invalidate to reflect any state changes
+      delayedInvalidate(sessionQueryKey(sessionId), JOB_COMPLETE_DELAY_MS);
+    };
+
     // Register all listeners
     socket.on('connect', handleConnect);
     socket.on('session:rooms_updated', handleRoomsUpdated);
@@ -170,6 +188,8 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
     socket.on('render:progress', handleRenderProgress);
     socket.on('render:failed', handleRenderFailed);
     socket.on('doc:generated', handleDocGenerated);
+    socket.on('payment:completed', handlePaymentCompleted);
+    socket.on('payment:failed', handlePaymentFailed);
 
     // Capture ref value for cleanup (React exhaustive-deps rule)
     const timers = pendingTimers.current;
@@ -184,6 +204,8 @@ export function useSocketQuerySync({ sessionId, socketRef }: UseSocketQuerySyncO
       socket.off('render:progress', handleRenderProgress);
       socket.off('render:failed', handleRenderFailed);
       socket.off('doc:generated', handleDocGenerated);
+      socket.off('payment:completed', handlePaymentCompleted);
+      socket.off('payment:failed', handlePaymentFailed);
 
       // Clear pending timers on cleanup
       for (const timer of timers) {

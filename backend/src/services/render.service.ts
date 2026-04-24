@@ -2,6 +2,7 @@ import { eq, and, gte, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { roomAssets, type RoomAsset } from '../db/schema/assets.schema.js';
 import { renovationRooms } from '../db/schema/rooms.schema.js';
+import { renovationSessions } from '../db/schema/sessions.schema.js';
 import { getRenderQueue } from '../config/queue.js';
 import { env, isStorageEnabled } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -9,6 +10,7 @@ import { buildStoragePath } from './asset.service.js';
 import { Logger } from '../utils/logger.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import type { ImageGenerationResult } from './image-generation.service.js';
+import { testRedisConnection } from '../config/redis.js';
 
 const logger = new Logger({ serviceName: 'RenderService' });
 
@@ -60,6 +62,25 @@ export class RenderService {
       throw new BadRequestError('baseImageUrl is required when mode is "edit_existing"');
     }
 
+    // Entitlement model: renders/docs generated during PLAN/RENDER phases are the "free preview".
+    // After the session enters PAYMENT phase, new generation requires isPaid=true.
+    // See docs/notion/Project roadmap and phases.md Phase 4 DoD.
+    const [sessionRecord] = await db
+      .select({ phase: renovationSessions.phase, isPaid: renovationSessions.isPaid })
+      .from(renovationSessions)
+      .where(eq(renovationSessions.id, sessionId));
+
+    if (!sessionRecord) {
+      throw new Error('Session not found');
+    }
+
+    // Renders are free during PLAN and RENDER phases (the preview).
+    // After RENDER phase, renders require payment.
+    const PAID_REQUIRED_PHASES = ['PAYMENT', 'COMPLETE', 'ITERATE'];
+    if (PAID_REQUIRED_PHASES.includes(sessionRecord.phase) && !sessionRecord.isPaid) {
+      throw new Error('Payment required to generate renders in this phase');
+    }
+
     // Validate room exists
     const [room] = await db
       .select()
@@ -101,7 +122,7 @@ export class RenderService {
       status: 'processing',
       originalFilename: filename,
       contentType: 'image/png',
-      fileSize: 0, // Updated when render completes
+      fileSize: 1, // Placeholder — updated with actual size when render completes
       metadata: {
         prompt,
         mode,
@@ -113,32 +134,56 @@ export class RenderService {
       throw new Error('Failed to create render asset record');
     }
 
+    let jobId: string | undefined;
+
     // Enqueue BullMQ job — the worker picks this up asynchronously
     // and emits Socket.io events (started → progress → complete/failed).
-    const queue = getRenderQueue();
-    const job = await queue.add(
-      'render:generate',
-      {
+    // If Redis is unavailable, run inline (for dev/test without Redis).
+    const redisOk = await testRedisConnection();
+    if (redisOk) {
+      const queue = getRenderQueue();
+      const job = await queue.add(
+        'render:generate',
+        {
+          sessionId,
+          roomId,
+          mode,
+          prompt,
+          assetId: asset.id,
+          ...(baseImageUrl ? { baseImageUrl } : {}),
+        },
+      );
+      jobId = job.id;
+      logger.info('Render job enqueued', {
+        assetId: asset.id,
+        jobId,
+        sessionId,
+        roomId,
+        mode,
+      });
+    } else {
+      logger.warn('Redis unavailable, running render job inline', undefined, { assetId: asset.id });
+      // Import lazily to avoid circular dependency
+      const { runRenderJobInline } = await import('../workers/render.worker.js');
+      
+      // Run in background (do not await)
+      runRenderJobInline({
         sessionId,
         roomId,
         mode,
         prompt,
         assetId: asset.id,
         ...(baseImageUrl ? { baseImageUrl } : {}),
-      },
-    );
-
-    logger.info('Render job enqueued', {
-      assetId: asset.id,
-      jobId: job.id,
-      sessionId,
-      roomId,
-      mode,
-    });
+      }).catch(err => {
+        logger.error('Inline render job failed', err instanceof Error ? err : new Error(String(err)), { assetId: asset.id });
+      });
+      
+      jobId = `inline-${asset.id}`;
+    }
 
     return {
       assetId: asset.id,
-      jobId: job.id ?? asset.id,
+      jobId: jobId ?? asset.id,
     };
   }
 

@@ -1,0 +1,22 @@
+@baseUrl = http://localhost:3000/api
+
+### List all sessions
+GET {{baseUrl}}/sessions
+
+### Create a new session
+POST {{baseUrl}}/sessions
+Content-Type: application/json
+
+{
+  "title": "Kitchen Renovation",
+  "propertyType": "house",
+  "budget": 50000
+}
+
+### Get a specific session
+# Replace with a real session ID from the list response
+@sessionId = YOUR_SESSION_ID
+GET {{baseUrl}}/sessions/{{sessionId}}
+
+### Session service health
+GET {{baseUrl}}/sessions/health

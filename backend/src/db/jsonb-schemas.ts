@@ -83,3 +83,51 @@ export const ProductCatalogMetadataSchema = z.object({
 }).passthrough();
 
 export type ValidatedProductCatalogMetadata = z.infer<typeof ProductCatalogMetadataSchema>;
+
+// ---------------------------------------------------------------------------
+// 6. renovation_sessions.plan_data  (RenovationPlan)
+// ---------------------------------------------------------------------------
+export const RenovationTaskSchema = z.object({
+  id: z.string().describe('Unique task identifier'),
+  description: z.string().describe('Human-readable task description'),
+  estimatedCost: z.number().nonnegative().describe('Estimated cost in USD'),
+  duration: z.number().int().positive().describe('Duration in calendar days'),
+  tradeCategory: z.enum([
+    'electrical', 'plumbing', 'carpentry', 'painting',
+    'flooring', 'tiling', 'hvac', 'general',
+  ]).describe('Trade category for contractor matching'),
+  priority: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  dependencies: z.array(z.string()).default([])
+    .describe('IDs of tasks that must complete first'),
+}).passthrough();
+
+export const RenovationRoomPlanSchema = z.object({
+  roomId: z.string().describe('Room UUID'),
+  roomName: z.string().describe('Human-readable room name'),
+  tasks: z.array(RenovationTaskSchema).min(1),
+  estimatedCost: z.number().nonnegative().describe('Total estimated cost for this room'),
+  estimatedDays: z.number().int().positive().describe('Total estimated days for this room'),
+}).passthrough();
+
+export const ContractorRecommendationSchema = z.object({
+  specialty: z.string().describe('Contractor trade specialty'),
+  estimatedCost: z.number().nonnegative().describe('Estimated cost for this contractor'),
+  notes: z.string().optional().describe('Additional notes'),
+}).passthrough();
+
+export const RenovationPlanSchema = z.object({
+  summary: z.string().describe('Executive summary of the renovation plan'),
+  totalBudget: z.number().nonnegative().describe('Total estimated cost in USD'),
+  totalDays: z.number().int().positive().describe('Total estimated calendar days'),
+  startDate: z.string().optional().describe('Proposed start date (ISO 8601)'),
+  rooms: z.array(RenovationRoomPlanSchema),
+  contractors: z.array(ContractorRecommendationSchema).default([]),
+  warnings: z.array(z.string()).default([])
+    .describe('Flagged risks or permit requirements'),
+  generatedAt: z.string().describe('Plan generation timestamp (ISO 8601)'),
+}).passthrough();
+
+export type RenovationPlan = z.infer<typeof RenovationPlanSchema>;
+export type RenovationTask = z.infer<typeof RenovationTaskSchema>;
+export type RenovationRoomPlan = z.infer<typeof RenovationRoomPlanSchema>;
+export type ContractorRecommendation = z.infer<typeof ContractorRecommendationSchema>;

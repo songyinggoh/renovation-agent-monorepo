@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase/client';
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
     const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = supabase
+        ? (await supabase.auth.getSession()).data.session
+        : null;
     const token = session?.access_token;
 
     const headers = new Headers(options.headers);

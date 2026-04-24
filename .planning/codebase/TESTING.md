@@ -1,348 +1,383 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-02-09
+**Analysis Date:** 2026-03-01
 
 ## Test Framework
 
 **Runner:**
-- Vitest 3.0.5 (backend), 4.0.18 (frontend)
-- Config: `backend/vitest.config.ts`, `frontend/vitest.config.ts`
+- Vitest 3.0.5 (backend) / 4.0.18 (frontend)
+- Backend config: `backend/vitest.config.ts`
+- Frontend config: `frontend/vitest.config.ts`
+- Integration config: `backend/vitest.integration.config.ts`
+- AI regression config: `backend/vitest.ai-regression.config.ts`
 
 **Assertion Library:**
-- Vitest built-in assertions (expect)
+- Vitest built-in (`expect`) with globals enabled
+- Frontend also uses `@testing-library/react` (`render`, `renderHook`, `act`, `waitFor`)
 
 **Run Commands:**
 ```bash
 # Backend
 cd backend
-npm run test:unit              # Run all unit tests
-npm run test:watch             # Watch mode
-npm run test:unit -- --coverage  # Coverage report
-npm run test:integration       # Integration tests (separate config)
+pnpm test:unit          # Run unit tests with coverage
+pnpm test:watch         # Watch mode
+pnpm test:integration   # Integration tests (requires Docker/Testcontainers)
 
 # Frontend
 cd frontend
-npm test                       # Run all tests
-npm run test:watch             # Watch mode
-npm run test:ui                # Vitest UI
+pnpm test:unit          # Run unit tests with coverage
+
+# Root (all)
+pnpm test:unit          # Runs backend + frontend unit tests
+
+# E2E
+pnpm test:e2e           # Playwright E2E tests (requires running services)
 ```
 
 ## Test File Organization
 
-**Location:**
-- Backend: `backend/tests/` directory (separate from source)
-  - `tests/unit/` - Unit tests (services, controllers, tools)
-  - `tests/integration/` - Integration tests (socket, API)
-- Frontend: Co-located pattern expected (not yet implemented extensively)
+**Backend Location:**
+- Unit tests: `backend/tests/unit/` (mirrors `src/` directory structure)
+- Integration tests: `backend/tests/integration/` (separate directory)
+- AI regression tests: `backend/tests/ai-regression/`
+
+**Frontend Location:**
+- All tests: `frontend/__tests__/` (separate from source)
+- Subdirs mirror component/hook paths: `__tests__/components/chat/`, `__tests__/hooks/`
 
 **Naming:**
-- Pattern: `*.test.ts` suffix
-- Mirrors source structure: `backend/src/services/message.service.ts` → `backend/tests/unit/services/message.service.test.ts`
+- Backend: `{source-file-name}.test.ts` (e.g., `chat.service.test.ts`)
+- Frontend: `{source-file-name}.test.ts` or `.test.tsx` (e.g., `useChat.test.ts`, `chat-input.test.tsx`)
 
 **Structure:**
 ```
 backend/tests/
 ├── unit/
-│   ├── controllers/
-│   │   └── message.controller.test.ts
-│   ├── services/
-│   │   ├── message.service.test.ts
-│   │   ├── chat.service.test.ts
-│   │   ├── checkpointer.service.test.ts
-│   │   ├── product.service.test.ts
-│   │   ├── room.service.test.ts
-│   │   └── style.service.test.ts
-│   └── tools/
-│       ├── get-style-examples.tool.test.ts
-│       └── save-checklist-state.tool.test.ts
-└── integration/
-    └── socket.test.ts
+│   ├── config/           # env, gemini, queue, telemetry tests
+│   ├── controllers/      # HTTP controller tests
+│   ├── db/               # JSONB schema tests
+│   ├── dev-agents/       # Dev-agent tests
+│   ├── emails/           # Email template tests
+│   ├── middleware/       # Auth, ownership, rate-limit, tracing tests
+│   ├── services/         # Business logic tests (11 service test files)
+│   ├── tools/            # LangGraph tool tests (7 tool test files)
+│   ├── utils/            # Logger, shutdown, guards, tracing tests
+│   ├── validators/       # Socket, job validator tests
+│   └── workers/          # Worker processor tests (4 worker test files)
+├── integration/
+│   ├── api/              # REST endpoint integration tests (5 files)
+│   └── socket.test.ts    # Socket.io integration test
+└── ai-regression/
+    └── prompt-smoke.test.ts  # AI output regression test
+
+frontend/__tests__/
+├── components/
+│   └── chat/             # Chat component tests (5 files)
+├── hooks/                # Custom hook tests (4 files)
+└── setup.ts              # Test environment setup (jsdom)
 ```
 
 ## Test Structure
 
-**Suite Organization:**
+**Suite Organization (backend):**
 ```typescript
-import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { MessageService } from '../../../src/services/message.service.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock dependencies at top level
-vi.mock('../../../src/db/index.js', () => ({
-  db: {
-    insert: vi.fn(),
-    select: vi.fn(),
-  },
-}));
-
-// Mock logger to suppress logs during tests
-vi.mock('../../../src/utils/logger.js', () => ({
-  Logger: vi.fn().mockImplementation(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  })),
-}));
-
-describe('MessageService', () => {
-  let messageService: MessageService;
-
+describe('ChatService', () => {
   beforeEach(() => {
-    messageService = new MessageService();
     vi.clearAllMocks();
   });
 
-  describe('saveMessage', () => {
-    it('should save a message and return the saved record', async () => {
-      // Test implementation
-    });
+  describe('processMessage', () => {
+    it('should save user message before processing', async () => {
+      // Arrange
+      const service = new ChatService();
+      const callback = { onToken: vi.fn(), onComplete: vi.fn(), onError: vi.fn() };
 
-    it('should throw error if no record is returned', async () => {
-      // Test implementation
+      // Act
+      await service.processMessage('session-1', 'Hello', callback);
+
+      // Assert
+      expect(mockSaveMessage).toHaveBeenCalledWith(expect.objectContaining({
+        role: 'user',
+        content: 'Hello',
+      }));
+    });
+  });
+});
+```
+
+**Suite Organization (frontend hooks):**
+```typescript
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { useChat } from '@/hooks/useChat';
+
+describe('useChat Hook', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSocket.connected = false;
+    mockFetchWithAuth.mockResolvedValue({ messages: [] });
+  });
+
+  describe('Initialization', () => {
+    it('should not connect without sessionId', () => {
+      const { result } = renderHook(() => useChat(''));
+      expect(result.current.isConnected).toBe(false);
     });
   });
 });
 ```
 
 **Patterns:**
-- One `describe` block per class/module
-- Nested `describe` blocks for methods
-- `beforeEach` to reset state and clear mocks
-- Descriptive test names: `'should [expected behavior] when [condition]'`
-- AAA pattern: Arrange → Act → Assert
+- Use `describe` blocks to group by feature/method
+- Use `beforeEach` with `vi.clearAllMocks()` to reset state
+- Follow AAA pattern (Arrange-Act-Assert) in each test
+- Use `vi.fn()` for mock functions, `vi.mock()` for module mocking
 
 ## Mocking
 
-**Framework:** Vitest's `vi.mock()` and `vi.fn()`
+**Framework:** Vitest built-in (`vi.mock`, `vi.fn`, `vi.spyOn`)
 
-**Patterns:**
+**Module Mocking Pattern (backend):**
 ```typescript
-// Mock entire module
+// Mock entire module before imports
+vi.mock('../../../src/services/message.service.js', () => ({
+  MessageService: vi.fn().mockImplementation(() => ({
+    saveMessage: vi.fn().mockResolvedValue({ id: 'mock-id' }),
+    getRecentMessages: vi.fn().mockResolvedValue([]),
+    getMessageHistory: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
+// Mock database with chained query builder
 vi.mock('../../../src/db/index.js', () => ({
   db: {
-    insert: vi.fn(),
-    select: vi.fn(),
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ phase: 'INTAKE' }]),
+        }),
+      }),
+    }),
   },
 }));
 
-// Mock chained methods (Drizzle query builder pattern)
-const mockReturning = vi.fn().mockResolvedValue([mockSavedMessage]);
-const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-(db.insert as Mock).mockReturnValue({ values: mockValues });
-
-// Mock async functions
-const mockLimit = vi.fn().mockResolvedValue(mockMessages);
-const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
-
-// Mock logger (always suppress in tests)
-vi.mock('../../../src/utils/logger.js', () => ({
-  Logger: vi.fn().mockImplementation(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  })),
+// Mock Redis
+vi.mock('../../../src/config/redis.js', () => ({
+  redis: { get: vi.fn().mockResolvedValue(null), status: 'ready' },
 }));
 ```
 
-**What to Mock:**
-- Database connections (Drizzle ORM)
-- External API clients (Gemini AI, Supabase)
-- Logger (always mock to suppress console output)
-- Socket.io connections (for integration tests)
-- File system operations
-
-**What NOT to Mock:**
-- Pure utility functions (test them directly)
-- Constants and type definitions
-- Simple data transformations
-
-## Fixtures and Factories
-
-**Test Data:**
+**Module Mocking Pattern (frontend):**
 ```typescript
-// Inline fixtures in test files
-const mockMessage = {
-  sessionId: 'test-session-id',
-  userId: null,
-  role: 'user',
-  content: 'Hello, world!',
-  type: 'text',
+// Mock Socket.io client
+const mockSocket = {
+  on: vi.fn(),
+  emit: vi.fn(),
+  disconnect: vi.fn(),
+  connected: false,
 };
+vi.mock('socket.io-client', () => ({
+  io: vi.fn(() => mockSocket),
+}));
 
-const mockSavedMessage = {
-  id: 'generated-id',
-  ...mockMessage,
-  createdAt: new Date(),
-};
-```
+// Mock Supabase
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: vi.fn(() => ({
+    auth: { getSession: vi.fn() },
+  })),
+}));
 
-**Location:**
-- Currently inline in test files (no dedicated fixtures directory yet)
-- Pattern: Define mock data at top of `describe` block or within `it` block for test-specific data
-
-**Recommendation for future:**
-- Create `backend/tests/fixtures/` directory for shared test data
-- Use factory pattern for complex objects (e.g., `createMockSession()`, `createMockMessage()`)
-
-## Coverage
-
-**Requirements:** 80% coverage threshold (lines, functions, branches, statements)
-
-**View Coverage:**
-```bash
-cd backend
-npm run test:unit -- --coverage
-
-# Output formats: text (console), json, html
-# HTML report: backend/coverage/index.html
-```
-
-**Configuration (backend/vitest.config.ts):**
-```typescript
-coverage: {
-  provider: 'v8',
-  reporter: ['text', 'json', 'html'],
-  include: ['src/**/*.ts'],
-  exclude: [
-    'src/**/*.test.ts',
-    'src/types/**',
-    'src/db/schema/**',
-    'src/server.ts', // Exclude main server file from coverage
-  ],
-  all: true,
-  lines: 80,
-  functions: 80,
-  branches: 80,
-  statements: 80,
+// Helper to get mock handler by event name
+function getMockHandler<T>(eventName: string): T | undefined {
+  const calls = mockSocket.on.mock.calls as Array<[string, T]>;
+  return calls.find((call) => call[0] === eventName)?.[1];
 }
 ```
 
-**Exclusions:**
-- Test files (`*.test.ts`)
-- Type definitions (`src/types/**`)
-- Database schemas (`src/db/schema/**`) - Already type-safe via Drizzle
-- Server bootstrap (`src/server.ts`) - Integration tested separately
+**What to Mock:**
+- External services (Gemini AI, Supabase, Redis, Resend, S3/storage)
+- Database queries (mock `db` from `../db/index.js`)
+- Socket.io client/server
+- LangChain/LangGraph internals (model, tools, checkpointer)
+- Environment variables (mock `../config/env.js`)
+- Logger (mock to suppress output in tests)
+- OTel tracing functions (mock to no-op)
+
+**What NOT to Mock:**
+- Zod schemas (test actual validation logic)
+- Error classes (test actual error hierarchy)
+- Utility functions (test actual logic)
+- Business logic within the service being tested
+
+## Fixtures and Factories
+
+**Test Data Pattern:**
+```typescript
+// Inline test data (most common pattern in this codebase)
+const mockSession = { id: 'session-123', phase: 'INTAKE', userId: null };
+const mockMessage = {
+  id: 'msg-1',
+  sessionId: 'session-123',
+  role: 'user' as const,
+  content: 'Hello',
+  type: 'text',
+};
+
+// Mock response objects
+const mockFetchWithAuth = vi.fn().mockResolvedValue({ messages: [] });
+```
+
+**Location:**
+- No shared fixtures directory -- test data is defined inline in each test file
+- Frontend test setup: `frontend/__tests__/setup.ts` (jsdom environment config)
+- No factory pattern (e.g., FactoryBot) -- data is simple enough for inline construction
+
+## Coverage
+
+**Backend Thresholds (enforced in `backend/vitest.config.ts`):**
+```
+Lines:       50%
+Functions:   70%
+Branches:    70%
+Statements:  50%
+```
+
+**Frontend Thresholds (enforced in `frontend/vitest.config.ts`):**
+```
+Lines:       30%
+Functions:   20%
+Branches:    20%
+Statements:  30%
+```
+
+**Codecov Targets (enforced in `codecov.yml`):**
+```
+Project:     80%
+Patch:       80%
+```
+
+**Coverage Exclusions (backend):**
+- `src/**/*.test.ts` - Test files themselves
+- `src/types/**` - Type-only files
+- `src/db/schema/**` - Schema definitions
+- `src/server.ts` - Main server file (integration tested)
+
+**Coverage Exclusions (frontend):**
+- `components/ui/**` - shadcn/ui base components (third-party)
+- `**/*.d.ts` - Type declarations
+
+**View Coverage:**
+```bash
+cd backend && pnpm test:unit   # Coverage report in backend/coverage/
+cd frontend && pnpm test:unit  # Coverage report in frontend/coverage/
+```
 
 ## Test Types
 
 **Unit Tests:**
-- Scope: Individual functions, classes, or modules in isolation
-- Approach: Mock all dependencies (database, external APIs, logger)
-- Example: `backend/tests/unit/services/message.service.test.ts`
-  - Tests saveMessage, getMessageHistory, toLangChainMessages methods
-  - Mocks database (Drizzle ORM) and logger
-  - 147 lines, 3 describe blocks, 7 test cases
+- Scope: Individual functions, classes, and modules in isolation
+- Mocking: Heavy mocking of external dependencies (DB, Redis, AI, file system)
+- Location: `backend/tests/unit/`, `frontend/__tests__/`
+- Config: `backend/vitest.config.ts` (environment: node), `frontend/vitest.config.ts` (environment: jsdom)
+- Count: ~60 backend test files, ~10 frontend test files
 
 **Integration Tests:**
-- Scope: Multiple modules working together (e.g., Socket.io + ChatService + Database)
-- Approach: Use testcontainers for real PostgreSQL, mock only external APIs (Gemini)
-- Example: `backend/tests/integration/socket.test.ts`
-  - Tests WebSocket connections, authentication, message flow
-  - Uses socket.io-client and testcontainers
+- Scope: Full HTTP request/response cycle against real or containerized dependencies
+- Mocking: Minimal -- uses real PostgreSQL via Testcontainers
+- Location: `backend/tests/integration/`
+- Config: `backend/vitest.integration.config.ts` (sequential, longer timeouts)
+- CI: `.github/workflows/integration-tests.yml` (triggered on backend changes)
+- Files: `api/health.test.ts`, `api/sessions.test.ts`, `api/assets.test.ts`, `api/products.test.ts`, `api/styles.test.ts`, `socket.test.ts`
 
 **E2E Tests:**
-- Framework: Not yet implemented
-- Recommended: Playwright or Cypress (for frontend → backend → database flow)
+- Framework: Playwright
+- Location: `e2e/` (root-level directory)
+- CI: Part of `quality-gates.yml` (runs after backend + frontend quality pass)
+- Requires: Running backend + frontend + PostgreSQL
+
+**AI Regression Tests:**
+- Scope: Validates AI model outputs against expected patterns
+- Location: `backend/tests/ai-regression/prompt-smoke.test.ts`
+- Config: `backend/vitest.ai-regression.config.ts`
+- CI: `.github/workflows/ai-regression.yml` (manual/scheduled)
+
+**Load Tests:**
+- Framework: k6
+- Location: `backend/load-tests/` (`health-check.k6.js`, `chat-flow.k6.js`)
+- Run: `pnpm test:load`
 
 ## Common Patterns
 
 **Async Testing:**
 ```typescript
-it('should fetch and return messages in chronological order', async () => {
-  // Setup mocks
-  const mockMessages = [...];
-  const mockLimit = vi.fn().mockResolvedValue(mockMessages);
-  // ...
-
-  // Act
-  const result = await messageService.getMessageHistory('test-session-id', 50);
-
-  // Assert
-  expect(result).toEqual([...]);
+it('should process message', async () => {
+  const result = await service.processMessage('session-1', 'Hello', callback);
+  expect(callback.onComplete).toHaveBeenCalledWith(expect.any(String));
 });
 ```
 
 **Error Testing:**
 ```typescript
-it('should throw error if no record is returned', async () => {
-  // Setup
-  const mockMessage = { ... };
-  const mockReturning = vi.fn().mockResolvedValue([]);
-  // ...
+it('should throw NotFoundError for missing session', async () => {
+  mockDb.select.mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue([]),
+      }),
+    }),
+  });
 
-  // Act & Assert
-  await expect(messageService.saveMessage(mockMessage)).rejects.toThrow(
-    'Failed to save message: No record returned'
-  );
+  await expect(service.getSession('nonexistent'))
+    .rejects.toThrow(NotFoundError);
 });
 ```
 
-**Mock Verification:**
+**Hook Testing (frontend):**
 ```typescript
-it('should save a message and return the saved record', async () => {
-  // Arrange
-  const mockMessage = { ... };
-  const mockReturning = vi.fn().mockResolvedValue([mockSavedMessage]);
-  const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-  (db.insert as Mock).mockReturnValue({ values: mockValues });
+it('should update connection state', async () => {
+  const { result } = renderHook(() => useChat('session-123'));
 
-  // Act
-  const result = await messageService.saveMessage(mockMessage);
+  // Simulate socket connect event
+  const connectHandler = getMockHandler<() => void>('connect');
+  act(() => connectHandler?.());
 
-  // Assert
-  expect(db.insert).toHaveBeenCalledWith(chatMessages);
-  expect(mockValues).toHaveBeenCalledWith(mockMessage);
-  expect(mockReturning).toHaveBeenCalled();
-  expect(result).toEqual(mockSavedMessage);
+  await waitFor(() => {
+    expect(result.current.isConnected).toBe(true);
+  });
 });
 ```
 
-**Data Transformation Testing:**
+**Zod Validation Testing:**
 ```typescript
-it('should convert database messages to LangChain format', () => {
-  const mockMessages = [
-    { id: '1', role: 'user', content: 'Hello', ... },
-    { id: '2', role: 'assistant', content: 'Hi there!', ... },
-  ];
-
-  const result = messageService.toLangChainMessages(mockMessages);
-
-  expect(result).toEqual([
-    { role: 'user', content: 'Hello' },
-    { role: 'assistant', content: 'Hi there!' },
-  ]);
+it('should reject message exceeding max length', () => {
+  const result = chatUserMessageSchema.safeParse({
+    sessionId: 'valid-uuid',
+    content: 'x'.repeat(10001),
+  });
+  expect(result.success).toBe(false);
 });
 ```
 
-## Testing Best Practices (from CLAUDE.md)
+## CI Test Pipeline
 
-**TDD Workflow:**
-1. RED: Write failing test first
-2. GREEN: Write minimum code to pass
-3. REFACTOR: Improve code quality while tests still pass
-4. QUALITY GATE: Run linter, type-check, and coverage before commit
+**Quality Gates (`quality-gates.yml`):**
+1. Backend: lint -> build -> unit tests with coverage -> schema drift check
+2. Frontend: lint -> type-check -> unit tests with coverage -> production build
+3. Shared-types contract: build shared-types -> verify backend compiles -> verify frontend compiles -> unused export check
+4. E2E: Playwright tests (runs after backend + frontend pass, needs PostgreSQL)
 
-**Pre-Commit Checklist:**
-```bash
-# Backend
-npm run lint         # 0 errors
-npm run build        # TypeScript compilation
-npm run test:unit    # All pass
-npm run test:unit -- --coverage  # ≥80%
+**Integration Tests (`integration-tests.yml`):**
+- Triggered on PR/push to main when backend or shared-types change
+- Uses Testcontainers for PostgreSQL
+- 15-minute timeout
 
-# Frontend
-npm run lint         # 0 errors
-npm run type-check   # 0 errors
-npm test             # All pass
-```
-
-**Test Guidelines:**
-- Write tests before implementation (TDD)
-- Keep tests fast (<100ms for unit tests)
-- Mock external dependencies (database, APIs, logger)
-- Use descriptive test names
-- Test happy path AND error cases
-- Verify mock call counts and arguments
+**Coverage Upload:**
+- Both backend and frontend upload to Codecov via `codecov/codecov-action@v5`
+- Coverage flags: `backend`, `frontend` (separate tracking)
+- Carryforward enabled (missing uploads don't break coverage)
 
 ---
 
-*Testing analysis: 2026-02-09*
+*Testing analysis: 2026-03-01*

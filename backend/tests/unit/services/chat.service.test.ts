@@ -18,12 +18,7 @@ vi.mock('../../../src/services/asset.service.js', () => ({
   })),
 }));
 
-// Mock checkpointer service
-vi.mock('../../../src/services/checkpointer.service.js', () => ({
-  getCheckpointer: vi.fn().mockReturnValue({}),
-}));
-
-// Mock Gemini config - include bindTools for ReAct agent creation
+// Mock Gemini config
 vi.mock('../../../src/config/gemini.js', () => ({
   createStreamingModel: vi.fn().mockReturnValue({
     stream: vi.fn(),
@@ -31,6 +26,7 @@ vi.mock('../../../src/config/gemini.js', () => ({
     bindTools: vi.fn().mockReturnValue({
       invoke: vi.fn(),
     }),
+    traceAttributes: { 'ai.model': 'gemini-2.5-flash' },
   }),
 }));
 
@@ -79,39 +75,71 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn().mockReturnValue({}),
 }));
 
+// Mock redis
+vi.mock('../../../src/config/redis.js', () => ({
+  redis: { get: vi.fn().mockResolvedValue(null), status: 'ready' },
+}));
+
 // Hoist the mock graph so it's available in vi.mock factories
 const { mockCompiledGraph } = vi.hoisted(() => ({
   mockCompiledGraph: {
     stream: vi.fn(),
     invoke: vi.fn(),
+    getGraph: vi.fn(),
   },
 }));
 
-// Mock LangGraph - provide a fake compiled graph
-vi.mock('@langchain/langgraph', () => {
-  const mockWorkflow = {
-    addNode: vi.fn().mockReturnThis(),
-    addEdge: vi.fn().mockReturnThis(),
-    addConditionalEdges: vi.fn().mockReturnThis(),
-    compile: vi.fn().mockReturnValue(mockCompiledGraph),
-  };
+// Mock LangGraph — StateGraph builder pattern returns mockCompiledGraph from .compile()
+vi.mock('@langchain/langgraph', async () => {
   class GraphRecursionError extends Error {
     constructor(message: string) {
       super(message);
       this.name = 'GraphRecursionError';
     }
   }
+
+  const mockWorkflow = {
+    addNode: vi.fn().mockReturnThis(),
+    addEdge: vi.fn().mockReturnThis(),
+    addConditionalEdges: vi.fn().mockReturnThis(),
+    compile: vi.fn().mockReturnValue(mockCompiledGraph),
+  };
+
   return {
-    StateGraph: vi.fn().mockReturnValue(mockWorkflow),
-    START: 'START',
-    END: 'END',
-    MessagesAnnotation: { State: {} },
     GraphRecursionError,
+    MessagesAnnotation: {},
+    StateGraph: vi.fn().mockReturnValue(mockWorkflow),
+    START: '__start__',
+    END: '__end__',
   };
 });
 
+// Mock LangGraph prebuilt
 vi.mock('@langchain/langgraph/prebuilt', () => ({
-  ToolNode: vi.fn().mockReturnValue({}),
+  ToolNode: vi.fn().mockImplementation(() => ({})),
+}));
+
+// Mock checkpointer
+vi.mock('../../../src/services/checkpointer.service.js', () => ({
+  getCheckpointer: vi.fn().mockReturnValue({}),
+}));
+
+// Mock ai-tracing
+vi.mock('../../../src/utils/ai-tracing.js', () => ({
+  traceAICall: vi.fn().mockImplementation(async (_name: string, _attrs: Record<string, unknown>, fn: (span: { setAttribute: ReturnType<typeof vi.fn>; addEvent: ReturnType<typeof vi.fn> }) => Promise<void>) => {
+    const mockSpan = {
+      setAttribute: vi.fn(),
+      addEvent: vi.fn(),
+    };
+    return fn(mockSpan);
+  }),
+  startAIStreamSpan: vi.fn().mockReturnValue({
+    span: { setAttribute: vi.fn() },
+    onFirstToken: vi.fn(),
+    endStream: vi.fn(),
+  }),
+  extractTokenUsage: vi.fn().mockReturnValue(null),
+  recordTokenUsage: vi.fn(),
 }));
 
 // Mock logger
@@ -139,13 +167,11 @@ describe('ChatService', () => {
       const userMessage = 'Hello, AI!';
       const mockResponse = 'Hello! How can I help you?';
 
-      // Mock the graph's stream method to yield [message, metadata] tuples
-      // Metadata must include langgraph_node: 'call_model' to reach the text streaming branch
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
         for (const word of mockResponse.split(' ')) {
           yield [
-            { content: word + ' ', tool_call_chunks: [] },
+            { content: word + ' ', tool_call_chunks: [], _getType: () => 'ai' },
             { langgraph_node: 'call_model' },
           ];
         }
@@ -159,7 +185,6 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback);
 
-      // Verify user message was saved
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith({
         sessionId,
         userId: null,
@@ -168,12 +193,10 @@ describe('ChatService', () => {
         type: 'text',
       });
 
-      // Verify tokens were streamed
       expect(callback.onToken).toHaveBeenCalled();
       expect(callback.onComplete).toHaveBeenCalled();
       expect(callback.onError).not.toHaveBeenCalled();
 
-      // Verify assistant message was saved
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith({
         sessionId,
         userId: null,
@@ -188,7 +211,6 @@ describe('ChatService', () => {
       const userMessage = 'Hello, AI!';
       const mockError = new Error('API Error');
 
-      // Mock error in graph streaming
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockRejectedValue(mockError);
 
@@ -210,7 +232,6 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Trigger recursion loop';
 
-      // Import the mocked GraphRecursionError class
       const { GraphRecursionError } = await import('@langchain/langgraph');
       const recursionError = new GraphRecursionError('Recursion limit reached');
 
@@ -223,18 +244,36 @@ describe('ChatService', () => {
         onError: vi.fn(),
       };
 
-      // Should NOT throw — it catches GraphRecursionError and sends fallback
       await chatService.processMessage(sessionId, userMessage, callback);
 
-      // Verify fallback message was sent
       expect(callback.onToken).toHaveBeenCalledWith(
         expect.stringContaining('trouble processing')
       );
       expect(callback.onComplete).toHaveBeenCalledWith(
         expect.stringContaining('trouble processing')
       );
-      // onError should NOT have been called for recursion errors
       expect(callback.onError).not.toHaveBeenCalled();
+    });
+
+    it('should use fixed recursionLimit based on MAX_REACT_ITERATIONS', async () => {
+      const sessionId = 'test-session';
+
+      const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
+      mockGraph.stream.mockImplementation(async function* () {
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
+      });
+
+      await chatService.processMessage(sessionId, 'Test', {
+        onToken: vi.fn(),
+        onComplete: vi.fn(),
+        onError: vi.fn(),
+      });
+
+      // MAX_REACT_ITERATIONS=10 → recursionLimit=20
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ recursionLimit: 20 }),
+      );
     });
   });
 
@@ -272,31 +311,32 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Get room products';
 
-      // Mock graph stream with tool execution flow
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        // Step 1: AI requests tool call
+        // Step 1: AI requests tool call (from call_model node)
         yield [
           {
             content: '',
             tool_call_chunks: [{ name: 'get_room_products', args: { roomId: '123' } }],
+            _getType: () => 'ai',
           },
           { langgraph_node: 'call_model' },
         ];
 
-        // Step 2: Tool execution result
+        // Step 2: Tool execution result (from tools node)
         yield [
           {
             name: 'get_room_products',
             content: JSON.stringify({ products: [{ id: 1, name: 'Product A' }] }),
             tool_call_id: 'call_123',
+            _getType: () => 'tool',
           },
           { langgraph_node: 'tools' },
         ];
 
         // Step 3: AI final response
         yield [
-          { content: 'Found 1 product for you!' },
+          { content: 'Found 1 product for you!', _getType: () => 'ai' },
           { langgraph_node: 'call_model' },
         ];
       });
@@ -311,16 +351,13 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback);
 
-      // Verify tool call was logged
       expect(callback.onToolCall).toHaveBeenCalledWith('get_room_products', '');
 
-      // Verify tool result was logged
       expect(callback.onToolResult).toHaveBeenCalledWith(
         'get_room_products',
         expect.stringContaining('Product A')
       );
 
-      // Verify tool messages were saved to database
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'tool_call',
@@ -336,7 +373,6 @@ describe('ChatService', () => {
         })
       );
 
-      // Verify final text response
       expect(callback.onComplete).toHaveBeenCalledWith('Found 1 product for you!');
     });
 
@@ -346,11 +382,11 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        // Same tool name appears in multiple chunks (streaming)
         yield [
           {
             content: '',
             tool_call_chunks: [{ name: 'search_products', args: {} }],
+            _getType: () => 'ai',
           },
           { langgraph_node: 'call_model' },
         ];
@@ -358,6 +394,7 @@ describe('ChatService', () => {
           {
             content: '',
             tool_call_chunks: [{ name: 'search_products', args: {} }],
+            _getType: () => 'ai',
           },
           { langgraph_node: 'call_model' },
         ];
@@ -372,7 +409,6 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback);
 
-      // Should only emit tool call once
       expect(callback.onToolCall).toHaveBeenCalledTimes(1);
     });
 
@@ -387,6 +423,7 @@ describe('ChatService', () => {
             name: 'test_tool',
             content: 'invalid json {[',
             tool_call_id: 'call_123',
+            _getType: () => 'tool',
           },
           { langgraph_node: 'tools' },
         ];
@@ -401,14 +438,12 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback);
 
-      // Should save with null toolOutput
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           toolOutput: null,
         })
       );
 
-      // Should still call onToolResult callback
       expect(callback.onToolResult).toHaveBeenCalledWith('test_tool', 'invalid json {[');
     });
   });
@@ -418,7 +453,6 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Continue our conversation';
 
-      // Mock previous conversation
       const mockHistory = [
         { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
         { id: '2', sessionId, userId: null, role: 'assistant', content: 'Hi there', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
@@ -428,7 +462,7 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Continuing...' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Continuing...', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       await chatService.processMessage(sessionId, userMessage, {
@@ -437,18 +471,21 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Verify history was loaded
       expect(mockMessageService.getRecentMessages).toHaveBeenCalledWith(sessionId, 20);
 
-      // Verify graph was called (with history included in messages)
-      expect(mockGraph.stream).toHaveBeenCalled();
+      // ReAct agent receives { messages } only (no sessionId/currentPhase in input)
+      expect(mockGraph.stream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.any(Array),
+        }),
+        expect.any(Object),
+      );
     });
 
     it('should filter out messages with invalid roles', async () => {
       const sessionId = 'test-session';
       const userMessage = 'Test';
 
-      // Include a message with invalid role
       const mockHistory = [
         { id: '1', sessionId, userId: null, role: 'user', content: 'Hello', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
         { id: '2', sessionId, userId: null, role: 'invalid_role' as 'user', content: 'Bad', type: 'text', createdAt: new Date(), toolName: null, toolOutput: null },
@@ -459,7 +496,7 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       await chatService.processMessage(sessionId, userMessage, {
@@ -468,7 +505,6 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Should still process successfully (invalid role filtered out)
       expect(mockGraph.stream).toHaveBeenCalled();
     });
   });
@@ -483,7 +519,7 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'I see a kitchen!' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'I see a kitchen!', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const callback = {
@@ -494,7 +530,6 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback, attachments);
 
-      // Verify user message was saved with image type and imageUrl
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId,
@@ -505,7 +540,6 @@ describe('ChatService', () => {
         })
       );
 
-      // Verify graph received the message (multipart content)
       expect(mockGraph.stream).toHaveBeenCalled();
       expect(callback.onComplete).toHaveBeenCalledWith('I see a kitchen!');
     });
@@ -514,7 +548,6 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Look at this room';
 
-      // Override asset service to fail
       const assetService = (chatService as unknown as { assetService: { getSignedUrl: ReturnType<typeof vi.fn> } }).assetService;
       assetService.getSignedUrl.mockResolvedValue(null);
 
@@ -524,7 +557,7 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const callback = {
@@ -535,7 +568,6 @@ describe('ChatService', () => {
 
       await chatService.processMessage(sessionId, userMessage, callback, attachments);
 
-      // Should save as text type since no URLs resolved
       expect(mockMessageService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'text',
@@ -550,7 +582,7 @@ describe('ChatService', () => {
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const callback = {
@@ -571,17 +603,16 @@ describe('ChatService', () => {
   });
 
   describe('phase handling', () => {
-    it('should fetch session phase and use in system prompt', async () => {
+    it('should fetch session phase and pass to getSystemPrompt', async () => {
       const sessionId = 'test-session';
       const userMessage = 'Test';
 
-      // Mock database to return specific phase
       const mockDb = (await import('../../../src/db/index.js')).db;
       vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([{ phase: 'RENDER' }]);
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const { getSystemPrompt } = await import('../../../src/config/prompts.js');
@@ -592,7 +623,6 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Verify system prompt was called with RENDER phase
       expect(getSystemPrompt).toHaveBeenCalledWith('RENDER', sessionId);
     });
 
@@ -600,13 +630,12 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Test';
 
-      // Mock database to return empty (no session found)
       const mockDb = (await import('../../../src/db/index.js')).db;
       vi.mocked(mockDb.select().from({}).where({}).limit).mockResolvedValue([]);
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const { getSystemPrompt } = await import('../../../src/config/prompts.js');
@@ -617,7 +646,6 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Should default to INTAKE
       expect(getSystemPrompt).toHaveBeenCalledWith('INTAKE', sessionId);
     });
 
@@ -625,13 +653,12 @@ describe('ChatService', () => {
       const sessionId = 'test-session';
       const userMessage = 'Test';
 
-      // Mock database to throw error
       const mockDb = (await import('../../../src/db/index.js')).db;
       vi.mocked(mockDb.select().from({}).where({}).limit).mockRejectedValue(new Error('DB Error'));
 
       const mockGraph = (chatService as unknown as { graph: { stream: ReturnType<typeof vi.fn> } }).graph;
       mockGraph.stream.mockImplementation(async function* () {
-        yield [{ content: 'Response' }, { langgraph_node: 'call_model' }];
+        yield [{ content: 'Response', _getType: () => 'ai' }, { langgraph_node: 'call_model' }];
       });
 
       const { getSystemPrompt } = await import('../../../src/config/prompts.js');
@@ -642,7 +669,6 @@ describe('ChatService', () => {
         onError: vi.fn(),
       });
 
-      // Should still proceed with default INTAKE phase
       expect(getSystemPrompt).toHaveBeenCalledWith('INTAKE', sessionId);
     });
   });

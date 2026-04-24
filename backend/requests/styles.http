@@ -1,0 +1,19 @@
+@baseUrl = http://localhost:3000/api
+
+### List all design styles
+GET {{baseUrl}}/styles
+
+### Search styles by query
+GET {{baseUrl}}/styles/search?q=modern
+
+### Get a style by slug
+GET {{baseUrl}}/styles/minimalist
+
+### Get moodboard images for a style
+GET {{baseUrl}}/styles/minimalist/images?limit=5&offset=0
+
+### Seed style catalog (dev only)
+POST {{baseUrl}}/styles/seed
+
+### Seed style moodboard images (dev only)
+POST {{baseUrl}}/styles/seed-images

@@ -14,12 +14,17 @@
     "db:migrate": "pnpm --filter renovation-agent-backend db:migrate",
     "db:seed": "pnpm --filter renovation-agent-backend db:seed",
     "verify:render": "npx tsx e2e/scripts/verify-render-pipeline.ts",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts",
+    "dev:agent": "tsx backend/src/dev-agents/cli.ts",
+    "dev:workflow": "tsx backend/src/dev-agents/cli-workflow.ts",
+    "dev:workflow:resume": "tsx backend/src/dev-agents/cli-workflow.ts --resume",
+    "dev:workflow:approve": "tsx backend/src/dev-agents/cli-workflow.ts --approve",
     "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7"
+    "lint-staged": "^16.4.0"
   },
   "lint-staged": {
     "backend/src/**/*.ts": "pnpm --filter renovation-agent-backend lint",
@@ -34,7 +39,21 @@
       "qs": "6.14.2",
       "cross-spawn": ">=7.0.5",
       "glob": ">=10.5.0",
-      "minimatch": "10.2.1"
+      "minimatch": ">=10.2.3",
+      "basic-ftp": ">=5.3.0",
+      "rollup": ">=4.59.0",
+      "protobufjs": ">=8.0.1",
+      "socket.io-parser": ">=4.2.6",
+      "vite": ">=7.3.2",
+      "flatted": ">=3.4.2",
+      "follow-redirects": ">=1.16.0",
+      "path-to-regexp": ">=8.4.0",
+      "picomatch": ">=4.0.4",
+      "brace-expansion": ">=5.0.5",
+      "lodash": ">=4.18.0",
+      "langsmith": ">=0.5.19",
+      "yaml": ">=2.8.3",
+      "postcss": ">=8.5.10"
     }
   }
 }

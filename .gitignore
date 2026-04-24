@@ -82,3 +82,6 @@ coverage/
 # Claude Code runtime state
 .claude/get-shit-done/
 .claude/hooks/
+
+# Local dev tools (Python orchestration, experiments)
+tools/orchestra/

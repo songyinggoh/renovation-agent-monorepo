@@ -11,5 +11,7 @@ export default defineConfig({
     // Run sequentially to avoid Gemini rate limits
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },
+    // Retry twice: Gemini can return empty candidates on transient rate-limit/safety events
+    retry: 2,
   },
 });
