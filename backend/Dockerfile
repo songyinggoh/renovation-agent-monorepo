@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ WORKDIR /app
 RUN pnpm --filter renovation-agent-backend deploy --legacy --prod /app/deploy
 
 # Stage 2: Production
-FROM node:20-alpine AS production
+FROM node:25-alpine AS production
 
 WORKDIR /app
 
