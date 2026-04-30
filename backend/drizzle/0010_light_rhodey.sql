@@ -1,0 +1,2 @@
+CREATE INDEX "idx_docs_previous_version" ON "document_artifacts" USING btree ("previous_version_id");--> statement-breakpoint
+CREATE INDEX "idx_chat_messages_user" ON "chat_messages" USING btree ("user_id");
