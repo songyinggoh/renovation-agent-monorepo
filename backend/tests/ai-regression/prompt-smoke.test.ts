@@ -98,6 +98,9 @@ describe('AI Prompt Regression — Smoke Tests', () => {
           apiKey: apiKey!,
         });
 
+        // Small delay between calls to avoid back-to-back rate limiting on Gemini free tier
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+
         const response = await model.invoke([
           new SystemMessage(systemPrompt),
           new HumanMessage(userMessage),

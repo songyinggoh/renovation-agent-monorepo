@@ -14,6 +14,7 @@
     "db:migrate": "pnpm --filter renovation-agent-backend db:migrate",
     "db:seed": "pnpm --filter renovation-agent-backend db:seed",
     "verify:render": "npx tsx e2e/scripts/verify-render-pipeline.ts",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts",
     "prepare": "husky"
   },
   "devDependencies": {

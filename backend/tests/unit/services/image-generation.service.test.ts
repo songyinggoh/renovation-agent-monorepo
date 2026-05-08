@@ -101,7 +101,7 @@ describe('GeminiImageAdapter', () => {
 
     expect(result.imageBuffer).toBeInstanceOf(Buffer);
     expect(result.contentType).toBe('image/png');
-    expect(result.metadata.model).toBe('gemini-2.0-flash-exp');
+    expect(result.metadata.model).toBe('gemini-2.5-flash-image');
     expect(result.metadata.generationTimeMs).toBeGreaterThanOrEqual(0);
   });
 

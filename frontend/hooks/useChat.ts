@@ -36,15 +36,19 @@ export function useChat(sessionId: string) {
 
     const initSocket = async () => {
       try {
-        const { data: { session }, error: authError } = await supabase.auth.getSession();
+        let token: string | undefined;
 
-        if (authError) {
-          setError(`Authentication error: ${authError.message}`);
-          logger.error('Auth error', authError);
-          return;
+        if (supabase) {
+          const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+          if (authError) {
+            setError(`Authentication error: ${authError.message}`);
+            logger.error('Auth error', authError);
+            return;
+          }
+
+          token = session?.access_token;
         }
-
-        const token = session?.access_token;
 
         socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000', {
           auth: token ? { token } : {},
@@ -198,7 +202,7 @@ export function useChat(sessionId: string) {
         socket.disconnect();
       }
     };
-  }, [sessionId, supabase.auth]);
+  }, [sessionId, supabase]);
 
   const sendMessage = useCallback((content: string, attachments?: { assetId: string; fileName?: string }[]) => {
     if (!socketRef.current || !isConnected) return;

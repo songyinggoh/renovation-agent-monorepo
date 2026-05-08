@@ -100,10 +100,34 @@ export interface RenderProgressPayload {
   stage: RenderStage;
 }
 
+export type DocGenerationStage = 'queued' | 'fetching_data' | 'rendering_html' | 'generating_pdf' | 'uploading' | 'finalizing';
+
+export interface DocStartedPayload {
+  sessionId: string;
+  documentType: string;
+  jobId: string;
+}
+
+export interface DocProgressPayload {
+  sessionId: string;
+  documentType: string;
+  progress: number;
+  stage: DocGenerationStage;
+}
+
 export interface DocGeneratedPayload {
   sessionId: string;
-  roomId: string;
-  format: 'pdf' | 'html';
+  documentId: string;
+  documentType: string;
+  filename: string;
+  pageCount?: number;
+  fileSize?: number;
+}
+
+export interface DocFailedPayload {
+  sessionId: string;
+  documentType: string;
+  error: string;
 }
 
 export interface ClientToServerEvents {

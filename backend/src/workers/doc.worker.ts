@@ -1,5 +1,6 @@
 import { type Job, UnrecoverableError } from 'bullmq';
 import { createWorker, type JobTypes } from '../config/queue.js';
+import { emitToSession } from '../utils/socket-emitter.js';
 import { Logger } from '../utils/logger.js';
 import { docGeneratePlanJobSchema } from '../validators/job.validators.js';
 
@@ -26,6 +27,9 @@ async function processDocJob(job: Job<DocJobData>): Promise<void> {
   });
 
   // Phase 3: Puppeteer-based document generation will be implemented here
+
+  // Notify client that document generation completed
+  emitToSession(sessionId, 'doc:generated', { sessionId, roomId, format });
 }
 
 /**

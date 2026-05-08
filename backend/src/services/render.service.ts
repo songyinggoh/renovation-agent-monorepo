@@ -101,7 +101,7 @@ export class RenderService {
       status: 'processing',
       originalFilename: filename,
       contentType: 'image/png',
-      fileSize: 0, // Updated when render completes
+      fileSize: 1, // Placeholder — updated with actual size when render completes
       metadata: {
         prompt,
         mode,

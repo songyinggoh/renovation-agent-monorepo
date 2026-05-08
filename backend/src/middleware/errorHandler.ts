@@ -72,7 +72,6 @@ export const errorHandler = (
     path: req.path,
     method: req.method,
   });
-
   return res.status(500).json({
     success: false,
     error: 'Internal Server Error',

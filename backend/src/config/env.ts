@@ -134,6 +134,16 @@ const envSchema = z.object({
   STABILITY_API_KEY: z.string().optional(),
 
   // ============================================
+  // Anthropic Claude (Dev Agent Framework)
+  // ============================================
+  ANTHROPIC_API_KEY: z.string().optional(),
+
+  // ============================================
+  // Graceful Shutdown
+  // ============================================
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+
+  // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
   // ============================================
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -266,4 +276,11 @@ export function isTelemetryEnabled(): boolean {
  */
 export function isImageGenerationEnabled(): boolean {
   return env.IMAGE_GENERATION_PROVIDER === 'gemini' || !!env.STABILITY_API_KEY;
+}
+
+/**
+ * Helper function to check if dev-agent framework is configured
+ */
+export function isDevAgentEnabled(): boolean {
+  return !!env.ANTHROPIC_API_KEY;
 }

@@ -175,7 +175,6 @@ function createExpressRequestHook(): ExpressInstrumentationConfig['requestHook']
       type RequestWithExtras = Request & {
         params?: Record<string, string>;
         user?: { id: string };
-        session?: { phase: string };
       };
       const req = info.request as RequestWithExtras;
 
@@ -191,12 +190,6 @@ function createExpressRequestHook(): ExpressInstrumentationConfig['requestHook']
       // Phase 2.3: Inject user.id from auth middleware (req.user set by auth.middleware.ts)
       if (req.user?.id) {
         span.setAttribute('user.id', req.user.id);
-      }
-
-      // Phase 2.4: Inject renovation.phase if available in request context
-      // This would be set by controllers after DB lookup
-      if (req.session?.phase) {
-        span.setAttribute('renovation.phase', req.session.phase);
       }
 
       // Phase 2.5: Add universal context attributes (IA doc section 1.1)

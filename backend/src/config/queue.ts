@@ -120,11 +120,20 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, descripti
 }
 
 /**
+ * BullMQ 5.x disallows colons in queue names. Sanitize job type keys
+ * (e.g. "image:optimize" → "image-optimize") for use as queue/worker names.
+ */
+function sanitizeQueueName(name: string): string {
+  return name.replace(/:/g, '-');
+}
+
+/**
  * Create a typed queue with profile-derived default job options.
  */
 function createQueueWithProfile<T extends JobName>(name: T): Queue<JobTypes[T]> {
   const profile = WORKER_PROFILES[name];
-  const queue = new Queue<JobTypes[T]>(name, {
+  const queueName = sanitizeQueueName(name);
+  const queue = new Queue<JobTypes[T]>(queueName, {
     connection,
     defaultJobOptions: profile.defaultJobOptions,
   });
@@ -154,7 +163,8 @@ export function createWorker<T extends JobName>(
     : concurrencyOrProfile ?? {};
   const profile = { ...base, ...overrides };
 
-  const worker = new Worker<JobTypes[T]>(name, processor, {
+  const queueName = sanitizeQueueName(name);
+  const worker = new Worker<JobTypes[T]>(queueName, processor, {
     connection,
     concurrency: profile.concurrency,
     lockDuration: profile.lockDuration,
