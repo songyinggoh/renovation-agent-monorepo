@@ -33,6 +33,9 @@ const tracer = trace.getTracer('render-worker');
 /** Max size for reference image downloads (10 MB). Prevents OOM on malicious URLs. */
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 
+/** Timeout for uploading a completed render to storage (ms). */
+const UPLOAD_TIMEOUT_MS = 20_000;
+
 /**
  * Fetch a reference image from a URL and return it as base64.
  * Used in "edit_existing" mode so the AI adapter can modify the photo.
@@ -158,10 +161,10 @@ async function processRenderJob(job: Job<RenderJobData>): Promise<void> {
 
       emitToSession(sessionId, 'render:progress', { assetId, roomId, sessionId, progress: 70, stage: 'uploading' });
 
-      // Persist render result (with 20s upload timeout)
+      // Persist render result (with upload timeout)
       await withTimeout(
         renderService.completeRender(assetId, result),
-        20_000,
+        UPLOAD_TIMEOUT_MS,
         `completeRender ${assetId}`,
       );
 

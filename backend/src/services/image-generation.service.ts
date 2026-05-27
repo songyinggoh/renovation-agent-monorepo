@@ -36,7 +36,7 @@ export interface ImageGenerationAdapter {
 
 /**
  * Gemini native image generation adapter.
- * Uses gemini-2.5-flash-preview-image-generation with responseModalities: ['IMAGE'].
+ * Uses gemini-2.5-flash-image with responseModalities: ['IMAGE'].
  */
 export class GeminiImageAdapter implements ImageGenerationAdapter {
   readonly providerName = 'gemini';
@@ -48,7 +48,7 @@ export class GeminiImageAdapter implements ImageGenerationAdapter {
 
   async generate(prompt: string, options?: ImageGenerationOptions): Promise<ImageGenerationResult> {
     const startTime = Date.now();
-    const model = 'gemini-2.0-flash-exp';
+    const model = 'gemini-2.5-flash-image';
 
     logger.info('Generating image with Gemini', {
       model,

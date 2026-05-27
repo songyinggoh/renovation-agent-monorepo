@@ -95,10 +95,12 @@ router.get('/health/ready', async (_req: Request, res: Response) => {
     errorTracking: isSentryEnabled() ? 'enabled' : 'disabled',
   };
 
-  // Determine overall readiness
-  const allHealthy = Object.values(checks)
-    .filter(check => check.status !== undefined)
-    .every(check => check.status === 'ok');
+  // Determine overall readiness — only required services gate readiness.
+  // Redis is optional (graceful degradation), so exclude it.
+  const requiredChecks = ['database'];
+  const allHealthy = requiredChecks.every(
+    key => checks[key]?.status === 'ok',
+  );
 
   const statusCode = allHealthy ? 200 : 503;
 

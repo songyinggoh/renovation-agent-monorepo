@@ -18,13 +18,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const checkUser = async () => {
+            // Allow anonymous access when Supabase is not configured (Phases 1-7)
+            if (!supabase) {
+                setLoading(false);
+                return;
+            }
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                // Allow anonymous access when Supabase is not configured (Phases 1-7)
-                if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-                    setLoading(false);
-                    return;
-                }
                 router.push('/');
             } else {
                 setUser(user);
@@ -33,7 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         };
 
         checkUser();
-    }, [router, supabase.auth]);
+    }, [router, supabase]);
 
     if (loading) {
         return (
@@ -44,7 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut();
+        await supabase?.auth.signOut();
         router.push('/');
     };
 

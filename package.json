@@ -14,6 +14,11 @@
     "db:migrate": "pnpm --filter renovation-agent-backend db:migrate",
     "db:seed": "pnpm --filter renovation-agent-backend db:seed",
     "verify:render": "npx tsx e2e/scripts/verify-render-pipeline.ts",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts",
+    "dev:agent": "tsx backend/src/dev-agents/cli.ts",
+    "dev:workflow": "tsx backend/src/dev-agents/cli-workflow.ts",
+    "dev:workflow:resume": "tsx backend/src/dev-agents/cli-workflow.ts --resume",
+    "dev:workflow:approve": "tsx backend/src/dev-agents/cli-workflow.ts --approve",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -34,7 +39,9 @@
       "qs": "6.14.2",
       "cross-spawn": ">=7.0.5",
       "glob": ">=10.5.0",
-      "minimatch": "10.2.1"
+      "minimatch": "10.2.1",
+      "basic-ftp": ">=5.2.0",
+      "rollup": ">=4.59.0"
     }
   }
 }

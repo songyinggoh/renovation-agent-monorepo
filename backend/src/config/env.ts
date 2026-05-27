@@ -66,6 +66,7 @@ const envSchema = z.object({
   // ============================================
   SUPABASE_STORAGE_BUCKET: z.string().default('room-assets'),
   SUPABASE_STYLE_BUCKET: z.string().default('style-assets'),
+  SUPABASE_DOCUMENTS_BUCKET: z.string().default('renovation-documents'),
 
   // ============================================
   // Redis Configuration (Phase 3: Production Safety)
@@ -132,6 +133,16 @@ const envSchema = z.object({
     .enum(['gemini', 'stability'])
     .default('gemini'),
   STABILITY_API_KEY: z.string().optional(),
+
+  // ============================================
+  // Anthropic Claude (Dev Agent Framework)
+  // ============================================
+  ANTHROPIC_API_KEY: z.string().optional(),
+
+  // ============================================
+  // Graceful Shutdown
+  // ============================================
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
 
   // ============================================
   // Stripe Payment Integration (OPTIONAL - Phase 9)
@@ -266,4 +277,11 @@ export function isTelemetryEnabled(): boolean {
  */
 export function isImageGenerationEnabled(): boolean {
   return env.IMAGE_GENERATION_PROVIDER === 'gemini' || !!env.STABILITY_API_KEY;
+}
+
+/**
+ * Helper function to check if dev-agent framework is configured
+ */
+export function isDevAgentEnabled(): boolean {
+  return !!env.ANTHROPIC_API_KEY;
 }

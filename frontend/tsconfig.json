@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@renovation/shared-types": [
+        "../packages/shared-types/src/index.ts"
       ]
     },
     "target": "ES2017",

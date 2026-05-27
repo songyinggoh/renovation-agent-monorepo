@@ -1,141 +1,205 @@
 # External Integrations
 
-**Analysis Date:** 2026-02-09
+**Analysis Date:** 2026-03-01
 
 ## APIs & External Services
 
-**AI/ML:**
-- Google Gemini AI - LangChain-based conversational AI with tool calling
-  - SDK/Client: @langchain/google-genai 2.1.12, @google/generative-ai 0.24.1
-  - Auth: GOOGLE_API_KEY (env var)
-  - Models: gemini-2.5-flash (4 model configurations: chat, vision, structured, streaming)
-  - Located: `backend/src/config/gemini.ts`
+**AI / LLM:**
+- Google Gemini 2.5 Flash - Primary AI model for chat, vision, structured output, streaming
+  - SDK/Client: `@langchain/google-genai` (via LangChain abstraction)
+  - Direct SDK: `@google/genai` (image generation only)
+  - Auth: `GOOGLE_API_KEY` env var
+  - Config: `backend/src/config/gemini.ts` (4 factory functions: chat, vision, structured, streaming)
+  - All models use `gemini-2.5-flash` with varying temperature (0.3-0.7)
+
+- Anthropic Claude (dev-agents only) - AI coding assistants
+  - SDK/Client: `@langchain/anthropic`
+  - Model: `claude-sonnet-4-20250514` (used as fallback via `modelFallbackMiddleware`)
+  - Auth: `ANTHROPIC_API_KEY` env var (optional, dev-agent feature)
+  - Config: `backend/src/dev-agents/middleware.ts`
+
+**Image Generation:**
+- Gemini Image Generation - AI render generation for room visualizations
+  - Adapter pattern: `backend/src/services/image-generation.service.ts`
+  - Factory: `createImageGenerationAdapter()` returns `GeminiImageAdapter` or `StabilityAIAdapter`
+  - Fallback provider: Stability AI SD3 (via REST API, `STABILITY_API_KEY`)
+  - Worker: `backend/src/workers/render.worker.ts` (BullMQ, concurrency: 1, timeout: 90s)
 
 ## Data Storage
 
-**Databases:**
-- PostgreSQL 15+ (primary database)
-  - Connection: DATABASE_URL (env var)
-  - Client: Drizzle ORM 0.38.3
-  - Pool management: `backend/src/db/index.ts`
-  - Schemas: 8 tables (users, sessions, rooms, messages, products, contractors, styles, assets)
-  - Migrations: `backend/drizzle/` directory
+**Primary Database:**
+- PostgreSQL 15 (Supabase-hosted or self-managed)
+  - Connection: `DATABASE_URL` env var
+  - Client: Drizzle ORM (`backend/src/db/index.ts`)
+  - Schema: 12 tables across `backend/src/db/schema/*.ts`
+  - Tables: profiles, renovation_sessions, renovation_rooms, product_recommendations, contractor_recommendations, chat_messages, styles, style_images, assets, asset_variants, document_artifacts, products_catalog
+  - Migrations: `backend/drizzle/` (managed by drizzle-kit, journal-based)
+  - JSONB validation: `backend/src/db/jsonb-schemas.ts` (5 Zod schemas)
 
-**File Storage:**
-- Supabase Storage (optional - Phase 2.1+)
-  - Bucket: SUPABASE_STORAGE_BUCKET (default: 'room-assets')
-  - Client: @supabase/supabase-js
-  - Use case: User-uploaded room images for AI analysis
-  - Located: `backend/src/services/asset.service.ts`
+**Conversation Memory:**
+- LangGraph PostgreSQL Checkpointer
+  - Package: `@langchain/langgraph-checkpoint-postgres`
+  - Config: `backend/src/services/checkpointer.service.ts`
+  - Purpose: Persists ReAct agent state per session (thread_id = sessionId)
 
 **Caching:**
-- Redis 7-alpine (optional - docker-compose.yml)
-  - Connection: localhost:6379 (development)
-  - Use case: Session storage, rate limiting (future implementation)
-  - Currently: In-memory token bucket rate limiting in `backend/src/server.ts`
+- Redis 7 (via ioredis)
+  - Connection: `REDIS_URL` env var (default: `redis://localhost:6379`)
+  - Client: `backend/src/config/redis.ts` (lazy connect, graceful degradation)
+  - Service: `backend/src/services/cache.service.ts` (get/set/invalidate with TTL)
+  - Graceful fallback: App works without Redis (in-memory Socket.io adapter, no caching)
 
-**LangGraph Checkpointing:**
-- PostgreSQL (conversation state persistence)
-  - Mode: LANGGRAPH_CHECKPOINTER=postgres (default: memory)
-  - Client: @langchain/langgraph-checkpoint-postgres 1.0.0
-  - Purpose: Multi-turn conversation history and ReAct agent state
-  - Located: `backend/src/services/checkpointer.service.ts`
+**File Storage:**
+- Supabase Storage (when configured)
+  - Used for: room photo uploads, render output images
+  - Service: `backend/src/services/asset.service.ts` (signed URLs, upload/download)
+  - Auth: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` env vars
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- Supabase Auth (optional - Phase 8+)
-  - Implementation: JWT-based authentication
-  - Config: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-  - Client: @supabase/supabase-js 2.90.1 (backend), 2.94.1 (frontend)
-  - Middleware: `backend/src/middleware/auth.middleware.ts` - Token verification
-  - SSR Support: @supabase/ssr 0.8.0 (frontend)
-  - Socket.io Auth: Token-based middleware in `backend/src/server.ts` (lines 145-160)
-  - User ID: Nullable in database schemas for anonymous sessions (Phases 1-7)
+- Supabase Auth (optional, Phases 1-7 run without it)
+  - Backend client: `backend/src/config/supabase.ts` (admin client with service role key)
+  - Frontend client: `frontend/lib/supabase/client.ts` (browser), `frontend/lib/supabase/server.ts` (SSR)
+  - Middleware: `frontend/lib/supabase/middleware.ts` (Next.js middleware for session refresh)
+  - Backend middleware: `backend/src/middleware/auth.middleware.ts`
+    - `authMiddleware` - Always requires valid Bearer token
+    - `optionalAuthMiddleware` - Skips auth when Supabase not configured
+    - `verifyToken()` - Validates JWT via `supabaseAdmin.auth.getUser()`
+  - Feature flag: `isAuthEnabled()` checks if `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set
+  - Auth callback: `frontend/app/auth/callback/route.ts`
+  - Socket.io auth: Token passed in `socket.handshake.auth.token`, validated in `backend/src/server.ts`
+
+## Real-Time Communication
+
+**WebSocket:**
+- Socket.io 4.8.1
+  - Server: `backend/src/server.ts` (initialized after HTTP server)
+  - Client: `frontend/hooks/useChat.ts` (React hook)
+  - Redis adapter: `@socket.io/redis-adapter` for multi-instance pub/sub
+  - Events defined in: `packages/shared-types/src/socket-events.ts`
+  - Client events: `chat:join_session`, `chat:user_message`
+  - Server events: `chat:session_joined`, `chat:message_ack`, `chat:assistant_token`, `chat:tool_call`, `chat:tool_result`, `chat:error`, `chat:warning`, `render:started`, `render:progress`, `render:complete`, `render:failed`
+  - Validation: Zod schemas in `backend/src/validators/socket.validators.ts`
+  - Security: Prompt injection detection (3-tier severity), 10KB max payload, rate limiting (10 msg/60s)
+  - Global accessor: `backend/src/utils/socket-emitter.ts` (`emitToSession()` via `(global).io`)
+
+## Job Processing
+
+**Queue System:**
+- BullMQ 5.69.1 (Redis-backed)
+  - Config: `backend/src/config/queue.ts`
+  - Dead letter queue: `backend/src/config/dead-letter.ts`
+  - Admin UI: Bull Board at `/admin/queues` (dev/staging only, see `backend/src/app.ts`)
+
+**Queue Types:**
+| Queue | Worker File | Purpose | Concurrency | Timeout |
+|-------|-------------|---------|-------------|---------|
+| `image:optimize` | `backend/src/workers/image.worker.ts` | Thumbnail/WebP/AVIF generation | 2 | 30s |
+| `email:send-notification` | `backend/src/workers/email.worker.ts` | Transactional email via Resend | 5 | 10s |
+| `doc:generate-plan` | `backend/src/workers/doc.worker.ts` | PDF generation via Puppeteer | 1 | 60s |
+| `render:generate` | `backend/src/workers/render.worker.ts` | AI image generation | 1 | 90s |
+
+**Worker Patterns:**
+- `UnrecoverableError` for permanent failures (content policy, invalid data)
+- Regular `Error` for retriable failures (network, timeout)
+- Exponential backoff on retry
+- Dead letter queue for exhausted retries
+
+## Email
+
+**Provider:**
+- Resend (`resend` 6.9.2)
+  - Auth: `RESEND_API_KEY` env var
+  - Config: `backend/src/config/email.ts`
+  - Service: `backend/src/services/email.service.ts`
+  - Templates: `backend/src/emails/templates.ts` (Handlebars)
+  - Feature flag: `isEmailEnabled()` checks `RESEND_API_KEY`
+
+## Payments
+
+**Provider:**
+- Stripe (Phase 9, not yet active)
+  - SDK: `stripe` 18.5.0 (installed but not wired)
+  - Auth: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` env vars
+  - Feature flag: `isPaymentsEnabled()` checks Stripe keys
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None (custom Logger class only)
+- Sentry
+  - Backend: `@sentry/node` 10.38.0, config in `backend/src/config/sentry.ts`
+  - Frontend: `@sentry/nextjs` 10.38.0, config in `frontend/sentry.*.config.ts` (client, server, edge)
+  - Error handler integration: `backend/src/middleware/errorHandler.ts` calls `Sentry.captureException()`
+  - Auth: `SENTRY_DSN` env var (optional)
+
+**Distributed Tracing:**
+- OpenTelemetry
+  - SDK: `@opentelemetry/sdk-node` 0.212.0
+  - Config: `backend/src/config/telemetry.ts` (BatchSpanProcessor, OTLP exporter)
+  - HTTP/DB auto-instrumentation
+  - Socket.io tracing: `backend/src/middleware/socketio-tracing.middleware.ts`
+  - AI call tracing: `backend/src/utils/ai-tracing.ts` (IA doc 1.4 attributes)
+  - Logger correlation: `backend/src/utils/logger.ts` injects `trace_id`, `span_id`
+  - Force-sample header: `x-force-sample` for debugging
 
 **Logs:**
-- Custom structured JSON logger (`backend/src/utils/logger.ts`)
-- Format: Timestamp, level (DEBUG/INFO/WARN/ERROR), service name, message, metadata
-- MDC pattern: Includes userId, sessionId, socketId contextual fields
-- Output: console.log with JSON.stringify (container compatible)
-- No external log aggregation service configured
+- Custom structured JSON logger: `backend/src/utils/logger.ts`
+  - Includes: timestamp, level, service, message, requestId, trace_id, span_id
+  - Frontend mirror: `frontend/lib/logger.ts`
 
 ## CI/CD & Deployment
 
+**CI Pipeline (GitHub Actions):**
+| Workflow | File | Trigger |
+|----------|------|---------|
+| Quality Gates | `.github/workflows/quality-gates.yml` | PR to main |
+| Integration Tests | `.github/workflows/integration-tests.yml` | PR/push to main (backend changes) |
+| Backend Deploy | `.github/workflows/backend-deploy.yml` | Push to main (backend changes) |
+| Frontend Deploy | `.github/workflows/frontend-deploy.yml` | Push to main (frontend changes) |
+| AI Regression | `.github/workflows/ai-regression.yml` | Manual/scheduled |
+| Migration Safety | Part of `quality-gates.yml` | PRs touching `backend/drizzle/` |
+| CodeQL | `.github/workflows/codeql.yml` | Security scanning |
+| Semgrep | `.github/workflows/semgrep.yml` | SAST scanning |
+| Dependency Audit | `.github/workflows/dependency-audit.yml` | Dependency vulnerability checks |
+| Docker Scan | `.github/workflows/docker-scan.yml` | Container image scanning |
+| Lighthouse | `.github/workflows/lighthouse.yml` | Frontend performance |
+| DB Health | `.github/workflows/db-health.yml` | Database monitoring |
+| Release | `.github/workflows/release.yml` | Release automation |
+
 **Hosting:**
+- Backend: Docker on GHCR (GitHub Container Registry)
 - Frontend: Vercel
-- Backend: Docker container (any container platform)
-  - HTTP server (TLS termination at reverse proxy / load balancer)
-  - Health endpoints: `/health`, `/health/live`, `/health/ready`, `/health/status`
-  - Graceful shutdown: 10s timeout with resource cleanup
+- Database: Supabase (managed PostgreSQL 15)
 
-**CI Pipeline:**
-- GitHub Actions
-- Docker: Multi-stage builds (`backend/Dockerfile`)
-- Docker Compose: `docker-compose.yml` for development environment
-
-**Build Tools:**
-- Backend: tsx (dev), tsc (production build)
-- Frontend: Next.js build system (webpack/turbopack)
+**Coverage:**
+- Codecov integration via `codecov.yml`
+  - Project target: 80%, patch target: 80%
+  - Flags: `backend` (src/), `frontend` (app/, components/, hooks/, lib/)
+  - Carryforward enabled for both flags
 
 ## Environment Configuration
 
-**Required env vars:**
-- Backend: NODE_ENV, PORT, DATABASE_URL, GOOGLE_API_KEY, FRONTEND_URL
-- Frontend: NEXT_PUBLIC_API_URL, NEXT_PUBLIC_BACKEND_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+**Required env vars (backend):**
+- `DATABASE_URL` - PostgreSQL connection string
+- `GOOGLE_API_KEY` - Gemini AI API key
 
-**Secrets location:**
-- Development: `.env` files (gitignored)
-- Production: Environment variables injected at container runtime
-- Schema validation: `backend/src/config/env.ts` with Zod
+**Optional env vars (backend):**
+- `REDIS_URL` - Redis connection (default: redis://localhost:6379)
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` - Auth (Phase 8)
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` - Payments (Phase 9)
+- `RESEND_API_KEY`, `FROM_EMAIL` - Email
+- `SENTRY_DSN`, `SENTRY_ENVIRONMENT` - Error tracking
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - Tracing exporter
+- `STABILITY_API_KEY` - Stability AI fallback for image generation
+- `ANTHROPIC_API_KEY` - Dev-agent Claude model
+- `SHUTDOWN_TIMEOUT_MS` - Graceful shutdown timeout (default: 10000)
 
-## Webhooks & Callbacks
-
-**Incoming:**
-- Socket.io events (WebSocket) - Real-time chat communication
-  - `chat:join_session` - Join renovation session room
-  - `chat:user_message` - User sends message to AI agent
-  - Handler: `backend/src/server.ts` (lines 194-338)
-  - Rate limiting: 10 tokens per 60s per socket (in-memory)
-
-**Outgoing:**
-- Socket.io events (WebSocket) - AI responses and tool events
-  - `chat:session_joined` - Session join confirmation
-  - `chat:message_ack` - Message receipt acknowledgment
-  - `chat:assistant_token` - Streaming AI response tokens
-  - `chat:tool_call` - Agent is calling a tool (e.g., save_intake_state)
-  - `chat:tool_result` - Tool execution result
-  - `chat:error` - Error during message processing
-  - Emitted from: `backend/src/services/chat.service.ts` (StreamCallback interface)
-
-**Stripe Webhooks (Optional - Phase 9):**
-- Not yet implemented
-- Config: STRIPE_WEBHOOK_SECRET (env var)
-- Use case: Payment confirmation callbacks
-
-## Real-Time Communication
-
-**Socket.io Configuration:**
-- CORS: Restricted to FRONTEND_URL with credentials
-- Transport: WebSocket with polling fallback
-- Settings: 60s ping timeout, 25s ping interval, 10MB max payload (for image uploads)
-- Authentication: JWT token in handshake.auth.token
-- Room-based: Session isolation (`session:${sessionId}`)
-
-## LangChain Tool Integrations
-
-**Renovation Agent Tools:**
-- `getStyleExamplesTool` - Retrieve design style examples from database (`backend/src/tools/get-style-examples.tool.ts`)
-- `searchProductsTool` - Search product recommendations (`backend/src/tools/search-products.tool.ts`)
-- `saveIntakeStateTool` - Persist intake phase data (`backend/src/tools/save-intake-state.tool.ts`)
-- `saveChecklistStateTool` - Persist checklist phase data (`backend/src/tools/save-checklist-state.tool.ts`)
-- Tool binding: Model binds tools in ReAct agent (`backend/src/services/chat.service.ts` line 64)
+**Required env vars (frontend):**
+- `NEXT_PUBLIC_API_URL` - Backend API URL
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL (optional for anonymous mode)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key (optional for anonymous mode)
 
 ---
 
-*Integration audit: 2026-02-09*
+*Integration audit: 2026-03-01*

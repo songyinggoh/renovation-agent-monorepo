@@ -22,7 +22,7 @@ import { initializeCheckpointer, cleanupCheckpointer } from './services/checkpoi
 import { createAdapter } from '@socket.io/redis-adapter';
 import { startEmailWorker } from './workers/email.worker.js';
 import { startImageWorker } from './workers/image.worker.js';
-import { startDocWorker } from './workers/doc.worker.js';
+import { startDocWorker, documentService } from './workers/doc.worker.js';
 import { startRenderWorker } from './workers/render.worker.js';
 import { closeQueues } from './config/queue.js';
 import {
@@ -650,7 +650,7 @@ function setupGracefulShutdown(): void {
 
   // Create shutdown manager
   shutdownManager = new ShutdownManager(httpServer, {
-    timeout: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10),
+    timeout: env.SHUTDOWN_TIMEOUT_MS,
     logger,
   });
 
@@ -695,6 +695,16 @@ function setupGracefulShutdown(): void {
     timeout: 95_000,
   });
 
+  // DocumentService Puppeteer browser pool cleanup
+  // Must close BEFORE BullMQ workers to prevent orphaned Chromium subprocesses
+  shutdownManager.registerResource({
+    name: 'DocumentService Browser Pool',
+    cleanup: async () => {
+      await documentService.close();
+    },
+    timeout: 10_000, // 10s for Puppeteer browser.close() + process kill
+  });
+
   // Other workers + all queues
   shutdownManager.registerResource({
     name: 'Workers & Queues',
@@ -731,9 +741,11 @@ function setupGracefulShutdown(): void {
 }
 
 // ============================================
-// Start Server (only if not in test environment)
+// Start Server (skip only when vitest is running unit tests)
 // ============================================
-if (env.NODE_ENV !== 'test') {
+// NODE_ENV=test is also used by Playwright E2E runs, which DO need the real
+// server to start. Guard on VITEST instead — vitest sets it automatically.
+if (!process.env.VITEST) {
   startServer();
 }
 

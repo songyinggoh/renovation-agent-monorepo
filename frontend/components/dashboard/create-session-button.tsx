@@ -35,7 +35,7 @@ export function CreateSessionButton() {
     };
 
     return (
-        <Button onClick={handleCreateSession} disabled={isLoading} className="gap-2">
+        <Button onClick={handleCreateSession} disabled={isLoading} className="gap-2" data-testid="create-session">
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             {isLoading ? 'Creating...' : 'New Session'}
         </Button>
